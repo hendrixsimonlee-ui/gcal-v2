@@ -1,0 +1,272 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// --- Auth.js (NextAuth) required models ---
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// --- Domain models ---
+
+enum DanceRole {
+  DANCER
+  CHOREOGRAPHER
+}
+
+enum PracticeStatus {
+  PROPOSED
+  CONFIRMED
+}
+
+enum NotificationType {
+  SCHEDULE_FINALIZED
+  REMINDER
+  CHRONIC_ABSENCE_FLAG
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  isAdmin       Boolean   @default(false)
+
+  // Attendance threshold override; falls back to a global setting if null.
+  chronicAbsenceThreshold Int?
+
+  accounts Account[]
+  sessions Session[]
+
+  memberships       DanceMembership[]
+  conflicts         Conflict[]
+  unavailabilities  Unavailability[]
+  weeklyExcuses     ChoreographerWeeklyExcuse[]
+  attendanceRecords Attendance[]              @relation("AttendanceSubject")
+  attendanceMarkedBy Attendance[]             @relation("AttendanceMarker")
+  notifications     Notification[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Dance {
+  id     String @id @default(cuid())
+  name   String
+  season String?
+
+  memberships DanceMembership[]
+  practices   Practice[]
+  weeklyExcuses ChoreographerWeeklyExcuse[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model DanceMembership {
+  id       String    @id @default(cuid())
+  userId   String
+  danceId  String
+  role     DanceRole
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dance Dance @relation(fields: [danceId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([userId, danceId, role])
+  @@index([danceId])
+  @@index([userId])
+}
+
+model Space {
+  id       String @id @default(cuid())
+  name     String
+  location String?
+
+  availabilities SpaceAvailability[]
+  practices      Practice[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/// A recurring weekly window (dayOfWeek + start/end time) or a one-off date
+/// override for when a space is actually bookable.
+model SpaceAvailability {
+  id      String  @id @default(cuid())
+  spaceId String
+  space   Space   @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+
+  // Recurring weekly window
+  dayOfWeek Int? // 0 = Sunday ... 6 = Saturday
+  startTime String? // "HH:mm"
+  endTime   String? // "HH:mm"
+
+  // One-off override (a specific date, e.g. holiday closure or extra opening)
+  date        DateTime? @db.Date
+  isAvailable Boolean   @default(true)
+
+  createdAt DateTime @default(now())
+
+  @@index([spaceId])
+}
+
+model ConflictCategory {
+  id         String  @id @default(cuid())
+  name       String  @unique
+  isExcused  Boolean @default(false)
+
+  conflicts Conflict[]
+
+  createdAt DateTime @default(now())
+}
+
+/// A dancer/choreographer's logged conflict for a given week. May originate
+/// from a manual entry or be imported from Google Calendar (sourceGoogleEventId set).
+model Conflict {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  weekOf        DateTime @db.Date
+  startDateTime DateTime
+  endDateTime   DateTime
+
+  categoryId String?
+  category   ConflictCategory? @relation(fields: [categoryId], references: [id])
+
+  note String?
+
+  isRecurring    Boolean @default(false)
+  recurrenceRule String? // e.g. "WEEKLY" for now; RFC 5545 RRULE later if needed
+
+  sourceGoogleEventId String? // set when imported from Google Calendar
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, weekOf])
+}
+
+/// A full exclusion window (e.g. "out of town") distinct from a normal
+/// conflict — removes the user from conflict-checking entirely for the range.
+model Unavailability {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  startDate DateTime @db.Date
+  endDate   DateTime @db.Date
+  reason    String?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model Practice {
+  id      String @id @default(cuid())
+  danceId String
+  dance   Dance  @relation(fields: [danceId], references: [id], onDelete: Cascade)
+
+  spaceId String?
+  space   Space?  @relation(fields: [spaceId], references: [id])
+
+  startDateTime DateTime
+  endDateTime   DateTime
+  status        PracticeStatus @default(PROPOSED)
+
+  attendance Attendance[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([danceId])
+  @@index([spaceId])
+}
+
+/// The AD deselecting a choreographer as a mandatory attendee for one
+/// specific week (that dance's weekly excuse), rather than every week.
+model ChoreographerWeeklyExcuse {
+  id      String @id @default(cuid())
+  danceId String
+  dance   Dance  @relation(fields: [danceId], references: [id], onDelete: Cascade)
+  userId  String
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  weekOf  DateTime @db.Date
+
+  createdAt DateTime @default(now())
+
+  @@unique([danceId, userId, weekOf])
+}
+
+model Attendance {
+  id         String   @id @default(cuid())
+  practiceId String
+  practice   Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation("AttendanceSubject", fields: [userId], references: [id], onDelete: Cascade)
+  attended   Boolean
+
+  markedById String?
+  markedBy   User?    @relation("AttendanceMarker", fields: [markedById], references: [id])
+  markedAt   DateTime @default(now())
+
+  @@unique([practiceId, userId])
+  @@index([userId])
+}
+
+model Notification {
+  id      String            @id @default(cuid())
+  userId  String
+  user    User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type    NotificationType
+  message String
+  read    Boolean           @default(false)
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, read])
+}
