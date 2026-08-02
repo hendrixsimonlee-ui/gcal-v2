@@ -13,6 +13,23 @@ const GOOGLE_SCOPES = [
   "https://www.googleapis.com/auth/calendar.readonly",
 ].join(" ");
 
+/** Grants admin to whoever matches INITIAL_ADMIN_EMAIL. Runs on every sign-in
+ * but only ever promotes — it never demotes, so removing the env var later
+ * (or the AD handing off) doesn't strip anyone's access. */
+export async function promoteIfInitialAdmin(
+  userId: string | undefined,
+  email: string | null | undefined,
+) {
+  const configured = process.env.INITIAL_ADMIN_EMAIL?.trim().toLowerCase();
+  if (!configured || !userId || !email) return;
+  if (email.trim().toLowerCase() !== configured) return;
+
+  await prisma.user.updateMany({
+    where: { id: userId, isAdmin: false },
+    data: { isAdmin: true },
+  });
+}
+
 export const { handlers, signIn, signOut, auth } = NextAuth({
   adapter: PrismaAdapter(prisma),
   session: { strategy: "database" },
@@ -35,6 +52,14 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       allowDangerousEmailAccountLinking: true,
     }),
   ],
+  events: {
+    // Bootstraps the very first admin. Without this there's a chicken-and-egg
+    // problem: only an admin can promote someone, but nobody is one yet, so
+    // the first one would have to be set by hand in the database.
+    async signIn({ user }) {
+      await promoteIfInitialAdmin(user.id, user.email);
+    },
+  },
   callbacks: {
     async session({ session, user }) {
       if (session.user) {

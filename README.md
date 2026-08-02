@@ -76,51 +76,79 @@ a silent bug would be most costly: slot scoring and hard constraints,
 multi-space search, excused/unexcused classification, chronic-absence
 thresholds, and the bounds on historical weighting.
 
-## Prerequisites
+## Try it locally (start here)
 
-- Node.js 20+
-- A PostgreSQL database
-- A Google Cloud OAuth client (for Sign in with Google + Calendar import)
+The fastest way to click through the app. You do **not** need to set up
+Google sign-in for this — there's a development-only login that lets you
+sign in as anyone on the roster.
 
-## Setup
+**1. Install Node.js.** Download the LTS version from
+[nodejs.org](https://nodejs.org) and run the installer.
 
-1. Install dependencies:
+**2. Get a free database.** Sign up at [neon.com](https://neon.com), create
+a project, and copy the connection string it gives you (starts with
+`postgresql://`). It takes about two minutes and no card. You'll reuse this
+same database when you deploy, so it isn't throwaway work.
 
-   ```bash
-   npm install
-   ```
+**3. Create a file named `.env`** in the project folder, containing:
 
-2. Copy `.env` and fill in the values (a local `.env` with a working
-   `DATABASE_URL` is already present for local development):
+```
+DATABASE_URL="paste-your-neon-connection-string-here"
+NEXTAUTH_URL="http://localhost:3000"
+NEXTAUTH_SECRET="any-random-string-will-do-for-local"
+ALLOW_DEV_LOGIN="true"
+```
 
-   - `DATABASE_URL` — your Postgres connection string
-   - `NEXTAUTH_URL` — the app's base URL (e.g. `http://localhost:3000`)
-   - `NEXTAUTH_SECRET` — any random secret string
-   - `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` — from a Google Cloud
-     project's OAuth 2.0 credentials
-     ([console.cloud.google.com/apis/credentials](https://console.cloud.google.com/apis/credentials)).
-     Add `<NEXTAUTH_URL>/api/auth/callback/google` as an authorized
-     redirect URI, and enable the **Google Calendar API** for the project.
-   - `RESEND_API_KEY` / `EMAIL_FROM` — *optional.* Without them the app runs
-     fine and still shows in-app notifications; it just won't send email.
+**4. In Terminal, from the project folder, run these one at a time:**
 
-3. Run database migrations:
+```bash
+npm install              # installs dependencies (a few minutes, once)
+npx prisma migrate deploy # creates the database tables
+npm run seed:demo        # fills it with a realistic example season
+npm run dev              # starts the app
+```
 
-   ```bash
-   npx prisma migrate dev
-   ```
+**5. Open [http://localhost:3000](http://localhost:3000).** The sign-in page
+will show a "Local development only" section — click any name to sign in as
+them. Good ones to try:
 
-4. Start the dev server:
+| Sign in as | To see |
+| --- | --- |
+| **Priya Raman** | The AD — Schedule Builder, Attendance Review, Settings |
+| **Aisha Okonkwo** | A choreographer — attendance check-off for Hip Hop Fusion |
+| **Diego Alvarez** | A dancer with conflicts already logged |
 
-   ```bash
-   npm run dev
-   ```
+The seed leaves one Contemporary practice as an unconfirmed draft, so you
+can open the Schedule Builder, confirm it, and watch the notification reach
+the cast.
 
-5. Sign in with Google once — this creates your `User` row. Then, directly
-   in the database, set `isAdmin = true` on that row to unlock the Admin
-   Console (there's no admin bootstrap UI yet, since the first admin has to
-   come from somewhere). After that, the AD can promote/demote other admins
-   from the Roster screen.
+To make edits: change a file, save it, and the browser updates on its own.
+Stop the app with `Ctrl+C`.
+
+> **On the dev login:** it needs `ALLOW_DEV_LOGIN=true` *and* a development
+> build. `NODE_ENV` is fixed to `production` in any real deployment, so this
+> cannot be switched on for a live site even by mistake — verified by test.
+
+## Deploying for real
+
+Beyond the local setup above you'll need:
+
+- **A Google Cloud OAuth client** for real Sign in with Google. Create
+  credentials at
+  [console.cloud.google.com/apis/credentials](https://console.cloud.google.com/apis/credentials),
+  add `<your-url>/api/auth/callback/google` as an authorized redirect URI,
+  and enable the **Google Calendar API** for the project. Set
+  `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`.
+- **Hosting.** [Vercel](https://vercel.com) connects to the GitHub repo and
+  deploys on push; its free tier is ample for ~40 people.
+- **`INITIAL_ADMIN_EMAIL`** — set this to your own email. Whoever signs in
+  with it is made an admin automatically, which is how the first AD gets
+  created. After that the AD can promote others from the Roster screen.
+- **`RESEND_API_KEY` / `EMAIL_FROM`** — *optional.* Without them everything
+  works and in-app notifications still appear; only email is skipped.
+
+Remember to set `NEXTAUTH_URL` to the real site URL and leave
+`ALLOW_DEV_LOGIN` unset.
 
 ## Navigation model
 
