@@ -9,6 +9,7 @@ const ADMIN_NAV: NavItem[] = [
   { href: "/admin/dances", label: "Dances" },
   { href: "/admin/categories", label: "Conflict Categories" },
   { href: "/admin/conflicts", label: "Conflict Review" },
+  { href: "/admin/schedule-builder", label: "Schedule Builder" },
 ];
 
 export default async function AdminLayout({
