@@ -258,6 +258,20 @@ model Attendance {
   @@index([userId])
 }
 
+/// Single-row table of org-wide settings the AD controls. Kept as a table
+/// (rather than env vars) so the AD can change it from the Settings screen.
+model AppSettings {
+  id String @id @default("singleton")
+
+  /// Someone is flagged as chronically absent after this many unexcused
+  /// absences within the last `chronicAbsenceWindow` practices for a dance.
+  /// A `User.chronicAbsenceThreshold` overrides this per person.
+  chronicAbsenceThreshold Int @default(3)
+  chronicAbsenceWindow    Int @default(5)
+
+  updatedAt DateTime @updatedAt
+}
+
 model Notification {
   id      String            @id @default(cuid())
   userId  String

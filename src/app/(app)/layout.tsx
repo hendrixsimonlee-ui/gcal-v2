@@ -1,11 +1,7 @@
 import { auth } from "@/auth";
+import { prisma } from "@/lib/prisma";
 import { Header } from "@/components/header";
 import { SidebarNav, type NavItem } from "@/components/sidebar-nav";
-
-const PERSONAL_NAV: NavItem[] = [
-  { href: "/schedule", label: "My Schedule" },
-  { href: "/conflicts", label: "My Conflicts" },
-];
 
 export default async function AppLayout({
   children,
@@ -13,6 +9,24 @@ export default async function AppLayout({
   children: React.ReactNode;
 }) {
   const session = await auth();
+
+  // Roles are additive, not modes: everyone gets the personal screens, and
+  // choreographing any dance simply adds check-off alongside them.
+  const nav: NavItem[] = [
+    { href: "/schedule", label: "My Schedule" },
+    { href: "/conflicts", label: "My Conflicts" },
+    { href: "/my-attendance", label: "My Attendance" },
+  ];
+
+  if (session?.user?.id) {
+    const choreographs = await prisma.danceMembership.findFirst({
+      where: { userId: session.user.id, role: "CHOREOGRAPHER" },
+      select: { id: true },
+    });
+    if (choreographs) {
+      nav.push({ href: "/attendance", label: "Attendance Check-off" });
+    }
+  }
 
   return (
     <div className="flex h-full flex-col">
@@ -22,7 +36,7 @@ export default async function AppLayout({
       />
       <div className="flex flex-1 flex-col overflow-hidden sm:flex-row">
         <SidebarNav
-          items={PERSONAL_NAV}
+          items={nav}
           switchLink={
             session?.user?.isAdmin
               ? { href: "/admin", label: "Admin Console →" }

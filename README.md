@@ -3,23 +3,57 @@
 A shared web app for scheduling dance team practices around conflicts,
 rehearsal space availability, and choreographer requirements.
 
-## Status: Layer 1 of 5
+## Status: Layers 1–3 of 5 complete
 
-This is the first build layer — the foundation. It includes:
+**Layer 1 — Foundation**
 
 - Google sign-in, with roles: **AD (admin)**, **choreographer**, **dancer**
   (a person can be more than one at once — see the navigation model below)
 - AD screens: **Roster**, **Spaces** (with weekly availability windows),
-  **Dances** (with choreographer/cast assignment), **Conflict Categories**
-- Dancer screens: **My Schedule** (grouped by dance), **My Conflicts**
+  **Dances** (with choreographer/cast assignment), **Conflict Categories**,
+  **Conflict Review**
+- Personal screens: **My Schedule** (grouped by dance), **My Conflicts**
   (weekly time-block entry, recurring conflicts, Google Calendar import,
   out-of-town/unavailability marking)
 - Installable as a home-screen web app (PWA) on any phone browser
 
-Not yet built (later layers, see `/root/.claude/plans` in the session that
-built this, or ask to continue): the interactive drag-and-drop schedule
-builder, attendance tracking, email/in-app notifications, and historical
-scheduling weighting.
+**Layer 2 — Scheduling engine + interactive builder**
+
+- **Schedule Builder** (AD): a Google-Calendar-style week/month grid with
+  drag-to-create, drag-to-move, and resize. Practices for every dance show
+  on one grid so placing one doesn't blindly cost another its better slot.
+- Ranked candidate slots per dance/space/duration. Hard requirements:
+  space availability, no room double-booking, and all mandatory
+  choreographers free. Soft ranking: fewest and least-severe cast conflicts.
+- Side panel of cast conflicts with per-person **ignore** checkboxes
+  (a what-if tool — it never edits anyone's real conflict record), plus the
+  per-week **choreographer excuse** toggle.
+
+**Layer 3 — Attendance**
+
+- **Attendance Check-off** (choreographers, for their own dances): tick who
+  showed up; defaults to everyone present so you only mark the exceptions.
+- Absences are classified automatically against what that person logged for
+  the time slot: *excused* (excused-category conflict or an out-of-town
+  window) vs *unexcused* (unexcused conflict, or a no-show with nothing
+  logged at all).
+- **My Attendance** (everyone): per-dance history and attendance rate.
+- **Attendance Review** (AD): average % of the cast missing, a
+  who's-missing-overall table, per-practice breakdowns, and chronic-absence
+  flags. Only unexcused absences ever count toward a flag.
+- **Settings** (AD): configure the chronic-absence threshold and window
+  (e.g. "3 unexcused out of the last 5").
+
+Not yet built: **Layer 4** — email + in-app notifications with an "add to
+Google Calendar" link on schedule finalization; **Layer 5** — optionally
+weighting future scheduling by historical attendance, with an AD toggle.
+
+## Tests
+
+`npm test` runs the scheduling and attendance logic suites (plain `tsx`
+scripts, no test framework needed). These cover the parts where a silent
+bug would be most costly — slot scoring and excused/unexcused
+classification.
 
 ## Prerequisites
 

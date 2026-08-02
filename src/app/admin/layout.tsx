@@ -10,6 +10,8 @@ const ADMIN_NAV: NavItem[] = [
   { href: "/admin/categories", label: "Conflict Categories" },
   { href: "/admin/conflicts", label: "Conflict Review" },
   { href: "/admin/schedule-builder", label: "Schedule Builder" },
+  { href: "/admin/attendance", label: "Attendance Review" },
+  { href: "/admin/settings", label: "Settings" },
 ];
 
 export default async function AdminLayout({

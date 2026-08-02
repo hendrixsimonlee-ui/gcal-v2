@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { requireAdmin } from "@/lib/require-admin";
+import { requireAdmin } from "@/lib/authz";
 
 export async function addCategory(formData: FormData) {
   await requireAdmin();
