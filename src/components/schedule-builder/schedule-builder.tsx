@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { ANY_SPACE } from "@/lib/constants";
 import {
   confirmPractice,
   createDraftPractice,
@@ -57,7 +58,8 @@ export function ScheduleBuilder({
   const [isPending, startTransition] = useTransition();
 
   const [danceId, setDanceId] = useState(dances[0]?.id ?? "");
-  const [spaceId, setSpaceId] = useState(spaces[0]?.id ?? "");
+  // Default to searching every room — picking a specific one is the exception.
+  const [spaceId, setSpaceId] = useState<string>(ANY_SPACE);
   const [durationMinutes, setDurationMinutes] = useState(90);
   const [ignoredUserIds, setIgnoredUserIds] = useState<Set<string>>(new Set());
   const [candidates, setCandidates] = useState<CandidateSlot[]>([]);
@@ -132,9 +134,11 @@ export function ScheduleBuilder({
 
   function applyCandidate(candidate: CandidateSlot) {
     startTransition(async () => {
+      // Book the room this candidate was actually scored against, not
+      // whatever the dropdown says (it may be "Any space").
       await createDraftPractice(
         danceId,
-        spaceId,
+        candidate.spaceId,
         candidate.startDateTime.toISOString(),
         candidate.endDateTime.toISOString(),
       );
@@ -157,15 +161,17 @@ export function ScheduleBuilder({
   }
 
   const businessHours = useMemo(() => {
-    const space = spaces.find((s) => s.id === spaceId);
-    if (!space) return [];
-    return space.availabilities
-      .filter((a) => a.dayOfWeek !== null && a.startTime && a.endTime)
-      .map((a) => ({
-        daysOfWeek: [a.dayOfWeek!],
-        startTime: a.startTime!,
-        endTime: a.endTime!,
-      }));
+    const relevant =
+      spaceId === ANY_SPACE ? spaces : spaces.filter((s) => s.id === spaceId);
+    return relevant.flatMap((space) =>
+      space.availabilities
+        .filter((a) => a.dayOfWeek !== null && a.startTime && a.endTime)
+        .map((a) => ({
+          daysOfWeek: [a.dayOfWeek!],
+          startTime: a.startTime!,
+          endTime: a.endTime!,
+        })),
+    );
   }, [spaces, spaceId]);
 
   const draftPracticesForDance = initialPractices.filter(
@@ -200,6 +206,7 @@ export function ScheduleBuilder({
             onChange={(e) => setSpaceId(e.target.value)}
             className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-800"
           >
+            <option value={ANY_SPACE}>Any space</option>
             {spaces.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.name}
@@ -244,11 +251,13 @@ export function ScheduleBuilder({
                 <div className="font-medium text-zinc-800 dark:text-zinc-200">
                   #{i + 1} {timeFormatter.format(c.startDateTime)}
                 </div>
+                <div className="text-zinc-600 dark:text-zinc-300">
+                  {c.spaceName}
+                </div>
                 <div className="text-zinc-500">
-                  Score {c.score}
                   {c.conflictedCastMembers.length > 0
-                    ? ` · ${new Set(c.conflictedCastMembers.map((m) => m.userId)).size} affected`
-                    : " · everyone free"}
+                    ? `${new Set(c.conflictedCastMembers.map((m) => m.userId)).size} affected`
+                    : "Everyone free"}
                 </div>
                 <button
                   onClick={() => applyCandidate(c)}

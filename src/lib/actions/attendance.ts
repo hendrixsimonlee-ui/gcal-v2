@@ -34,17 +34,25 @@ export async function updateAttendanceSettings(formData: FormData) {
     );
   }
 
+  const useHistoricalWeighting = formData.get("useHistoricalWeighting") === "on";
+
   await prisma.appSettings.upsert({
     where: { id: SETTINGS_ID },
-    update: { chronicAbsenceThreshold: threshold, chronicAbsenceWindow: window },
+    update: {
+      chronicAbsenceThreshold: threshold,
+      chronicAbsenceWindow: window,
+      useHistoricalWeighting,
+    },
     create: {
       id: SETTINGS_ID,
       chronicAbsenceThreshold: threshold,
       chronicAbsenceWindow: window,
+      useHistoricalWeighting,
     },
   });
   revalidatePath("/admin/settings");
   revalidatePath("/admin/attendance");
+  revalidatePath("/admin/schedule-builder");
 }
 
 /** Bulk check-off for one practice. `presentUserIds` is everyone ticked as

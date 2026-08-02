@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { startOfWeek } from "@/lib/dates";
 import {
   classifyAttendance,
   isChronicallyAbsent,
@@ -230,6 +231,255 @@ export async function getPersonAttendance(
   }
 
   return Array.from(byDance.values());
+}
+
+export interface PersonDanceCell {
+  danceId: string;
+  danceName: string;
+  practicesMarked: number;
+  present: number;
+  excused: number;
+  unexcused: number;
+  isFlagged: boolean;
+}
+
+export interface PersonRollup {
+  userId: string;
+  name: string;
+  totalPractices: number;
+  totalPresent: number;
+  totalExcused: number;
+  totalUnexcused: number;
+  attendanceRate: number;
+  perDance: PersonDanceCell[];
+}
+
+/** Everyone, with their record broken out per dance — the "how many has this
+ * person missed, and for which piece" view. */
+export async function getPersonRollups(
+  threshold: number,
+  windowSize: number,
+): Promise<PersonRollup[]> {
+  const practices = await getPastPracticesWithAttendance();
+
+  // userId -> danceId -> kinds (newest first; practices come back desc)
+  const byPerson = new Map<
+    string,
+    { name: string; perDance: Map<string, { danceName: string; kinds: AbsenceKind[] }> }
+  >();
+
+  for (const practice of practices) {
+    for (const row of practice.rows) {
+      if (row.kind === null) continue;
+      if (!byPerson.has(row.userId)) {
+        byPerson.set(row.userId, { name: row.name, perDance: new Map() });
+      }
+      const person = byPerson.get(row.userId)!;
+      if (!person.perDance.has(practice.danceId)) {
+        person.perDance.set(practice.danceId, {
+          danceName: practice.danceName,
+          kinds: [],
+        });
+      }
+      person.perDance.get(practice.danceId)!.kinds.push(row.kind);
+    }
+  }
+
+  const rollups: PersonRollup[] = [];
+  for (const [userId, { name, perDance }] of byPerson) {
+    const cells: PersonDanceCell[] = [];
+    for (const [danceId, { danceName, kinds }] of perDance) {
+      const s = summarizePerson(userId, kinds);
+      cells.push({
+        danceId,
+        danceName,
+        practicesMarked: kinds.length,
+        present: s.presentCount,
+        excused: s.excusedAbsences,
+        unexcused: s.unexcusedAbsences,
+        isFlagged: isChronicallyAbsent(kinds, threshold, windowSize),
+      });
+    }
+    cells.sort((a, b) => b.unexcused - a.unexcused || a.danceName.localeCompare(b.danceName));
+
+    const allKinds = cells.flatMap((c) =>
+      perDance.get(c.danceId)!.kinds,
+    );
+    const overall = summarizePerson(userId, allKinds);
+    rollups.push({
+      userId,
+      name,
+      totalPractices: allKinds.length,
+      totalPresent: overall.presentCount,
+      totalExcused: overall.excusedAbsences,
+      totalUnexcused: overall.unexcusedAbsences,
+      attendanceRate: overall.attendanceRate,
+      perDance: cells,
+    });
+  }
+
+  // Worst offenders first — that's what this view is for.
+  return rollups.sort(
+    (a, b) =>
+      b.totalUnexcused - a.totalUnexcused ||
+      a.attendanceRate - b.attendanceRate ||
+      a.name.localeCompare(b.name),
+  );
+}
+
+export interface UnexcusedAbsenceRow {
+  userId: string;
+  name: string;
+  danceId: string;
+  danceName: string;
+  practiceId: string;
+  startDateTime: Date;
+  kind: AbsenceKind;
+}
+
+/** Flat, newest-first list of every unexcused absence. */
+export async function getUnexcusedAbsences(): Promise<UnexcusedAbsenceRow[]> {
+  const practices = await getPastPracticesWithAttendance();
+  const rows: UnexcusedAbsenceRow[] = [];
+  for (const practice of practices) {
+    for (const row of practice.rows) {
+      if (row.kind === null || !isUnexcusedKind(row.kind)) continue;
+      rows.push({
+        userId: row.userId,
+        name: row.name,
+        danceId: practice.danceId,
+        danceName: practice.danceName,
+        practiceId: practice.practiceId,
+        startDateTime: practice.startDateTime,
+        kind: row.kind,
+      });
+    }
+  }
+  return rows;
+}
+
+function isUnexcusedKind(kind: AbsenceKind): boolean {
+  return kind === "no-show" || kind === "unexcused-conflict";
+}
+
+export interface WeeklyDanceRow {
+  weekOf: Date;
+  practiceCount: number;
+  castSize: number;
+  absentNames: string[];
+  unexcusedNames: string[];
+  absentPercent: number;
+}
+
+export interface DanceWeeklyRollup {
+  danceId: string;
+  danceName: string;
+  weeks: WeeklyDanceRow[];
+}
+
+/** Per dance, week by week: who was missing and how big a chunk of the cast
+ * that was — the "are we losing people each week" view. */
+export async function getWeeklyRollupByDance(): Promise<DanceWeeklyRollup[]> {
+  const practices = await getPastPracticesWithAttendance();
+
+  const byDance = new Map<
+    string,
+    { danceName: string; weeks: Map<string, WeeklyDanceRow> }
+  >();
+
+  for (const practice of practices) {
+    if (!practice.isMarked) continue;
+    if (!byDance.has(practice.danceId)) {
+      byDance.set(practice.danceId, {
+        danceName: practice.danceName,
+        weeks: new Map(),
+      });
+    }
+    const dance = byDance.get(practice.danceId)!;
+    const weekStart = startOfWeek(practice.startDateTime);
+    const key = weekStart.toISOString();
+
+    if (!dance.weeks.has(key)) {
+      dance.weeks.set(key, {
+        weekOf: weekStart,
+        practiceCount: 0,
+        castSize: practice.rows.length,
+        absentNames: [],
+        unexcusedNames: [],
+        absentPercent: 0,
+      });
+    }
+    const week = dance.weeks.get(key)!;
+    week.practiceCount += 1;
+    week.castSize = Math.max(week.castSize, practice.rows.length);
+
+    for (const row of practice.rows) {
+      if (row.kind === null || row.kind === "present") continue;
+      if (!week.absentNames.includes(row.name)) week.absentNames.push(row.name);
+      if (isUnexcusedKind(row.kind) && !week.unexcusedNames.includes(row.name)) {
+        week.unexcusedNames.push(row.name);
+      }
+    }
+  }
+
+  const result: DanceWeeklyRollup[] = [];
+  for (const [danceId, { danceName, weeks }] of byDance) {
+    const rows = Array.from(weeks.values())
+      .map((w) => ({
+        ...w,
+        absentPercent:
+          w.castSize === 0
+            ? 0
+            : Math.round((w.absentNames.length / w.castSize) * 100),
+      }))
+      .sort((a, b) => b.weekOf.getTime() - a.weekOf.getTime());
+    result.push({ danceId, danceName, weeks: rows });
+  }
+
+  return result.sort((a, b) => a.danceName.localeCompare(b.danceName));
+}
+
+/** Minimum marked practices on a given weekday before we'll draw any
+ * conclusion about someone's pattern there. */
+const MIN_HISTORY_FOR_PATTERN = 2;
+
+/** Per person, per weekday: what fraction of that weekday's practices they
+ * missed without an excuse. Feeds the optional historical weighting in slot
+ * ranking — only unexcused absences count, so someone who diligently logs
+ * real conflicts never gets penalised by it. */
+export async function getHistoricalAbsenceRates(
+  userIds: string[],
+): Promise<Map<string, Map<number, number>>> {
+  const practices = await getPastPracticesWithAttendance();
+  const relevant = new Set(userIds);
+
+  // userId -> dayOfWeek -> [unexcused, total]
+  const tally = new Map<string, Map<number, [number, number]>>();
+
+  for (const practice of practices) {
+    const day = practice.startDateTime.getDay();
+    for (const row of practice.rows) {
+      if (row.kind === null || !relevant.has(row.userId)) continue;
+      if (!tally.has(row.userId)) tally.set(row.userId, new Map());
+      const perDay = tally.get(row.userId)!;
+      const [unexcused, total] = perDay.get(day) ?? [0, 0];
+      perDay.set(day, [
+        unexcused + (isUnexcusedKind(row.kind) ? 1 : 0),
+        total + 1,
+      ]);
+    }
+  }
+
+  const rates = new Map<string, Map<number, number>>();
+  for (const [userId, perDay] of tally) {
+    const dayRates = new Map<number, number>();
+    for (const [day, [unexcused, total]] of perDay) {
+      if (total < MIN_HISTORY_FOR_PATTERN) continue;
+      dayRates.set(day, unexcused / total);
+    }
+    if (dayRates.size > 0) rates.set(userId, dayRates);
+  }
+  return rates;
 }
 
 export interface ChronicAbsenceFlag {

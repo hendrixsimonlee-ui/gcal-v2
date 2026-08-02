@@ -269,6 +269,11 @@ model AppSettings {
   chronicAbsenceThreshold Int @default(3)
   chronicAbsenceWindow    Int @default(5)
 
+  /// When on, slot ranking nudges away from times a dance's cast has
+  /// historically skipped. The AD can switch it off to get purely
+  /// rule-based suggestions with no inference from past data.
+  useHistoricalWeighting Boolean @default(true)
+
   updatedAt DateTime @updatedAt
 }
 

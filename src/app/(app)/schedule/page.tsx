@@ -1,5 +1,6 @@
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { googleCalendarAddUrl } from "@/lib/calendar-links";
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", {
   weekday: "short",
@@ -70,14 +71,37 @@ export default async function MySchedulePage() {
                   <span className="text-zinc-500 dark:text-zinc-400">
                     {practice.space?.name ?? "Space TBD"}
                   </span>
-                  <span
-                    className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                      practice.status === "CONFIRMED"
-                        ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300"
-                        : "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300"
-                    }`}
-                  >
-                    {practice.status === "CONFIRMED" ? "Confirmed" : "Proposed"}
+                  <span className="flex items-center gap-2">
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                        practice.status === "CONFIRMED"
+                          ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300"
+                          : "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300"
+                      }`}
+                    >
+                      {practice.status === "CONFIRMED"
+                        ? "Confirmed"
+                        : "Proposed"}
+                    </span>
+                    {practice.status === "CONFIRMED" && (
+                      <a
+                        href={googleCalendarAddUrl({
+                          title: `${dance.name} practice`,
+                          start: practice.startDateTime,
+                          end: practice.endDateTime,
+                          location:
+                            practice.space?.location ??
+                            practice.space?.name ??
+                            undefined,
+                          details: `${dance.name} rehearsal.`,
+                        })}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs font-medium text-sky-600 hover:underline dark:text-sky-400"
+                      >
+                        Add to Google Calendar
+                      </a>
+                    )}
                   </span>
                 </li>
               ))}

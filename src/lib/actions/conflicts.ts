@@ -12,18 +12,20 @@ import { getGoogleCalendarClientForUser } from "@/lib/google-calendar";
 // these conflicts" requirement.
 const RECURRING_WEEKS_AHEAD = 10;
 
-export async function addManualConflict(formData: FormData) {
+/** Adds a conflict (and its future weekly occurrences, if recurring).
+ * Called from the calendar's drag-to-create and its add panel. */
+export async function addConflict(input: {
+  startDateTime: string;
+  endDateTime: string;
+  categoryId: string | null;
+  note: string | null;
+  isRecurring: boolean;
+}) {
   const session = await auth();
   const userId = session!.user.id;
 
-  const startRaw = String(formData.get("startDateTime") ?? "");
-  const endRaw = String(formData.get("endDateTime") ?? "");
-  const categoryId = String(formData.get("categoryId") ?? "") || null;
-  const note = String(formData.get("note") ?? "").trim() || null;
-  const isRecurring = formData.get("isRecurring") === "on";
-
-  const start = new Date(startRaw);
-  const end = new Date(endRaw);
+  const start = new Date(input.startDateTime);
+  const end = new Date(input.endDateTime);
   if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
     throw new Error("Please provide a valid start and end time");
   }
@@ -31,24 +33,55 @@ export async function addManualConflict(formData: FormData) {
     throw new Error("Start time must be before end time");
   }
 
-  const occurrences = isRecurring ? RECURRING_WEEKS_AHEAD : 1;
-  const data = Array.from({ length: occurrences }, (_, i) => {
-    const occStart = addDays(start, i * 7);
-    const occEnd = addDays(end, i * 7);
-    return {
-      userId,
-      weekOf: startOfWeek(occStart),
-      startDateTime: occStart,
-      endDateTime: occEnd,
-      categoryId,
-      note,
-      isRecurring,
-      recurrenceRule: isRecurring ? "WEEKLY" : null,
-    };
+  const occurrences = input.isRecurring ? RECURRING_WEEKS_AHEAD : 1;
+  await prisma.conflict.createMany({
+    data: Array.from({ length: occurrences }, (_, i) => {
+      const occStart = addDays(start, i * 7);
+      const occEnd = addDays(end, i * 7);
+      return {
+        userId,
+        weekOf: startOfWeek(occStart),
+        startDateTime: occStart,
+        endDateTime: occEnd,
+        categoryId: input.categoryId,
+        note: input.note,
+        isRecurring: input.isRecurring,
+        recurrenceRule: input.isRecurring ? "WEEKLY" : null,
+      };
+    }),
   });
-
-  await prisma.conflict.createMany({ data });
   revalidatePath("/conflicts");
+}
+
+/** Drag/resize on the calendar. Moves only this occurrence — a recurring
+ * conflict's other weeks are separate rows and stay put. */
+export async function updateConflictTime(
+  conflictId: string,
+  startDateTime: string,
+  endDateTime: string,
+) {
+  const session = await auth();
+  const conflict = await prisma.conflict.findUniqueOrThrow({
+    where: { id: conflictId },
+  });
+  if (conflict.userId !== session!.user.id && !session!.user.isAdmin) {
+    throw new Error("Not authorized to edit this conflict");
+  }
+
+  const start = new Date(startDateTime);
+  const end = new Date(endDateTime);
+  if (start >= end) throw new Error("Start time must be before end time");
+
+  await prisma.conflict.update({
+    where: { id: conflictId },
+    data: {
+      startDateTime: start,
+      endDateTime: end,
+      weekOf: startOfWeek(start),
+    },
+  });
+  revalidatePath("/conflicts");
+  revalidatePath("/admin/conflicts");
 }
 
 export async function deleteConflict(conflictId: string) {

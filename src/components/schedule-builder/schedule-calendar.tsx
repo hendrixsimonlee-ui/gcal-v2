@@ -68,18 +68,23 @@ export function ScheduleCalendar({
     };
   });
 
+  // Rendered as background bands, not blocks: overlapping candidate slots as
+  // regular events stack into unreadable slivers. The ranked list beside the
+  // calendar is the interface for picking one; this is just the visual hint
+  // of where the good windows are.
   const candidateEvents: EventInput[] = candidates.map((c, i) => ({
     id: `candidate-${i}`,
-    title: `#${i + 1} candidate (score ${c.score})`,
+    title: `#${i + 1}`,
     start: c.startDateTime.toISOString(),
     end: c.endDateTime.toISOString(),
-    display: "block",
-    backgroundColor: "transparent",
-    borderColor: "#18181b",
-    textColor: "#18181b",
-    classNames: ["border-2", "border-dotted", "candidate-slot"],
+    display: "background",
+    backgroundColor: c.score === 0 ? "#bbf7d0" : "#fef08a",
     editable: false,
   }));
+
+  // Show only the hours the space is actually bookable, with a little padding
+  // — a full 24-hour grid squeezes the useful evening hours into a sliver.
+  const { slotMinTime, slotMaxTime } = visibleTimeRange(businessHours);
 
   return (
     <FullCalendar
@@ -87,6 +92,10 @@ export function ScheduleCalendar({
       initialView="timeGridWeek"
       headerToolbar={{ left: "prev,next today", center: "title", right: "timeGridWeek,dayGridMonth" }}
       height="auto"
+      slotMinTime={slotMinTime}
+      slotMaxTime={slotMaxTime}
+      allDaySlot={false}
+      nowIndicator
       selectable
       selectMirror
       editable
@@ -107,6 +116,29 @@ export function ScheduleCalendar({
       datesSet={(arg) => onDatesSet(arg.start, arg.end)}
     />
   );
+}
+
+/** Narrows the visible grid to the space's opening hours (padded by an hour
+ * each side), falling back to a sane evening-inclusive default. */
+function visibleTimeRange(
+  businessHours: { daysOfWeek: number[]; startTime: string; endTime: string }[],
+) {
+  if (businessHours.length === 0) {
+    return { slotMinTime: "08:00:00", slotMaxTime: "23:00:00" };
+  }
+  const toMinutes = (t: string) => {
+    const [h, m] = t.split(":").map(Number);
+    return h * 60 + m;
+  };
+  const earliest = Math.min(...businessHours.map((b) => toMinutes(b.startTime)));
+  const latest = Math.max(...businessHours.map((b) => toMinutes(b.endTime)));
+  const pad = (mins: number) => {
+    const clamped = Math.max(0, Math.min(24 * 60, mins));
+    const h = Math.floor(clamped / 60);
+    const m = clamped % 60;
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:00`;
+  };
+  return { slotMinTime: pad(earliest - 60), slotMaxTime: pad(latest + 60) };
 }
 
 function renderEventContent(arg: EventContentArg) {

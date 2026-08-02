@@ -41,19 +41,34 @@ export interface DateOverride {
   isAvailable: boolean;
 }
 
+/** One bookable room and everything needed to test slots against it. Passing
+ * several lets the AD search "any space" at once, which is the common case —
+ * they usually just want a room, not a specific room. */
+export interface SpaceOption {
+  spaceId: string;
+  spaceName: string;
+  recurringWindows: RecurringWindow[];
+  dateOverrides: DateOverride[];
+  /** Confirmed practices already booked into THIS space. */
+  existingPractices: ExistingPractice[];
+}
+
 export interface SchedulingInput {
   castMembers: CastMember[];
   conflicts: ConflictInterval[];
   unavailabilities: UnavailabilityInterval[];
-  existingPracticesAtSpace: ExistingPractice[];
+  spaces: SpaceOption[];
   existingPracticesForCast: ExistingPractice[];
-  recurringWindows: RecurringWindow[];
-  dateOverrides: DateOverride[];
   /** Choreographer weekly excuses, keyed by that week's Monday (startOfWeek)
    * ISO string — an excuse only lifts the mandatory-attendance requirement
    * for the week it names, not every week in the search range. */
   choreographerExcusedByWeek: Map<string, Set<string>>;
   ignoredUserIds: Set<string>;
+  /** Optional nudge away from times this cast has historically skipped:
+   * userId -> dayOfWeek -> unexcused-absence rate (0–1). Omit (or pass an
+   * empty map) to rank on current conflicts alone — the AD can switch this
+   * off in Settings when they don't want past data influencing suggestions. */
+  historicalAbsenceRates?: Map<string, Map<number, number>>;
   danceId: string;
   durationMinutes: number;
   searchWeeks: number;
@@ -64,12 +79,18 @@ export interface CastConflictNote {
   userId: string;
   name: string;
   points: number;
-  reason: "unexcused-conflict" | "excused-conflict" | "other-practice";
+  reason:
+    | "unexcused-conflict"
+    | "excused-conflict"
+    | "other-practice"
+    | "historically-absent";
 }
 
 export interface CandidateSlot {
   startDateTime: Date;
   endDateTime: Date;
+  spaceId: string;
+  spaceName: string;
   score: number;
   conflictedCastMembers: CastConflictNote[];
 }
@@ -77,7 +98,17 @@ export interface CandidateSlot {
 const UNEXCUSED_CONFLICT_POINTS = 2;
 const EXCUSED_CONFLICT_POINTS = 1;
 const OTHER_PRACTICE_POINTS = 2;
+/** Deliberately below a real logged conflict: history is a hint, not
+ * evidence, so it breaks ties without overriding what people actually told
+ * us about their availability. */
+const MAX_HISTORICAL_POINTS = 1;
+/** Below this historical absence rate we don't penalise at all — one bad
+ * night shouldn't brand a whole weekday as unworkable. */
+const HISTORICAL_RATE_FLOOR = 0.5;
 const MAX_CANDIDATES = 8;
+/** Keeps the suggestion list varied across dates rather than offering the
+ * same afternoon sliced into 30-minute increments. */
+const MAX_CANDIDATES_PER_DAY = 2;
 
 function overlaps(aStart: Date, aEnd: Date, bStart: Date, bEnd: Date): boolean {
   return aStart < bEnd && bStart < aEnd;
@@ -92,30 +123,25 @@ function dateKey(date: Date): string {
   return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
 }
 
-/** Generates and ranks candidate practice slots for a dance at a given space.
- * Hard-filters on space availability, room double-booking, and mandatory
- * choreographer availability; soft-scores the rest of the cast (lower is
- * better) so callers can rank "good enough" options against each other. */
+/** Generates and ranks candidate practice slots for a dance across one or
+ * more spaces. Hard-filters on space availability, room double-booking, and
+ * mandatory choreographer availability; soft-scores the rest of the cast
+ * (lower is better) so callers can rank "good enough" options. */
 export function generateCandidateSlots(input: SchedulingInput): CandidateSlot[] {
   const {
     castMembers,
     conflicts,
     unavailabilities,
-    existingPracticesAtSpace,
+    spaces,
     existingPracticesForCast,
-    recurringWindows,
-    dateOverrides,
     choreographerExcusedByWeek,
     ignoredUserIds,
+    historicalAbsenceRates,
     danceId,
     durationMinutes,
     searchWeeks,
     slotIncrementMinutes,
   } = input;
-
-  const overrideByDateKey = new Map(
-    dateOverrides.map((o) => [dateKey(o.date), o.isAvailable]),
-  );
 
   const choreographers = castMembers.filter((m) => m.role === "CHOREOGRAPHER");
   const searchStart = new Date();
@@ -123,39 +149,49 @@ export function generateCandidateSlots(input: SchedulingInput): CandidateSlot[] 
 
   const candidates: (CandidateSlot | null)[] = [];
 
-  for (const window of recurringWindows) {
-    const windowStartMin = timeToMinutes(window.startTime);
-    const windowEndMin = timeToMinutes(window.endTime);
-    if (windowEndMin - windowStartMin < durationMinutes) continue;
+  for (const space of spaces) {
+    const overrideByDateKey = new Map(
+      space.dateOverrides.map((o) => [dateKey(o.date), o.isAvailable]),
+    );
 
-    let cursorDate = startOfWeek(searchStart);
-    while (cursorDate < searchEnd) {
-      const dayOffset = (window.dayOfWeek - cursorDate.getDay() + 7) % 7;
-      const candidateDate = addDays(cursorDate, dayOffset);
-      if (candidateDate >= searchStart && candidateDate < searchEnd) {
-        const override = overrideByDateKey.get(dateKey(candidateDate));
-        if (override !== false) {
-          for (
-            let startMin = windowStartMin;
-            startMin + durationMinutes <= windowEndMin;
-            startMin += slotIncrementMinutes
-          ) {
-            const slotStart = new Date(candidateDate);
-            slotStart.setHours(0, startMin, 0, 0);
-            const slotEnd = new Date(slotStart.getTime() + durationMinutes * 60000);
-            if (slotStart < searchStart) continue;
+    for (const window of space.recurringWindows) {
+      const windowStartMin = timeToMinutes(window.startTime);
+      const windowEndMin = timeToMinutes(window.endTime);
+      if (windowEndMin - windowStartMin < durationMinutes) continue;
 
-            candidates.push(scoreCandidate(slotStart, slotEnd));
+      let cursorDate = startOfWeek(searchStart);
+      while (cursorDate < searchEnd) {
+        const dayOffset = (window.dayOfWeek - cursorDate.getDay() + 7) % 7;
+        const candidateDate = addDays(cursorDate, dayOffset);
+        if (candidateDate >= searchStart && candidateDate < searchEnd) {
+          const override = overrideByDateKey.get(dateKey(candidateDate));
+          if (override !== false) {
+            for (
+              let startMin = windowStartMin;
+              startMin + durationMinutes <= windowEndMin;
+              startMin += slotIncrementMinutes
+            ) {
+              const slotStart = new Date(candidateDate);
+              slotStart.setHours(0, startMin, 0, 0);
+              const slotEnd = new Date(slotStart.getTime() + durationMinutes * 60000);
+              if (slotStart < searchStart) continue;
+
+              candidates.push(scoreCandidate(slotStart, slotEnd, space));
+            }
           }
         }
+        cursorDate = addWeeks(cursorDate, 1);
       }
-      cursorDate = addWeeks(cursorDate, 1);
     }
   }
 
-  function scoreCandidate(start: Date, end: Date): CandidateSlot | null {
-    // Hard filter: don't double-book the space.
-    for (const p of existingPracticesAtSpace) {
+  function scoreCandidate(
+    start: Date,
+    end: Date,
+    space: SpaceOption,
+  ): CandidateSlot | null {
+    // Hard filter: don't double-book this space.
+    for (const p of space.existingPractices) {
       if (overlaps(start, end, p.startDateTime, p.endDateTime)) return null;
     }
 
@@ -232,24 +268,73 @@ export function generateCandidateSlots(input: SchedulingInput): CandidateSlot[] 
           reason: "other-practice",
         });
       }
+
+      // Historical nudge: this person tends not to turn up on this weekday.
+      const rate = historicalAbsenceRates
+        ?.get(member.userId)
+        ?.get(start.getDay());
+      if (rate !== undefined && rate >= HISTORICAL_RATE_FLOOR) {
+        const points = Math.round(rate * MAX_HISTORICAL_POINTS * 100) / 100;
+        score += points;
+        conflictedCastMembers.push({
+          userId: member.userId,
+          name: member.name,
+          points,
+          reason: "historically-absent",
+        });
+      }
     }
 
-    return { startDateTime: start, endDateTime: end, score, conflictedCastMembers };
+    return {
+      startDateTime: start,
+      endDateTime: end,
+      spaceId: space.spaceId,
+      spaceName: space.spaceName,
+      score,
+      conflictedCastMembers,
+    };
   }
 
   const scored = candidates.filter((c): c is CandidateSlot => c !== null);
   scored.sort((a, b) => a.score - b.score || a.startDateTime.getTime() - b.startDateTime.getTime());
 
-  // De-dupe identical start times (can happen if multiple windows overlap).
-  const seen = new Set<number>();
-  const deduped: CandidateSlot[] = [];
+  // Spread suggestions across days. Without this, a wide-open afternoon
+  // produces eight near-identical slots 30 minutes apart on one date, which
+  // gives the AD one real option dressed up as eight.
+  //
+  // De-duping by start time also collapses the same time across rooms; since
+  // the list is score-sorted, the room that survives is the best-scoring one
+  // for that moment, which is what "any space" should surface.
+  const seenStarts = new Set<number>();
+  const perDayCount = new Map<string, number>();
+  const picked: CandidateSlot[] = [];
+  const overflow: CandidateSlot[] = [];
+
   for (const slot of scored) {
-    const key = slot.startDateTime.getTime();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    deduped.push(slot);
-    if (deduped.length >= MAX_CANDIDATES) break;
+    const startKey = slot.startDateTime.getTime();
+    if (seenStarts.has(startKey)) continue;
+    seenStarts.add(startKey);
+
+    const dayKey = dateKey(slot.startDateTime);
+    const used = perDayCount.get(dayKey) ?? 0;
+    if (used >= MAX_CANDIDATES_PER_DAY) {
+      overflow.push(slot);
+      continue;
+    }
+    perDayCount.set(dayKey, used + 1);
+    picked.push(slot);
+    if (picked.length >= MAX_CANDIDATES) break;
   }
 
-  return deduped;
+  // If spreading left us short (e.g. the space is only open one day a week),
+  // backfill from the slots the per-day cap held back.
+  for (const slot of overflow) {
+    if (picked.length >= MAX_CANDIDATES) break;
+    picked.push(slot);
+  }
+
+  picked.sort(
+    (a, b) => a.score - b.score || a.startDateTime.getTime() - b.startDateTime.getTime(),
+  );
+  return picked;
 }

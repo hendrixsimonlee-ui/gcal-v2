@@ -4,6 +4,10 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/authz";
 import { startOfWeek } from "@/lib/dates";
+import { ANY_SPACE } from "@/lib/constants";
+import { notifyPracticeConfirmed } from "@/lib/notify";
+import { getHistoricalAbsenceRates } from "@/lib/attendance-data";
+import { getAttendanceSettings } from "@/lib/actions/attendance";
 import {
   generateCandidateSlots,
   type CandidateSlot,
@@ -21,14 +25,15 @@ export async function getCandidateSlots(
 ): Promise<CandidateSlot[]> {
   await requireAdmin();
 
-  const [memberships, space, allConfirmedPractices] = await Promise.all([
+  const [memberships, spaceRows, allConfirmedPractices] = await Promise.all([
     prisma.danceMembership.findMany({
       where: { danceId },
       include: { user: true },
     }),
-    prisma.space.findUniqueOrThrow({
-      where: { id: spaceId },
+    prisma.space.findMany({
+      where: spaceId === ANY_SPACE ? {} : { id: spaceId },
       include: { availabilities: true },
+      orderBy: { name: "asc" },
     }),
     prisma.practice.findMany({
       where: { status: "CONFIRMED" },
@@ -45,6 +50,11 @@ export async function getCandidateSlots(
   }));
   const castUserIds = castMembers.map((m) => m.userId);
 
+  const settings = await getAttendanceSettings();
+  const historicalAbsenceRates = settings.useHistoricalWeighting
+    ? await getHistoricalAbsenceRates(castUserIds)
+    : undefined;
+
   const [conflicts, unavailabilities, weeklyExcuses] = await Promise.all([
     prisma.conflict.findMany({
       where: { userId: { in: castUserIds } },
@@ -55,16 +65,6 @@ export async function getCandidateSlots(
     }),
     prisma.choreographerWeeklyExcuse.findMany({ where: { danceId } }),
   ]);
-
-  const existingPracticesAtSpace = allConfirmedPractices
-    .filter((p) => p.spaceId === spaceId)
-    .map((p) => ({
-      id: p.id,
-      danceId: p.danceId,
-      startDateTime: p.startDateTime,
-      endDateTime: p.endDateTime,
-      castUserIds: [] as string[],
-    }));
 
   const existingPracticesForCast = allConfirmedPractices.map((p) => ({
     id: p.id,
@@ -85,17 +85,29 @@ export async function getCandidateSlots(
     choreographerExcusedByWeek.get(key)!.add(excuse.userId);
   }
 
-  const recurringWindows = space.availabilities
-    .filter((a) => a.dayOfWeek !== null && a.startTime && a.endTime)
-    .map((a) => ({
-      dayOfWeek: a.dayOfWeek!,
-      startTime: a.startTime!,
-      endTime: a.endTime!,
-    }));
-
-  const dateOverrides = space.availabilities
-    .filter((a) => a.date !== null)
-    .map((a) => ({ date: a.date!, isAvailable: a.isAvailable }));
+  const spaces = spaceRows.map((space) => ({
+    spaceId: space.id,
+    spaceName: space.name,
+    recurringWindows: space.availabilities
+      .filter((a) => a.dayOfWeek !== null && a.startTime && a.endTime)
+      .map((a) => ({
+        dayOfWeek: a.dayOfWeek!,
+        startTime: a.startTime!,
+        endTime: a.endTime!,
+      })),
+    dateOverrides: space.availabilities
+      .filter((a) => a.date !== null)
+      .map((a) => ({ date: a.date!, isAvailable: a.isAvailable })),
+    existingPractices: allConfirmedPractices
+      .filter((p) => p.spaceId === space.id)
+      .map((p) => ({
+        id: p.id,
+        danceId: p.danceId,
+        startDateTime: p.startDateTime,
+        endDateTime: p.endDateTime,
+        castUserIds: [] as string[],
+      })),
+  }));
 
   return generateCandidateSlots({
     castMembers,
@@ -107,12 +119,11 @@ export async function getCandidateSlots(
       isExcused: c.category?.isExcused ?? false,
     })),
     unavailabilities,
-    existingPracticesAtSpace,
+    spaces,
     existingPracticesForCast,
-    recurringWindows,
-    dateOverrides,
     choreographerExcusedByWeek,
     ignoredUserIds: new Set(ignoredUserIds),
+    historicalAbsenceRates,
     danceId,
     durationMinutes,
     searchWeeks: SEARCH_WEEKS,
@@ -191,16 +202,44 @@ export async function createDraftPractice(
   endDateTime: string,
 ) {
   await requireAdmin();
+  const start = new Date(startDateTime);
+  const end = new Date(endDateTime);
+
+  // Dragging a slot out on the grid with "Any space" selected still has to
+  // land in a real room, so pick the first one that's actually free then.
+  const resolvedSpaceId =
+    spaceId === ANY_SPACE ? await firstFreeSpace(start, end) : spaceId;
+
+  if (!resolvedSpaceId) {
+    throw new Error("Every space is already booked for that time");
+  }
+
   await prisma.practice.create({
     data: {
       danceId,
-      spaceId,
-      startDateTime: new Date(startDateTime),
-      endDateTime: new Date(endDateTime),
+      spaceId: resolvedSpaceId,
+      startDateTime: start,
+      endDateTime: end,
       status: "PROPOSED",
     },
   });
   revalidatePath("/admin/schedule-builder");
+}
+
+async function firstFreeSpace(start: Date, end: Date): Promise<string | null> {
+  const [spaces, clashes] = await Promise.all([
+    prisma.space.findMany({ orderBy: { name: "asc" }, select: { id: true } }),
+    prisma.practice.findMany({
+      where: {
+        status: "CONFIRMED",
+        startDateTime: { lt: end },
+        endDateTime: { gt: start },
+      },
+      select: { spaceId: true },
+    }),
+  ]);
+  const taken = new Set(clashes.map((c) => c.spaceId));
+  return spaces.find((s) => !taken.has(s.id))?.id ?? null;
 }
 
 export async function updatePracticeTime(
@@ -222,12 +261,25 @@ export async function updatePracticeTime(
 
 export async function confirmPractice(practiceId: string) {
   await requireAdmin();
+  const existing = await prisma.practice.findUniqueOrThrow({
+    where: { id: practiceId },
+    select: { status: true },
+  });
+
   await prisma.practice.update({
     where: { id: practiceId },
     data: { status: "CONFIRMED" },
   });
+
+  // Only announce the transition, so re-confirming an already-confirmed
+  // practice doesn't spam the cast a second time.
+  if (existing.status !== "CONFIRMED") {
+    await notifyPracticeConfirmed(practiceId);
+  }
+
   revalidatePath("/admin/schedule-builder");
   revalidatePath("/schedule");
+  revalidatePath("/notifications");
 }
 
 export async function deletePractice(practiceId: string) {

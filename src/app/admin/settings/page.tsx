@@ -50,6 +50,31 @@ export default async function AdminSettingsPage() {
           Only unexcused absences count toward the flag — an excused conflict
           or a logged out-of-town window never counts against someone.
         </p>
+
+        <hr className="border-zinc-200 dark:border-zinc-800" />
+
+        <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+          Use past attendance when suggesting slots
+        </h2>
+        <label className="flex items-start gap-2 text-sm text-zinc-700 dark:text-zinc-300">
+          <input
+            type="checkbox"
+            name="useHistoricalWeighting"
+            defaultChecked={settings.useHistoricalWeighting}
+            className="mt-1"
+          />
+          <span>
+            Nudge the Schedule Builder away from weekdays a dance&rsquo;s cast
+            has historically skipped without an excuse.
+          </span>
+        </label>
+        <p className="text-xs text-zinc-500 dark:text-zinc-400">
+          This only ever breaks ties — it is weighted below a real logged
+          conflict and needs at least two past practices on a given weekday
+          before it infers anything. Switch it off for purely rule-based
+          suggestions with no inference from past data.
+        </p>
+
         <div>
           <button
             type="submit"

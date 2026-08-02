@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
+import { prisma } from "@/lib/prisma";
 import { Header } from "@/components/header";
 import { SidebarNav, type NavItem } from "@/components/sidebar-nav";
 
@@ -25,11 +26,16 @@ export default async function AdminLayout({
     redirect("/schedule");
   }
 
+  const unreadCount = await prisma.notification.count({
+    where: { userId: session.user.id, read: false },
+  });
+
   return (
     <div className="flex h-full flex-col">
       <Header
         userName={session.user.name}
         userImage={session.user.image}
+        unreadCount={unreadCount}
       />
       <div className="flex flex-1 flex-col overflow-hidden sm:flex-row">
         <SidebarNav

@@ -18,14 +18,21 @@ export default async function AppLayout({
     { href: "/my-attendance", label: "My Attendance" },
   ];
 
+  let unreadCount = 0;
   if (session?.user?.id) {
-    const choreographs = await prisma.danceMembership.findFirst({
-      where: { userId: session.user.id, role: "CHOREOGRAPHER" },
-      select: { id: true },
-    });
+    const [choreographs, unread] = await Promise.all([
+      prisma.danceMembership.findFirst({
+        where: { userId: session.user.id, role: "CHOREOGRAPHER" },
+        select: { id: true },
+      }),
+      prisma.notification.count({
+        where: { userId: session.user.id, read: false },
+      }),
+    ]);
     if (choreographs) {
       nav.push({ href: "/attendance", label: "Attendance Check-off" });
     }
+    unreadCount = unread;
   }
 
   return (
@@ -33,6 +40,7 @@ export default async function AppLayout({
       <Header
         userName={session?.user?.name}
         userImage={session?.user?.image}
+        unreadCount={unreadCount}
       />
       <div className="flex flex-1 flex-col overflow-hidden sm:flex-row">
         <SidebarNav

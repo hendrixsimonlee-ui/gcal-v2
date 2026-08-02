@@ -2,9 +2,9 @@ import Link from "next/link";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { ConflictCategorySelect } from "@/components/conflict-category-select";
+import { ConflictsCalendar } from "@/components/conflicts-calendar";
 import { addDays, formatWeekLabel, parseWeekParam, toDateParam } from "@/lib/dates";
 import {
-  addManualConflict,
   addUnavailability,
   deleteConflict,
   deleteUnavailability,
@@ -35,18 +35,30 @@ export default async function MyConflictsPage({
   const prevWeek = toDateParam(addDays(weekStart, -7));
   const nextWeek = toDateParam(addDays(weekStart, 7));
 
-  const [conflicts, categories, unavailabilities] = await Promise.all([
-    prisma.conflict.findMany({
-      where: { userId, weekOf: weekStart },
-      orderBy: { startDateTime: "asc" },
-      include: { category: true },
-    }),
-    prisma.conflictCategory.findMany({ orderBy: { name: "asc" } }),
-    prisma.unavailability.findMany({
-      where: { userId, endDate: { gte: new Date() } },
-      orderBy: { startDate: "asc" },
-    }),
-  ]);
+  const [weekConflicts, calendarConflicts, categories, unavailabilities] =
+    await Promise.all([
+      prisma.conflict.findMany({
+        where: { userId, weekOf: weekStart },
+        orderBy: { startDateTime: "asc" },
+        include: { category: true },
+      }),
+      // The calendar navigates independently of the week selector below, so
+      // give it a wide window rather than just the selected week.
+      prisma.conflict.findMany({
+        where: {
+          userId,
+          startDateTime: { gte: addDays(new Date(), -60) },
+          endDateTime: { lte: addDays(new Date(), 120) },
+        },
+        orderBy: { startDateTime: "asc" },
+        include: { category: true },
+      }),
+      prisma.conflictCategory.findMany({ orderBy: { name: "asc" } }),
+      prisma.unavailability.findMany({
+        where: { userId, endDate: { gte: new Date() } },
+        orderBy: { startDate: "asc" },
+      }),
+    ]);
 
   return (
     <div className="flex flex-col gap-8">
@@ -55,13 +67,33 @@ export default async function MyConflictsPage({
           My Conflicts
         </h1>
         <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-          Log every time you&rsquo;re unavailable this week so the AD can
-          schedule around it.
+          Log every time you&rsquo;re unavailable so the AD can schedule around
+          it.
         </p>
       </div>
 
       <section className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
-        <div className="mb-4 flex items-center justify-between">
+        <ConflictsCalendar
+          categories={categories.map((c) => ({
+            id: c.id,
+            name: c.name,
+            isExcused: c.isExcused,
+          }))}
+          conflicts={calendarConflicts.map((c) => ({
+            id: c.id,
+            startDateTime: c.startDateTime.toISOString(),
+            endDateTime: c.endDateTime.toISOString(),
+            note: c.note,
+            categoryName: c.category?.name ?? null,
+            isExcused: c.category?.isExcused ?? false,
+            isRecurring: c.isRecurring,
+            fromGoogle: !!c.sourceGoogleEventId,
+          }))}
+        />
+      </section>
+
+      <section className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-3">
             <Link
               href={`/conflicts?week=${prevWeek}`}
@@ -79,7 +111,9 @@ export default async function MyConflictsPage({
               Next →
             </Link>
           </div>
-          <form action={importGoogleCalendarWeek.bind(null, weekStart.toISOString())}>
+          <form
+            action={importGoogleCalendarWeek.bind(null, weekStart.toISOString())}
+          >
             <button
               type="submit"
               className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
@@ -89,13 +123,13 @@ export default async function MyConflictsPage({
           </form>
         </div>
 
-        <ul className="mb-4 flex flex-col gap-1">
-          {conflicts.length === 0 && (
+        <ul className="flex flex-col gap-1">
+          {weekConflicts.length === 0 && (
             <li className="text-sm text-zinc-500">
               No conflicts logged for this week yet.
             </li>
           )}
-          {conflicts.map((conflict) => (
+          {weekConflicts.map((conflict) => (
             <li
               key={conflict.id}
               className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-zinc-50 px-3 py-2 text-sm dark:bg-zinc-800"
@@ -116,9 +150,7 @@ export default async function MyConflictsPage({
                   )}
                 </span>
                 {conflict.note && (
-                  <span className="text-xs text-zinc-500">
-                    {conflict.note}
-                  </span>
+                  <span className="text-xs text-zinc-500">{conflict.note}</span>
                 )}
               </div>
               <div className="flex items-center gap-2">
@@ -140,66 +172,6 @@ export default async function MyConflictsPage({
             </li>
           ))}
         </ul>
-
-        <form
-          action={addManualConflict}
-          className="flex flex-wrap items-end gap-3 border-t border-zinc-100 pt-4 dark:border-zinc-800"
-        >
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-zinc-500">Start</label>
-            <input
-              type="datetime-local"
-              name="startDateTime"
-              required
-              defaultValue={`${toDateParam(weekStart)}T18:00`}
-              className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-800"
-            />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-zinc-500">End</label>
-            <input
-              type="datetime-local"
-              name="endDateTime"
-              required
-              defaultValue={`${toDateParam(weekStart)}T20:00`}
-              className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-800"
-            />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-zinc-500">
-              Category
-            </label>
-            <select
-              name="categoryId"
-              className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-800"
-            >
-              <option value="">Uncategorized</option>
-              {categories.map((category) => (
-                <option key={category.id} value={category.id}>
-                  {category.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="flex flex-1 flex-col gap-1">
-            <label className="text-xs font-medium text-zinc-500">Note</label>
-            <input
-              name="note"
-              placeholder="What's the conflict?"
-              className="w-full rounded-md border border-zinc-300 px-3 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-800"
-            />
-          </div>
-          <label className="flex items-center gap-2 pb-2 text-sm text-zinc-700 dark:text-zinc-300">
-            <input type="checkbox" name="isRecurring" />
-            Repeats weekly
-          </label>
-          <button
-            type="submit"
-            className="rounded-md bg-zinc-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-zinc-700 dark:bg-white dark:text-zinc-900"
-          >
-            Add conflict
-          </button>
-        </form>
       </section>
 
       <section className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
@@ -227,9 +199,7 @@ export default async function MyConflictsPage({
                 {dateFormatter.format(u.startDate)} –{" "}
                 {dateFormatter.format(u.endDate)}
                 {u.reason && (
-                  <span className="ml-2 text-xs text-zinc-500">
-                    {u.reason}
-                  </span>
+                  <span className="ml-2 text-xs text-zinc-500">{u.reason}</span>
                 )}
               </span>
               <form action={deleteUnavailability.bind(null, u.id)}>
@@ -267,9 +237,7 @@ export default async function MyConflictsPage({
             />
           </div>
           <div className="flex flex-1 flex-col gap-1">
-            <label className="text-xs font-medium text-zinc-500">
-              Reason
-            </label>
+            <label className="text-xs font-medium text-zinc-500">Reason</label>
             <input
               name="reason"
               placeholder="e.g. Out of town"
