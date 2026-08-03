@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { markAllNotificationsRead } from "@/lib/actions/notifications";
@@ -52,35 +53,57 @@ export default async function NotificationsPage() {
         </p>
       ) : (
         <ul className="flex flex-col gap-2">
-          {notifications.map((n) => (
-            <li
-              key={n.id}
-              className={`flex items-start justify-between gap-3 rounded-lg border px-3 py-2 text-sm ${
-                n.read
-                  ? "border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900"
-                  : "border-zinc-300 bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800"
-              }`}
-            >
-              <span
-                className={
-                  n.read
-                    ? "text-zinc-600 dark:text-zinc-400"
-                    : "font-medium text-zinc-900 dark:text-zinc-50"
-                }
-              >
-                {!n.read && (
-                  <span
-                    aria-label="Unread"
-                    className="mr-2 inline-block h-2 w-2 rounded-full bg-sky-500 align-middle"
-                  />
+          {notifications.map((n) => {
+            const body = (
+              <>
+                <span
+                  className={
+                    n.read
+                      ? "text-zinc-600 dark:text-zinc-400"
+                      : "font-medium text-zinc-900 dark:text-zinc-50"
+                  }
+                >
+                  {!n.read && (
+                    <span
+                      aria-label="Unread"
+                      className="mr-2 inline-block h-2 w-2 rounded-full bg-sky-500 align-middle"
+                    />
+                  )}
+                  {n.message}
+                </span>
+                <span className="ml-auto flex shrink-0 items-center gap-2 text-xs text-zinc-400">
+                  {stampFormatter.format(n.createdAt)}
+                  {n.href && (
+                    <span className="text-zinc-300 dark:text-zinc-600">→</span>
+                  )}
+                </span>
+              </>
+            );
+
+            const className = `flex items-start gap-3 rounded-lg border px-3 py-2 text-sm ${
+              n.read
+                ? "border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900"
+                : "border-zinc-300 bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-800"
+            }`;
+
+            // "Confirm attendance for Hip Hop Fusion" is useless if it
+            // doesn't take you there, so anything carrying a destination is
+            // a link.
+            return (
+              <li key={n.id}>
+                {n.href ? (
+                  <Link
+                    href={n.href}
+                    className={`${className} transition-colors hover:bg-zinc-100 dark:hover:bg-zinc-800`}
+                  >
+                    {body}
+                  </Link>
+                ) : (
+                  <div className={className}>{body}</div>
                 )}
-                {n.message}
-              </span>
-              <span className="shrink-0 text-xs text-zinc-400">
-                {stampFormatter.format(n.createdAt)}
-              </span>
-            </li>
-          ))}
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>

@@ -5,7 +5,16 @@ import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/authz";
 import { startOfWeek } from "@/lib/dates";
 import { ANY_SPACE } from "@/lib/constants";
-import { notifyPracticeConfirmed } from "@/lib/notify";
+import {
+  notifyPracticeChanged,
+  notifyPracticeConfirmed,
+  notifySchedulePublished,
+} from "@/lib/notify";
+import {
+  removePracticeFromTeamCalendar,
+  resyncDanceCalendar,
+  syncPracticeToTeamCalendar,
+} from "@/lib/team-calendar";
 import { getHistoricalAbsenceRates } from "@/lib/attendance-data";
 import { getAttendanceSettings } from "@/lib/actions/attendance";
 import {
@@ -25,7 +34,7 @@ export async function getCandidateSlots(
 ): Promise<CandidateSlot[]> {
   await requireAdmin();
 
-  const [memberships, spaceRows, allConfirmedPractices] = await Promise.all([
+  const [memberships, spaceRows, allPractices] = await Promise.all([
     prisma.danceMembership.findMany({
       where: { danceId },
       include: { user: true },
@@ -35,8 +44,14 @@ export async function getCandidateSlots(
       include: { availabilities: true },
       orderBy: { name: "asc" },
     }),
+    // Both PROPOSED and CONFIRMED: the AD drafts a whole term and confirms
+    // it in one go, so a draft has to hold its room and count against its
+    // cast in the meantime, or building the schedule would silently
+    // double-book.
     prisma.practice.findMany({
-      where: { status: "CONFIRMED" },
+      // Archived pieces are out of the scheduling picture entirely — their
+      // practices shouldn't hold rooms or count as clashes for the cast.
+      where: { dance: { archivedAt: null } },
       include: {
         dance: { include: { memberships: { select: { userId: true } } } },
       },
@@ -56,17 +71,14 @@ export async function getCandidateSlots(
     : undefined;
 
   const [conflicts, unavailabilities, weeklyExcuses] = await Promise.all([
-    prisma.conflict.findMany({
-      where: { userId: { in: castUserIds } },
-      include: { category: true },
-    }),
+    prisma.conflict.findMany({ where: { userId: { in: castUserIds } } }),
     prisma.unavailability.findMany({
       where: { userId: { in: castUserIds } },
     }),
     prisma.choreographerWeeklyExcuse.findMany({ where: { danceId } }),
   ]);
 
-  const existingPracticesForCast = allConfirmedPractices.map((p) => ({
+  const existingPracticesForCast = allPractices.map((p) => ({
     id: p.id,
     danceId: p.danceId,
     startDateTime: p.startDateTime,
@@ -97,8 +109,13 @@ export async function getCandidateSlots(
       })),
     dateOverrides: space.availabilities
       .filter((a) => a.date !== null)
-      .map((a) => ({ date: a.date!, isAvailable: a.isAvailable })),
-    existingPractices: allConfirmedPractices
+      .map((a) => ({
+        date: a.date!,
+        isAvailable: a.isAvailable,
+        startTime: a.startTime,
+        endTime: a.endTime,
+      })),
+    existingPractices: allPractices
       .filter((p) => p.spaceId === space.id)
       .map((p) => ({
         id: p.id,
@@ -116,7 +133,9 @@ export async function getCandidateSlots(
       userId: c.userId,
       startDateTime: c.startDateTime,
       endDateTime: c.endDateTime,
-      isExcused: c.category?.isExcused ?? false,
+      // An unreviewed conflict is weighted as unexcused: it's a real
+      // conflict either way, and the heavier cost nudges the AD to review it.
+      isExcused: c.status === "EXCUSED",
     })),
     unavailabilities,
     spaces,
@@ -140,8 +159,8 @@ export interface SidebarCastMember {
     id: string;
     startDateTime: Date;
     endDateTime: Date;
-    categoryName: string | null;
-    isExcused: boolean;
+    title: string | null;
+    status: "NOT_REVIEWED" | "EXCUSED" | "UNEXCUSED";
   }[];
 }
 
@@ -171,7 +190,6 @@ export async function getSchedulingSidebarData(
         startDateTime: { lt: rangeEnd },
         endDateTime: { gt: rangeStart },
       },
-      include: { category: true },
     }),
     prisma.choreographerWeeklyExcuse.findMany({ where: { danceId, weekOf } }),
   ]);
@@ -189,8 +207,68 @@ export async function getSchedulingSidebarData(
         id: c.id,
         startDateTime: c.startDateTime,
         endDateTime: c.endDateTime,
-        categoryName: c.category?.name ?? null,
-        isExcused: c.category?.isExcused ?? false,
+        title: c.title,
+        status: c.status,
+      })),
+  }));
+}
+
+export interface WeekTrackerRow {
+  danceId: string;
+  danceName: string;
+  defaultDurationMinutes: number;
+  weekOff: boolean;
+  practices: {
+    id: string;
+    startDateTime: Date;
+    endDateTime: Date;
+    spaceName: string | null;
+    status: "PROPOSED" | "CONFIRMED";
+  }[];
+}
+
+/** Every active dance's state for one week: booked, still to do, or
+ * deliberately off. This is the AD's checklist — without it, "have I done
+ * everything?" means scanning the whole calendar grid dance by dance. */
+export async function getWeekTracker(
+  weekOfIso: string,
+): Promise<WeekTrackerRow[]> {
+  await requireAdmin();
+  const weekOf = startOfWeek(new Date(weekOfIso));
+  const weekEnd = new Date(weekOf.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+  const [dances, practices, weeksOff] = await Promise.all([
+    prisma.dance.findMany({
+      where: { archivedAt: null },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, defaultDurationMinutes: true },
+    }),
+    prisma.practice.findMany({
+      where: {
+        dance: { archivedAt: null },
+        startDateTime: { gte: weekOf, lt: weekEnd },
+      },
+      orderBy: { startDateTime: "asc" },
+      include: { space: { select: { name: true } } },
+    }),
+    prisma.danceWeekOff.findMany({ where: { weekOf } }),
+  ]);
+
+  const offIds = new Set(weeksOff.map((w) => w.danceId));
+
+  return dances.map((dance) => ({
+    danceId: dance.id,
+    danceName: dance.name,
+    defaultDurationMinutes: dance.defaultDurationMinutes,
+    weekOff: offIds.has(dance.id),
+    practices: practices
+      .filter((p) => p.danceId === dance.id)
+      .map((p) => ({
+        id: p.id,
+        startDateTime: p.startDateTime,
+        endDateTime: p.endDateTime,
+        spaceName: p.space?.name ?? null,
+        status: p.status,
       })),
   }));
 }
@@ -231,7 +309,6 @@ async function firstFreeSpace(start: Date, end: Date): Promise<string | null> {
     prisma.space.findMany({ orderBy: { name: "asc" }, select: { id: true } }),
     prisma.practice.findMany({
       where: {
-        status: "CONFIRMED",
         startDateTime: { lt: end },
         endDateTime: { gt: start },
       },
@@ -248,13 +325,29 @@ export async function updatePracticeTime(
   endDateTime: string,
 ) {
   await requireAdmin();
-  await prisma.practice.update({
+  const before = await prisma.practice.findUniqueOrThrow({
+    where: { id: practiceId },
+    select: { status: true, startDateTime: true },
+  });
+
+  const practice = await prisma.practice.update({
     where: { id: practiceId },
     data: {
       startDateTime: new Date(startDateTime),
       endDateTime: new Date(endDateTime),
     },
   });
+
+  // Moving a published practice is a change the team needs to hear about,
+  // and the shared calendar has to follow it without anyone pressing a
+  // button. Dragging a draft around is just the AD thinking out loud.
+  if (before.status === "CONFIRMED") {
+    await syncPracticeToTeamCalendar(practiceId);
+    if (before.startDateTime.getTime() !== practice.startDateTime.getTime()) {
+      await notifyPracticeChanged(practiceId, "moved");
+    }
+  }
+
   revalidatePath("/admin/schedule-builder");
   revalidatePath("/schedule");
 }
@@ -276,15 +369,68 @@ export async function confirmPractice(practiceId: string) {
   if (existing.status !== "CONFIRMED") {
     await notifyPracticeConfirmed(practiceId);
   }
+  await syncPracticeToTeamCalendar(practiceId);
 
   revalidatePath("/admin/schedule-builder");
   revalidatePath("/schedule");
   revalidatePath("/notifications");
 }
 
+/** Publishes the whole draft schedule in one go — the normal way to finish,
+ * since the AD lays out a term's worth of practices before telling anyone.
+ * Everyone affected gets a single summary rather than one message per
+ * practice. Returns what happened so the UI can report it. */
+export async function confirmAllDrafts(): Promise<{
+  confirmed: number;
+  peopleNotified: number;
+}> {
+  await requireAdmin();
+
+  const drafts = await prisma.practice.findMany({
+    where: { status: "PROPOSED" },
+    select: { id: true, dance: { select: { memberships: { select: { userId: true } } } } },
+  });
+  if (drafts.length === 0) return { confirmed: 0, peopleNotified: 0 };
+
+  const ids = drafts.map((d) => d.id);
+  await prisma.practice.updateMany({
+    where: { id: { in: ids } },
+    data: { status: "CONFIRMED" },
+  });
+
+  await notifySchedulePublished(ids);
+  // The shared team calendar fills itself in as part of publishing.
+  for (const id of ids) {
+    await syncPracticeToTeamCalendar(id);
+  }
+
+  const people = new Set(
+    drafts.flatMap((d) => d.dance.memberships.map((m) => m.userId)),
+  );
+
+  revalidatePath("/admin/schedule-builder");
+  revalidatePath("/schedule");
+  revalidatePath("/notifications");
+  return { confirmed: ids.length, peopleNotified: people.size };
+}
+
 export async function deletePractice(practiceId: string) {
   await requireAdmin();
+  const practice = await prisma.practice.findUniqueOrThrow({
+    where: { id: practiceId },
+    select: { danceId: true, status: true },
+  });
+
+  if (practice.status === "CONFIRMED") {
+    await notifyPracticeChanged(practiceId, "cancelled");
+  }
+  await removePracticeFromTeamCalendar(practiceId);
   await prisma.practice.delete({ where: { id: practiceId } });
+
+  // Everything after it in this dance just moved up a number, so their
+  // calendar titles are now wrong.
+  await resyncDanceCalendar(practice.danceId);
+
   revalidatePath("/admin/schedule-builder");
   revalidatePath("/schedule");
 }

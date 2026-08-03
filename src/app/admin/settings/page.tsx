@@ -2,6 +2,7 @@ import {
   getAttendanceSettings,
   updateAttendanceSettings,
 } from "@/lib/actions/attendance";
+import { TeamCalendarLink } from "@/components/team-calendar-link";
 
 export default async function AdminSettingsPage() {
   const settings = await getAttendanceSettings();
@@ -54,6 +55,30 @@ export default async function AdminSettingsPage() {
         <hr className="border-zinc-200 dark:border-zinc-800" />
 
         <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+          When someone counts as late
+        </h2>
+        <p className="text-sm text-zinc-700 dark:text-zinc-300">
+          Checking in more than{" "}
+          <input
+            type="number"
+            name="lateThresholdMinutes"
+            min={0}
+            max={60}
+            required
+            defaultValue={settings.lateThresholdMinutes}
+            className="mx-1 w-16 rounded-md border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-800"
+          />{" "}
+          minutes after the practice starts is recorded as late.
+        </p>
+        <p className="text-xs text-zinc-500 dark:text-zinc-400">
+          Minutes late are always recorded exactly; this only decides where the
+          &ldquo;late&rdquo; label starts. Lateness is tracked separately from
+          the chronic-absence flag.
+        </p>
+
+        <hr className="border-zinc-200 dark:border-zinc-800" />
+
+        <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
           Use past attendance when suggesting slots
         </h2>
         <label className="flex items-start gap-2 text-sm text-zinc-700 dark:text-zinc-300">
@@ -84,6 +109,10 @@ export default async function AdminSettingsPage() {
           </button>
         </div>
       </form>
+
+      <div className="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
+        <TeamCalendarLink linkedName={settings.teamCalendarName} />
+      </div>
     </div>
   );
 }

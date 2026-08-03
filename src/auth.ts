@@ -3,14 +3,24 @@ import Google from "next-auth/providers/google";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import { prisma } from "@/lib/prisma";
 
-// Requesting the Calendar readonly scope up front so the same Google
-// sign-in also authorizes importing a dancer's conflicts from their
-// Google Calendar (see src/lib/google-calendar.ts).
+// Calendar scopes are requested at sign-in so one login covers everything
+// the app does with Google:
+//
+//   calendar.readonly — list someone's calendars (so they can point us at
+//     their PADT conflict calendar) and read events off it.
+//   calendar.events   — write practices onto the shared team calendar, and
+//     update those events in place when the AD moves something.
+//
+// The write scope is only ever exercised with an admin's token against the
+// team calendar. It's requested from everyone because Auth.js asks for one
+// scope set at sign-in; the trade-off is that the consent screen mentions
+// editing events for all users, not just admins.
 const GOOGLE_SCOPES = [
   "openid",
   "email",
   "profile",
   "https://www.googleapis.com/auth/calendar.readonly",
+  "https://www.googleapis.com/auth/calendar.events",
 ].join(" ");
 
 /** Grants admin to whoever matches INITIAL_ADMIN_EMAIL. Runs on every sign-in

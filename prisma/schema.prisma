@@ -64,6 +64,28 @@ enum NotificationType {
   SCHEDULE_FINALIZED
   REMINDER
   CHRONIC_ABSENCE_FLAG
+  CHECK_IN_OPEN
+  ATTENDANCE_DUE
+  PRACTICE_CHANGED
+}
+
+/// Dancers no longer categorise their own conflicts — they type a title and
+/// the AD decides. NOT_REVIEWED is a real third state so the review screen
+/// can show exactly what hasn't been looked at yet.
+enum ConflictStatus {
+  NOT_REVIEWED
+  EXCUSED
+  UNEXCUSED
+}
+
+/// What actually happened for one person at one practice. Derived from their
+/// check-in where there is one, and from their reviewed conflicts where there
+/// isn't; a choreographer or admin can override any of it.
+enum AttendanceStatus {
+  PRESENT
+  LATE
+  EXCUSED_ABSENT
+  UNEXCUSED_ABSENT
 }
 
 model User {
@@ -77,39 +99,81 @@ model User {
   // Attendance threshold override; falls back to a global setting if null.
   chronicAbsenceThreshold Int?
 
+  /// Which of this person's Google calendars holds their conflicts. The team
+  /// makes everyone a dedicated PADT conflict calendar at the start of the
+  /// year, so importing from "primary" pulls the wrong thing. Null means
+  /// they haven't picked one yet.
+  conflictCalendarId   String?
+  conflictCalendarName String?
+
   accounts Account[]
   sessions Session[]
 
-  memberships       DanceMembership[]
-  conflicts         Conflict[]
-  unavailabilities  Unavailability[]
-  weeklyExcuses     ChoreographerWeeklyExcuse[]
-  attendanceRecords Attendance[]              @relation("AttendanceSubject")
-  attendanceMarkedBy Attendance[]             @relation("AttendanceMarker")
-  notifications     Notification[]
+  memberships         DanceMembership[]
+  conflicts           Conflict[]
+  unavailabilities    Unavailability[]
+  weeklyExcuses       ChoreographerWeeklyExcuse[]
+  attendanceRecords   Attendance[]                @relation("AttendanceSubject")
+  attendanceMarkedBy  Attendance[]                @relation("AttendanceMarker")
+  attendanceSubmitted Practice[]                  @relation("AttendanceSubmitter")
+  conflictsReviewed   Conflict[]                  @relation("ConflictReviewer")
+  plannedArrivals     PlannedArrival[]
+  notesWritten        PracticeNote[]              @relation("NoteAuthor")
+  notesAbout          PracticeNote[]              @relation("NoteSubject")
+  pushSubscriptions   PushSubscription[]
+  notifications       Notification[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
 model Dance {
-  id     String @id @default(cuid())
+  id     String  @id @default(cuid())
   name   String
   season String?
 
-  memberships DanceMembership[]
-  practices   Practice[]
+  /// Set when the AD archives a finished piece. Archived dances disappear
+  /// from scheduling and from everyone's personal screens, but all their
+  /// practices and attendance stay in the database — unarchiving brings it
+  /// all back.
+  archivedAt DateTime?
+
+  /// How long this piece's practices usually run. The Schedule Builder starts
+  /// from this so the AD isn't retyping "90" for every dance, and the tracker
+  /// can show the expected length before anything is booked.
+  defaultDurationMinutes Int @default(90)
+
+  memberships   DanceMembership[]
+  practices     Practice[]
   weeklyExcuses ChoreographerWeeklyExcuse[]
+  weeksOff      DanceWeekOff[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
+/// The AD marking a dance as deliberately not rehearsing in a given week.
+/// Without this, "no practice booked" and "no practice wanted" look identical
+/// on the tracker, and the AD can never tick the week off as done.
+model DanceWeekOff {
+  id      String   @id @default(cuid())
+  danceId String
+  weekOf  DateTime
+  note    String?
+
+  dance Dance @relation(fields: [danceId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([danceId, weekOf])
+  @@index([weekOf])
+}
+
 model DanceMembership {
-  id       String    @id @default(cuid())
-  userId   String
-  danceId  String
-  role     DanceRole
+  id      String    @id @default(cuid())
+  userId  String
+  danceId String
+  role    DanceRole
 
   user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
   dance Dance @relation(fields: [danceId], references: [id], onDelete: Cascade)
@@ -122,9 +186,14 @@ model DanceMembership {
 }
 
 model Space {
-  id       String @id @default(cuid())
+  id       String  @id @default(cuid())
   name     String
   location String?
+
+  /// The Google Calendar this room's bookings live on, if the AD has linked
+  /// one. Each event on it is a block the space is open to the team.
+  googleCalendarId   String?
+  googleCalendarName String?
 
   availabilities SpaceAvailability[]
   practices      Practice[]
@@ -136,9 +205,9 @@ model Space {
 /// A recurring weekly window (dayOfWeek + start/end time) or a one-off date
 /// override for when a space is actually bookable.
 model SpaceAvailability {
-  id      String  @id @default(cuid())
+  id      String @id @default(cuid())
   spaceId String
-  space   Space   @relation(fields: [spaceId], references: [id], onDelete: Cascade)
+  space   Space  @relation(fields: [spaceId], references: [id], onDelete: Cascade)
 
   // Recurring weekly window
   dayOfWeek Int? // 0 = Sunday ... 6 = Saturday
@@ -149,19 +218,15 @@ model SpaceAvailability {
   date        DateTime? @db.Date
   isAvailable Boolean   @default(true)
 
+  /// Set when this window came from the space's Google Calendar. Re-importing
+  /// updates the matching row instead of piling up duplicates, and hand-made
+  /// windows (no source id) are never touched by an import.
+  sourceGoogleEventId String?
+
   createdAt DateTime @default(now())
 
   @@index([spaceId])
-}
-
-model ConflictCategory {
-  id         String  @id @default(cuid())
-  name       String  @unique
-  isExcused  Boolean @default(false)
-
-  conflicts Conflict[]
-
-  createdAt DateTime @default(now())
+  @@index([sourceGoogleEventId])
 }
 
 /// A dancer/choreographer's logged conflict for a given week. May originate
@@ -175,10 +240,18 @@ model Conflict {
   startDateTime DateTime
   endDateTime   DateTime
 
-  categoryId String?
-  category   ConflictCategory? @relation(fields: [categoryId], references: [id])
+  /// What the conflict is, in the dancer's own words — or the event title
+  /// straight off their PADT conflict calendar. This is the thing the AD
+  /// reads when deciding whether to excuse it.
+  title String?
 
-  note String?
+  status ConflictStatus @default(NOT_REVIEWED)
+
+  /// Who marked it excused/unexcused, and when. Kept so the AD can see a
+  /// decision was made deliberately rather than defaulted into.
+  reviewedById String?
+  reviewedBy   User?     @relation("ConflictReviewer", fields: [reviewedById], references: [id])
+  reviewedAt   DateTime?
 
   isRecurring    Boolean @default(false)
   recurrenceRule String? // e.g. "WEEKLY" for now; RFC 5545 RRULE later if needed
@@ -189,6 +262,7 @@ model Conflict {
   updatedAt DateTime @updatedAt
 
   @@index([userId, weekOf])
+  @@index([status])
 }
 
 /// A full exclusion window (e.g. "out of town") distinct from a normal
@@ -218,7 +292,25 @@ model Practice {
   endDateTime   DateTime
   status        PracticeStatus @default(PROPOSED)
 
-  attendance Attendance[]
+  /// When the practice actually got going, if that wasn't the scheduled
+  /// time. Lateness is measured from here when it's set — nobody should be
+  /// marked late for a practice that hadn't started.
+  actualStartTime DateTime?
+
+  /// Set when the choreographer (or an admin on their behalf) signs off on
+  /// the attendance record. Until then it's provisional. There's deliberately
+  /// no deadline on this.
+  attendanceSubmittedAt   DateTime?
+  attendanceSubmittedById String?
+  attendanceSubmittedBy   User?     @relation("AttendanceSubmitter", fields: [attendanceSubmittedById], references: [id])
+
+  /// The event this practice owns on the shared team calendar, so an edit
+  /// updates that event in place instead of creating a second one.
+  googleEventId String?
+
+  attendance      Attendance[]
+  plannedArrivals PlannedArrival[]
+  notes           PracticeNote[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -230,11 +322,11 @@ model Practice {
 /// The AD deselecting a choreographer as a mandatory attendee for one
 /// specific week (that dance's weekly excuse), rather than every week.
 model ChoreographerWeeklyExcuse {
-  id      String @id @default(cuid())
+  id      String   @id @default(cuid())
   danceId String
-  dance   Dance  @relation(fields: [danceId], references: [id], onDelete: Cascade)
+  dance   Dance    @relation(fields: [danceId], references: [id], onDelete: Cascade)
   userId  String
-  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   weekOf  DateTime @db.Date
 
   createdAt DateTime @default(now())
@@ -248,7 +340,20 @@ model Attendance {
   practice   Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
   userId     String
   user       User     @relation("AttendanceSubject", fields: [userId], references: [id], onDelete: Cascade)
-  attended   Boolean
+
+  status AttendanceStatus
+
+  /// The moment they tapped Check in. Null for anyone who never did.
+  checkedInAt DateTime?
+
+  /// How late they were, in minutes, measured from the practice's real start
+  /// and against any agreed late arrival. Stored at minute resolution so
+  /// charge rules can be layered on later without re-collecting anything.
+  minutesLate Int?
+
+  /// True when a person or admin changed what the check-in implied, so the
+  /// record shows the difference between what happened and what was decided.
+  isOverride Boolean @default(false)
 
   markedById String?
   markedBy   User?    @relation("AttendanceMarker", fields: [markedById], references: [id])
@@ -256,6 +361,53 @@ model Attendance {
 
   @@unique([practiceId, userId])
   @@index([userId])
+}
+
+/// Someone who has agreed in advance to arrive part-way through — a class
+/// that runs to 6:15 against a 6:00 call. Entered once while scheduling
+/// rather than explained again every week. Arriving by this time counts as
+/// on time.
+model PlannedArrival {
+  id         String   @id @default(cuid())
+  practiceId String
+  practice   Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// The time they're expected to walk in.
+  arriveAt DateTime
+  reason   String?
+
+  createdAt DateTime @default(now())
+
+  @@unique([practiceId, userId])
+  @@index([userId])
+}
+
+/// A note attached to a practice, optionally about one person.
+///
+/// `subjectUserId` null means it's about the practice itself and the whole
+/// cast can read it. Set, it's about that person — visible to them, their
+/// choreographers, and admins — which covers both "I'll be late, class runs
+/// over" written beforehand and "here's what she missed" written after.
+model PracticeNote {
+  id         String   @id @default(cuid())
+  practiceId String
+  practice   Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+
+  authorId String
+  author   User   @relation("NoteAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+
+  subjectUserId String?
+  subject       User?   @relation("NoteSubject", fields: [subjectUserId], references: [id], onDelete: Cascade)
+
+  body String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([practiceId])
+  @@index([subjectUserId])
 }
 
 /// Single-row table of org-wide settings the AD controls. Kept as a table
@@ -274,16 +426,45 @@ model AppSettings {
   /// rule-based suggestions with no inference from past data.
   useHistoricalWeighting Boolean @default(true)
 
+  /// The shared team calendar every published practice is written to. Owned
+  /// by the club account and shared with the AD, whose Google token does the
+  /// writing — so it survives ADs changing.
+  teamCalendarId   String?
+  teamCalendarName String?
+
+  /// Someone is counted late from this many minutes past the start. Under it
+  /// is on time.
+  lateThresholdMinutes Int @default(5)
+
   updatedAt DateTime @updatedAt
 }
 
+/// A browser/phone that has agreed to receive push notifications. One person
+/// can have several — phone and laptop. On iOS these only exist once the app
+/// has been added to the home screen; that's an Apple rule, not a choice.
+model PushSubscription {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  endpoint String @unique
+  p256dh   String
+  auth     String
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
 model Notification {
-  id      String            @id @default(cuid())
+  id      String           @id @default(cuid())
   userId  String
-  user    User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user    User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   type    NotificationType
   message String
-  read    Boolean           @default(false)
+  /// Where tapping the notification should take them.
+  href    String?
+  read    Boolean          @default(false)
 
   createdAt DateTime @default(now())
 

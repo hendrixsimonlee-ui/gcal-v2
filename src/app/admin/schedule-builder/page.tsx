@@ -5,6 +5,7 @@ import { ScheduleBuilder } from "@/components/schedule-builder/schedule-builder"
 export default async function ScheduleBuilderPage() {
   const [dances, spaces, practices] = await Promise.all([
     prisma.dance.findMany({
+      where: { archivedAt: null },
       orderBy: { name: "asc" },
       include: { memberships: { select: { userId: true } } },
     }),
@@ -14,12 +15,17 @@ export default async function ScheduleBuilderPage() {
     }),
     prisma.practice.findMany({
       where: {
+        dance: { archivedAt: null },
         startDateTime: {
           gte: addDays(new Date(), -14),
           lte: addDays(new Date(), 60),
         },
       },
-      include: { dance: true, space: true },
+      include: {
+        dance: true,
+        space: true,
+        plannedArrivals: { include: { user: true } },
+      },
       orderBy: { startDateTime: "asc" },
     }),
   ]);
@@ -46,6 +52,7 @@ export default async function ScheduleBuilderPage() {
         id: d.id,
         name: d.name,
         castUserIds: d.memberships.map((m) => m.userId),
+        defaultDurationMinutes: d.defaultDurationMinutes,
       }))}
       spaces={spaces.map((s) => ({
         id: s.id,
@@ -66,6 +73,11 @@ export default async function ScheduleBuilderPage() {
         startDateTime: p.startDateTime.toISOString(),
         endDateTime: p.endDateTime.toISOString(),
         status: p.status,
+        plannedArrivals: p.plannedArrivals.map((a) => ({
+          userId: a.userId,
+          name: a.user.name ?? a.user.email,
+          arriveAt: a.arriveAt.toISOString(),
+        })),
       }))}
     />
   );

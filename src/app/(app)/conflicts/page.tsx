@@ -1,16 +1,15 @@
 import Link from "next/link";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { ConflictCategorySelect } from "@/components/conflict-category-select";
 import { ConflictsCalendar } from "@/components/conflicts-calendar";
 import { addDays, formatWeekLabel, parseWeekParam, toDateParam } from "@/lib/dates";
 import {
   addUnavailability,
   deleteConflict,
   deleteUnavailability,
-  importGoogleCalendarWeek,
-  updateConflictCategory,
 } from "@/lib/actions/conflicts";
+import { ConflictCalendarSync } from "@/components/conflict-calendar-sync";
+import { ConflictStatusBadge } from "@/components/status-badges";
 
 const timeFormatter = new Intl.DateTimeFormat("en-US", {
   weekday: "short",
@@ -35,12 +34,15 @@ export default async function MyConflictsPage({
   const prevWeek = toDateParam(addDays(weekStart, -7));
   const nextWeek = toDateParam(addDays(weekStart, 7));
 
-  const [weekConflicts, calendarConflicts, categories, unavailabilities] =
+  const [me, weekConflicts, calendarConflicts, unavailabilities] =
     await Promise.all([
+      prisma.user.findUniqueOrThrow({
+        where: { id: userId },
+        select: { conflictCalendarName: true },
+      }),
       prisma.conflict.findMany({
         where: { userId, weekOf: weekStart },
         orderBy: { startDateTime: "asc" },
-        include: { category: true },
       }),
       // The calendar navigates independently of the week selector below, so
       // give it a wide window rather than just the selected week.
@@ -51,9 +53,7 @@ export default async function MyConflictsPage({
           endDateTime: { lte: addDays(new Date(), 120) },
         },
         orderBy: { startDateTime: "asc" },
-        include: { category: true },
       }),
-      prisma.conflictCategory.findMany({ orderBy: { name: "asc" } }),
       prisma.unavailability.findMany({
         where: { userId, endDate: { gte: new Date() } },
         orderBy: { startDate: "asc" },
@@ -72,20 +72,19 @@ export default async function MyConflictsPage({
         </p>
       </div>
 
+      <ConflictCalendarSync
+        linkedCalendarName={me.conflictCalendarName}
+        weekStartIso={weekStart.toISOString()}
+      />
+
       <section className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
         <ConflictsCalendar
-          categories={categories.map((c) => ({
-            id: c.id,
-            name: c.name,
-            isExcused: c.isExcused,
-          }))}
           conflicts={calendarConflicts.map((c) => ({
             id: c.id,
             startDateTime: c.startDateTime.toISOString(),
             endDateTime: c.endDateTime.toISOString(),
-            note: c.note,
-            categoryName: c.category?.name ?? null,
-            isExcused: c.category?.isExcused ?? false,
+            title: c.title,
+            status: c.status,
             isRecurring: c.isRecurring,
             fromGoogle: !!c.sourceGoogleEventId,
           }))}
@@ -111,16 +110,6 @@ export default async function MyConflictsPage({
               Next →
             </Link>
           </div>
-          <form
-            action={importGoogleCalendarWeek.bind(null, weekStart.toISOString())}
-          >
-            <button
-              type="submit"
-              className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
-            >
-              Import from Google Calendar
-            </button>
-          </form>
         </div>
 
         <ul className="flex flex-col gap-1">
@@ -135,31 +124,18 @@ export default async function MyConflictsPage({
               className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-zinc-50 px-3 py-2 text-sm dark:bg-zinc-800"
             >
               <div className="flex flex-col">
-                <span className="text-zinc-800 dark:text-zinc-200">
+                <span className="font-medium text-zinc-900 dark:text-zinc-50">
+                  {conflict.title || "Conflict"}
+                </span>
+                <span className="text-xs text-zinc-500">
                   {timeFormatter.format(conflict.startDateTime)} –{" "}
                   {timeFormatter.format(conflict.endDateTime)}
-                  {conflict.sourceGoogleEventId && (
-                    <span className="ml-2 rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900 dark:text-blue-300">
-                      Google Calendar
-                    </span>
-                  )}
-                  {conflict.isRecurring && (
-                    <span className="ml-2 rounded-full bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-700 dark:bg-purple-900 dark:text-purple-300">
-                      Recurring
-                    </span>
-                  )}
+                  {conflict.sourceGoogleEventId && " · from Google Calendar"}
+                  {conflict.isRecurring && " · repeats weekly"}
                 </span>
-                {conflict.note && (
-                  <span className="text-xs text-zinc-500">{conflict.note}</span>
-                )}
               </div>
               <div className="flex items-center gap-2">
-                <ConflictCategorySelect
-                  action={updateConflictCategory.bind(null, conflict.id)}
-                  categories={categories}
-                  defaultCategoryId={conflict.categoryId ?? ""}
-                  isExcused={conflict.category?.isExcused}
-                />
+                <ConflictStatusBadge status={conflict.status} />
                 <form action={deleteConflict.bind(null, conflict.id)}>
                   <button
                     type="submit"

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ANY_SPACE } from "@/lib/constants";
 import {
+  confirmAllDrafts,
   confirmPractice,
   createDraftPractice,
   deletePractice,
@@ -19,11 +20,15 @@ import {
   ScheduleCalendar,
   type PracticeEvent,
 } from "@/components/schedule-builder/schedule-calendar";
+import { WeekTracker } from "@/components/schedule-builder/week-tracker";
+import { ConflictStatusBadge } from "@/components/status-badges";
+import { LateArrivals } from "@/components/schedule-builder/late-arrivals";
 
 interface DanceOption {
   id: string;
   name: string;
   castUserIds: string[];
+  defaultDurationMinutes: number;
 }
 
 interface SpaceOption {
@@ -60,10 +65,17 @@ export function ScheduleBuilder({
   const [danceId, setDanceId] = useState(dances[0]?.id ?? "");
   // Default to searching every room — picking a specific one is the exception.
   const [spaceId, setSpaceId] = useState<string>(ANY_SPACE);
-  const [durationMinutes, setDurationMinutes] = useState(90);
+  const [durationMinutes, setDurationMinutes] = useState(
+    dances[0]?.defaultDurationMinutes ?? 90,
+  );
   const [ignoredUserIds, setIgnoredUserIds] = useState<Set<string>>(new Set());
   const [candidates, setCandidates] = useState<CandidateSlot[]>([]);
   const [sidebar, setSidebar] = useState<SidebarCastMember[]>([]);
+  const [publishResult, setPublishResult] = useState<string | null>(null);
+  // Candidates are client state, so router.refresh() alone won't recompute
+  // them. Every mutation bumps this so the list reflects the new practices
+  // (a fresh draft holds its room, so it must drop out of the suggestions).
+  const [refreshKey, setRefreshKey] = useState(0);
   const [visibleRange, setVisibleRange] = useState<{ start: Date; end: Date }>(
     () => {
       const start = startOfWeek(new Date());
@@ -89,7 +101,7 @@ export function ScheduleBuilder({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [danceId, spaceId, durationMinutes, ignoredKey]);
+  }, [danceId, spaceId, durationMinutes, ignoredKey, refreshKey]);
 
   useEffect(() => {
     if (!danceId) return;
@@ -107,6 +119,14 @@ export function ScheduleBuilder({
       cancelled = true;
     };
   }, [danceId, visibleRange]);
+
+  /** Switching dances also pulls in that piece's usual practice length, so
+   * the AD isn't retyping the duration for every dance in the tracker. */
+  function selectDance(nextDanceId: string) {
+    setDanceId(nextDanceId);
+    const dance = dances.find((d) => d.id === nextDanceId);
+    if (dance) setDurationMinutes(dance.defaultDurationMinutes);
+  }
 
   function toggleIgnored(userId: string) {
     setIgnoredUserIds((prev) => {
@@ -128,6 +148,7 @@ export function ScheduleBuilder({
         visibleRange.end.toISOString(),
       );
       setSidebar(result);
+      setRefreshKey((k) => k + 1);
       router.refresh();
     });
   }
@@ -142,6 +163,7 @@ export function ScheduleBuilder({
         candidate.startDateTime.toISOString(),
         candidate.endDateTime.toISOString(),
       );
+      setRefreshKey((k) => k + 1);
       router.refresh();
     });
   }
@@ -149,6 +171,7 @@ export function ScheduleBuilder({
   function handleSelectRange(startIso: string, endIso: string) {
     startTransition(async () => {
       await createDraftPractice(danceId, spaceId, startIso, endIso);
+      setRefreshKey((k) => k + 1);
       router.refresh();
     });
   }
@@ -156,6 +179,7 @@ export function ScheduleBuilder({
   function handleEventMove(practiceId: string, startIso: string, endIso: string) {
     startTransition(async () => {
       await updatePracticeTime(practiceId, startIso, endIso);
+      setRefreshKey((k) => k + 1);
       router.refresh();
     });
   }
@@ -177,6 +201,26 @@ export function ScheduleBuilder({
   const draftPracticesForDance = initialPractices.filter(
     (p) => p.danceId === danceId && p.status === "PROPOSED",
   );
+  const allDrafts = initialPractices.filter((p) => p.status === "PROPOSED");
+
+  function publishAll() {
+    if (
+      !confirm(
+        `Confirm all ${allDrafts.length} draft practice${allDrafts.length === 1 ? "" : "s"} and notify everyone involved?`,
+      )
+    ) {
+      return;
+    }
+    setPublishResult(null);
+    startTransition(async () => {
+      const result = await confirmAllDrafts();
+      setPublishResult(
+        `Published ${result.confirmed} practice${result.confirmed === 1 ? "" : "s"} · notified ${result.peopleNotified} ${result.peopleNotified === 1 ? "person" : "people"}`,
+      );
+      setRefreshKey((k) => k + 1);
+      router.refresh();
+    });
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -189,7 +233,7 @@ export function ScheduleBuilder({
           <label className="text-xs font-medium text-zinc-500">Dance</label>
           <select
             value={danceId}
-            onChange={(e) => setDanceId(e.target.value)}
+            onChange={(e) => selectDance(e.target.value)}
             className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-800"
           >
             {dances.map((d) => (
@@ -231,6 +275,48 @@ export function ScheduleBuilder({
           <span className="pb-2 text-xs text-zinc-400">Saving…</span>
         )}
       </div>
+
+      {/* Publishing is a deliberate, separate step: the AD lays out the whole
+          term as drafts, then tells everyone once. */}
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-zinc-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900">
+        <div className="text-sm">
+          {allDrafts.length === 0 ? (
+            <span className="text-zinc-500 dark:text-zinc-400">
+              No unpublished drafts. Nothing is waiting to be announced.
+            </span>
+          ) : (
+            <>
+              <span className="font-medium text-zinc-900 dark:text-zinc-50">
+                {allDrafts.length} draft practice
+                {allDrafts.length === 1 ? "" : "s"} not yet published
+              </span>
+              <span className="ml-2 text-zinc-500 dark:text-zinc-400">
+                — drafts hold their room but nobody has been told about them
+                yet.
+              </span>
+            </>
+          )}
+          {publishResult && (
+            <span className="ml-2 font-medium text-emerald-600 dark:text-emerald-400">
+              {publishResult}
+            </span>
+          )}
+        </div>
+        <button
+          onClick={publishAll}
+          disabled={isPending || allDrafts.length === 0}
+          className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-700 disabled:opacity-40"
+        >
+          {isPending ? "Publishing…" : "Publish schedule"}
+        </button>
+      </div>
+
+      <WeekTracker
+        weekOf={startOfWeek(visibleRange.start)}
+        refreshKey={refreshKey}
+        selectedDanceId={danceId}
+        onPickDance={selectDance}
+      />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[280px_1fr_280px]">
         <section className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
@@ -284,13 +370,15 @@ export function ScheduleBuilder({
               {draftPracticesForDance.map((p) => (
                 <div
                   key={p.id}
-                  className="flex items-center gap-2 rounded-md bg-amber-50 px-2 py-1 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-300"
+                  className="flex w-full flex-col gap-1 rounded-md bg-amber-50 px-2 py-1 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-300"
                 >
+                  <div className="flex items-center gap-2">
                   {timeFormatter.format(new Date(p.startDateTime))}
                   <button
                     onClick={() =>
                       startTransition(async () => {
                         await confirmPractice(p.id);
+                        setRefreshKey((k) => k + 1);
                         router.refresh();
                       })
                     }
@@ -302,6 +390,7 @@ export function ScheduleBuilder({
                     onClick={() =>
                       startTransition(async () => {
                         await deletePractice(p.id);
+                        setRefreshKey((k) => k + 1);
                         router.refresh();
                       })
                     }
@@ -309,6 +398,11 @@ export function ScheduleBuilder({
                   >
                     Discard
                   </button>
+                  </div>
+                  <LateArrivals
+                    practiceId={p.id}
+                    existing={p.plannedArrivals ?? []}
+                  />
                 </div>
               ))}
             </div>
@@ -380,19 +474,12 @@ function ConflictList({
   return (
     <ul className="mt-1 flex flex-col gap-0.5 pl-1 text-zinc-500">
       {conflicts.map((c) => (
-        <li key={c.id}>
-          {timeFormatter.format(new Date(c.startDateTime))}
-          {c.categoryName && (
-            <span
-              className={`ml-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
-                c.isExcused
-                  ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300"
-                  : "bg-zinc-200 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-200"
-              }`}
-            >
-              {c.categoryName}
-            </span>
+        <li key={c.id} className="flex flex-wrap items-center gap-1">
+          <span>{timeFormatter.format(new Date(c.startDateTime))}</span>
+          {c.title && (
+            <span className="text-zinc-600 dark:text-zinc-300">{c.title}</span>
           )}
+          <ConflictStatusBadge status={c.status} />
         </li>
       ))}
     </ul>

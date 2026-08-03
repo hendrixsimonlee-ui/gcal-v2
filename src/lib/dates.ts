@@ -19,6 +19,38 @@ export function addWeeks(date: Date, weeks: number): Date {
   return addDays(date, weeks * 7);
 }
 
+/** Turns a "YYYY-MM-DD" into the value to store in a Prisma `@db.Date`
+ * column. Anchored at UTC midnight on purpose: a local-midnight Date lands on
+ * the previous day once Postgres reads it as UTC for anyone east of
+ * Greenwich, silently shifting the date the AD typed. */
+export function calendarDateFromInput(value: string): Date {
+  return new Date(`${value}T00:00:00Z`);
+}
+
+/** The calendar date held in a `@db.Date` column, as "YYYY-MM-DD". Reads the
+ * UTC parts to match how `calendarDateFromInput` wrote it — local getters
+ * would shift the day west of Greenwich. */
+export function calendarDateKey(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+/** The Monday of the week a `@db.Date` value falls in, as "YYYY-MM-DD".
+ * Used to group one-off space changes into weeks. */
+export function calendarWeekStartKey(date: Date): string {
+  const d = new Date(date);
+  const day = d.getUTCDay();
+  d.setUTCDate(d.getUTCDate() + (day === 0 ? -6 : 1 - day));
+  return d.toISOString().slice(0, 10);
+}
+
+/** Formatter for `@db.Date` values. Pinned to UTC for the same reason. */
+export const calendarDateFormatter = new Intl.DateTimeFormat("en-US", {
+  weekday: "short",
+  month: "short",
+  day: "numeric",
+  timeZone: "UTC",
+});
+
 export function toDateParam(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
@@ -41,4 +73,19 @@ const weekLabelFormatter = new Intl.DateTimeFormat("en-US", {
 export function formatWeekLabel(weekStart: Date): string {
   const weekEnd = addDays(weekStart, 6);
   return `${weekLabelFormatter.format(weekStart)} – ${weekLabelFormatter.format(weekEnd)}`;
+}
+
+const utcWeekLabelFormatter = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+  timeZone: "UTC",
+});
+
+/** Week label for a Monday key produced by `calendarWeekStartKey`. Reads in
+ * UTC to match how those keys are anchored. */
+export function formatCalendarWeekLabel(weekStartKey: string): string {
+  const start = new Date(`${weekStartKey}T00:00:00Z`);
+  const end = new Date(start);
+  end.setUTCDate(end.getUTCDate() + 6);
+  return `${utcWeekLabelFormatter.format(start)} – ${utcWeekLabelFormatter.format(end)}`;
 }

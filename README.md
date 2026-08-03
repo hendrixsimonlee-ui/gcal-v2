@@ -3,78 +3,92 @@
 A shared web app for scheduling dance team practices around conflicts,
 rehearsal space availability, and choreographer requirements.
 
-## Status: all 5 layers complete
+## What it does
 
-**Layer 1 — Foundation**
+**Everyone**
 
-- Google sign-in, with roles: **AD (admin)**, **choreographer**, **dancer**
-  (a person can be more than one at once — see the navigation model below)
-- AD screens: **Roster**, **Spaces** (with weekly availability windows),
-  **Dances** (with choreographer/cast assignment), **Conflict Categories**,
-  **Conflict Review**
-- Personal screens: **My Schedule** (grouped by dance), **My Conflicts**
-  (weekly time-block entry, recurring conflicts, Google Calendar import,
-  out-of-town/unavailability marking)
-- Installable as a home-screen web app (PWA) on any phone browser
+- A **How this works** page in the header, written for someone who's just
+  been handed the link — different sections appear depending on whether you
+  also choreograph or run the schedule.
+- Sign in with Google. **My Schedule** greets you by name and shows every
+  dance you're in, grouped per piece.
+- While a practice is running, a **Check in** button sits at the top of that
+  screen. Tapping it records the time and works out how late you were —
+  under five minutes counts as on time. Nobody is chased about a practice
+  they already logged a conflict for.
+- **My Attendance** is a full history: every practice you've had, what was
+  recorded, and how late you were. Tap any one to open that practice's whole
+  record — so if there's ever a question about who was there, everyone
+  involved can look at the same page. Finished pieces move to "Past seasons"
+  rather than disappearing.
+- **My Conflicts** points at the PADT conflict calendar you were given at the
+  start of the year. Sync the whole term in one tap and you never type a
+  conflict twice. You can also add one by dragging on the calendar — just a
+  title and a time, no categories to pick.
+- **Add this week to my calendar** downloads every practice that week as one
+  file, which imports into Google, Apple Calendar or Outlook in a single go.
+- Installable from any phone browser. Add it to your home screen and you get
+  notifications when practice starts.
 
-**Layer 2 — Scheduling engine + interactive builder**
+**Choreographers** (for their own dances)
 
-- **Schedule Builder** (AD): a Google-Calendar-style week/month grid with
-  drag-to-create, drag-to-move, and resize. Practices for every dance show
-  on one grid so placing one doesn't blindly cost another its better slot.
-- Ranked candidate slots per dance/space/duration. Hard requirements:
-  space availability, no room double-booking, and all mandatory
-  choreographers free. Soft ranking: fewest and least-severe cast conflicts.
-- Side panel of cast conflicts with per-person **ignore** checkboxes
-  (a what-if tool — it never edits anyone's real conflict record), plus the
-  per-week **choreographer excuse** toggle.
+- See who's coming before it happens: **Expected**, **Excused**, and
+  **Coming late** with the time each person agreed to arrive.
+- Watch check-ins land during the practice, with minutes late per person.
+- Record that the practice actually started late — everyone's lateness is
+  recalculated from the real start, so nobody is penalised for a practice
+  that hadn't begun.
+- Write notes on the practice, or on one person in it.
+- When the practice ends, a notification asks you to review the recap and
+  **Submit**. There's no deadline; come back days later if you need to.
 
-**Layer 3 — Attendance**
+**The AD**
 
-- **Attendance Check-off** (choreographers, for their own dances): tick who
-  showed up; defaults to everyone present so you only mark the exceptions.
-- Absences are classified automatically against what that person logged for
-  the time slot: *excused* (excused-category conflict or an out-of-town
-  window) vs *unexcused* (unexcused conflict, or a no-show with nothing
-  logged at all).
-- **My Attendance** (everyone): per-dance history and attendance rate.
-- **Attendance Review** (AD): average % of the cast missing, a
-  who's-missing-overall table, per-practice breakdowns, and chronic-absence
-  flags. Only unexcused absences ever count toward a flag.
-- **Settings** (AD): configure the chronic-absence threshold and window
-  (e.g. "3 unexcused out of the last 5").
-
-**Layer 4 — Notifications**
-
-- Confirming a practice notifies its whole cast: an in-app notification
-  (bell in the header with an unread badge, plus a **Notifications** page)
-  and an email.
-- Every confirmed practice carries an **Add to Google Calendar** link, both
-  in the app and in the email. It uses Google's public add-event URL, so it
-  works even for people who never connected their calendar.
-- Email is best-effort: with no `RESEND_API_KEY` set it simply no-ops, and a
-  failed send is logged rather than blocking the AD's action. In-app
-  notifications always work.
-- Re-confirming an already-confirmed practice doesn't re-notify.
-
-**Layer 5 — Historical weighting (optional)**
-
-- The Schedule Builder can nudge away from weekdays a cast has historically
-  skipped without an excuse.
-- Deliberately conservative: it needs at least two past practices on a given
-  weekday before inferring anything, ignores rates under 50%, only counts
-  unexcused absences, and is weighted *below* a single real logged conflict
-  so it only ever breaks ties.
-- The AD can switch it off entirely in **Settings** for purely rule-based
-  suggestions.
+- **This week** — a checklist of the week's work in the order it happens:
+  review conflicts → sort the spaces → build the schedule → publish → check
+  attendance. Each step shows how far along it is.
+- **Conflict Review** — everything logged this week, grouped by person, with
+  the conflict's own title front and centre. One tap marks it excused or
+  unexcused; there's a button to do a whole person's week at once, and a
+  running count of what's still unreviewed.
+- **Spaces** — the usual weekly hours per room, one-off changes grouped by
+  week, and a calendar view of what the scheduler will actually treat as
+  bookable. Link a room's Google Calendar and its bookings import
+  themselves.
+- **Schedule Builder** — a Google-Calendar-style grid with drag-to-create and
+  drag-to-move, ranked slot suggestions across every room at once, a
+  cast-conflict side panel, and a week tracker listing every dance as
+  scheduled / needs a room / needs scheduling / not practising. A conflict
+  that clips the front of a practice is offered as a **late arrival** in one
+  tap rather than an absence.
+- **Publish** flips the whole draft schedule at once, notifies everyone with
+  a single summary each, and writes every practice onto the shared team
+  Google Calendar — titled *"Bhangra 7"*, located at the studio, described
+  with who's excused, who isn't and who's coming late. Move or cancel a
+  practice later and that event updates itself.
+- **Attendance Review** — by person, **lateness by month**, unexcused only,
+  per dance week by week, or every practice. The lateness view breaks minutes
+  out per dance and sums them for each month and each semester. Chronic
+  absence is flagged both within a dance and across everything someone is in;
+  lateness is reported on its own and never trips a flag.
+- **A page per person** — click any name on the Roster or in Attendance
+  Review: every practice they've had, their conflicts, their out-of-town
+  windows, minutes late month by month, and notes about them, with the
+  override on each row. This is the screen for settling "I was definitely
+  there".
+- **Dances** — archive a finished piece and it leaves every screen while all
+  its history stays in the database.
+- **Settings** — chronic-absence threshold, when someone counts as late, the
+  team calendar, and an off-switch for using past attendance in scheduling.
 
 ## Tests
 
 `npm test` runs the scheduling and attendance logic suites (plain `tsx`
-scripts, no test framework needed) — 38 assertions covering the parts where
+scripts, no test framework needed) — 63 assertions covering the parts where
 a silent bug would be most costly: slot scoring and hard constraints,
-multi-space search, excused/unexcused classification, chronic-absence
-thresholds, and the bounds on historical weighting.
+one-off space changes, multi-space search, lateness maths against agreed
+arrivals and recorded late starts, who has to check in at all,
+chronic-absence thresholds, and the bounds on historical weighting.
 
 ## Try it locally (start here)
 
@@ -115,12 +129,14 @@ them. Good ones to try:
 | Sign in as | To see |
 | --- | --- |
 | **Priya Raman** | The AD — Schedule Builder, Attendance Review, Settings |
-| **Aisha Okonkwo** | A choreographer — attendance check-off for Hip Hop Fusion |
+| **Aisha Okonkwo** | A choreographer — one Hip Hop Fusion practice waiting to be submitted |
 | **Diego Alvarez** | A dancer with conflicts already logged |
 
 The seed leaves one Contemporary practice as an unconfirmed draft, so you
 can open the Schedule Builder, confirm it, and watch the notification reach
-the cast.
+the cast. It also leaves three conflicts unreviewed and each dance's most
+recent practice unsubmitted, so Conflict Review and the choreographer's
+queue both open with something in them.
 
 To make edits: change a file, save it, and the browser updates on its own.
 Stop the app with `Ctrl+C`.
@@ -130,6 +146,9 @@ Stop the app with `Ctrl+C`.
 > cannot be switched on for a live site even by mistake — verified by test.
 
 ## Deploying for real
+
+**[DEPLOYMENT.md](DEPLOYMENT.md) is the step-by-step walkthrough** — accounts
+to create, values to copy, in order. What follows is the summary.
 
 Beyond the local setup above you'll need:
 
@@ -146,6 +165,12 @@ Beyond the local setup above you'll need:
   created. After that the AD can promote others from the Roster screen.
 - **`RESEND_API_KEY` / `EMAIL_FROM`** — *optional.* Without them everything
   works and in-app notifications still appear; only email is skipped.
+- **`VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT`** —
+  *optional.* Phone notifications when a practice starts and when it ends.
+  Generate with `npx web-push generate-vapid-keys`. On iPhone these only
+  arrive once the app is on the home screen.
+- **`CRON_SECRET`** — guards the scheduled endpoint that sends those
+  notifications (`vercel.json` runs it every five minutes).
 
 Remember to set `NEXTAUTH_URL` to the real site URL and leave
 `ALLOW_DEV_LOGIN` unset.

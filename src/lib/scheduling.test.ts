@@ -13,6 +13,14 @@ function assert(cond: boolean, msg: string) {
 const nextMonday = addDays(startOfWeek(new Date()), 7);
 const dayOfWeek = nextMonday.getDay();
 
+/** Mirrors how a one-off override comes out of the database: a Prisma
+ * `@db.Date` value, anchored at UTC midnight rather than local midnight. */
+function asStoredDate(local: Date): Date {
+  return new Date(
+    `${local.getFullYear()}-${String(local.getMonth() + 1).padStart(2, "0")}-${String(local.getDate()).padStart(2, "0")}T00:00:00Z`,
+  );
+}
+
 const base: SchedulingInput = {
   castMembers: [
     { userId: "choreo1", name: "Choreo One", role: "CHOREOGRAPHER" },
@@ -395,6 +403,55 @@ function withSpace(opts: {
   assert(
     !!mildSlot && mildSlot.score === 0,
     "an occasional miss doesn't brand the whole weekday",
+  );
+}
+
+// One-off space changes: a closure removes that date, and changed hours
+// replace the usual ones rather than stacking on top of them.
+{
+  const closed = generateCandidateSlots({
+    ...base,
+    spaces: [
+      {
+        ...base.spaces[0],
+        dateOverrides: [{ date: asStoredDate(nextMonday), isAvailable: false }],
+      },
+    ],
+  });
+  assert(
+    closed.every(
+      (c) => c.startDateTime.toDateString() !== nextMonday.toDateString(),
+    ),
+    "a one-off closure removes every slot on that date",
+  );
+  assert(closed.length > 0, "a closure only affects its own date");
+
+  const moved = generateCandidateSlots({
+    ...base,
+    spaces: [
+      {
+        ...base.spaces[0],
+        dateOverrides: [
+          {
+            date: asStoredDate(nextMonday),
+            isAvailable: true,
+            startTime: "12:00",
+            endTime: "15:00",
+          },
+        ],
+      },
+    ],
+  });
+  const thatDay = moved.filter(
+    (c) => c.startDateTime.toDateString() === nextMonday.toDateString(),
+  );
+  assert(
+    thatDay.length > 0 && thatDay.every((c) => c.startDateTime.getHours() < 15),
+    "changed hours open the new window",
+  );
+  assert(
+    thatDay.every((c) => c.startDateTime.getHours() >= 12),
+    "changed hours replace the usual evening window instead of adding to it",
   );
 }
 

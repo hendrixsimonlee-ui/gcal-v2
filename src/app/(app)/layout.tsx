@@ -30,7 +30,7 @@ export default async function AppLayout({
       }),
     ]);
     if (choreographs) {
-      nav.push({ href: "/attendance", label: "Attendance Check-off" });
+      nav.push({ href: "/attendance", label: "Attendance" });
     }
     unreadCount = unread;
   }

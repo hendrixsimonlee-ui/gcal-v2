@@ -18,6 +18,14 @@ export function Header({
       </span>
       <div className="flex items-center gap-3">
         <Link
+          href="/help"
+          aria-label="How this works"
+          title="How this works"
+          className="rounded-md px-2 py-1 text-sm font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-50"
+        >
+          Help
+        </Link>
+        <Link
           href="/notifications"
           aria-label={
             unreadCount > 0

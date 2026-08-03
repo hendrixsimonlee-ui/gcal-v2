@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import {
   addRosterMember,
@@ -61,12 +62,17 @@ export default async function RosterPage() {
           <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
             {users.map((user) => (
               <tr key={user.id}>
-                <td className="px-4 py-2 text-zinc-900 dark:text-zinc-50">
-                  {user.name || (
-                    <span className="italic text-zinc-400">
-                      Not signed in yet
-                    </span>
-                  )}
+                <td className="px-4 py-2">
+                  <Link
+                    href={`/admin/roster/${user.id}`}
+                    className="font-medium text-zinc-900 hover:underline dark:text-zinc-50"
+                  >
+                    {user.name || (
+                      <span className="italic text-zinc-400">
+                        Not signed in yet
+                      </span>
+                    )}
+                  </Link>
                 </td>
                 <td className="px-4 py-2 text-zinc-600 dark:text-zinc-400">
                   {user.email}

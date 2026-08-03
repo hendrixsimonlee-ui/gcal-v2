@@ -23,17 +23,10 @@ export interface CalendarConflict {
   id: string;
   startDateTime: string;
   endDateTime: string;
-  note: string | null;
-  categoryName: string | null;
-  isExcused: boolean;
+  title: string | null;
+  status: "NOT_REVIEWED" | "EXCUSED" | "UNEXCUSED";
   isRecurring: boolean;
   fromGoogle: boolean;
-}
-
-export interface CategoryOption {
-  id: string;
-  name: string;
-  isExcused: boolean;
 }
 
 /** Local datetime string for <input type="datetime-local">, which rejects
@@ -55,10 +48,8 @@ function defaultRange(): { start: string; end: string } {
 
 export function ConflictsCalendar({
   conflicts,
-  categories,
 }: {
   conflicts: CalendarConflict[];
-  categories: CategoryOption[];
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -67,8 +58,7 @@ export function ConflictsCalendar({
   const [draft, setDraft] = useState<{
     start: string;
     end: string;
-    categoryId: string;
-    note: string;
+    title: string;
     isRecurring: boolean;
   } | null>(null);
 
@@ -78,8 +68,7 @@ export function ConflictsCalendar({
     setDraft({
       start: start ? toLocalInput(start) : fallback.start,
       end: end ? toLocalInput(end) : fallback.end,
-      categoryId: "",
-      note: "",
+      title: "",
       isRecurring: false,
     });
   }
@@ -92,8 +81,7 @@ export function ConflictsCalendar({
         await addConflict({
           startDateTime: draft.start,
           endDateTime: draft.end,
-          categoryId: draft.categoryId || null,
-          note: draft.note.trim() || null,
+          title: draft.title,
           isRecurring: draft.isRecurring,
         });
         setDraft(null);
@@ -118,14 +106,17 @@ export function ConflictsCalendar({
   }
 
   const events: EventInput[] = conflicts.map((c) => {
-    const color = c.categoryName
-      ? c.isExcused
+    // Grey until the AD has looked at it, then blue for excused and amber
+    // for not. The dancer sees the AD's answer without being asked for one.
+    const color =
+      c.status === "EXCUSED"
         ? "#0ea5e9"
-        : "#f59e0b"
-      : "#a1a1aa";
+        : c.status === "UNEXCUSED"
+          ? "#f59e0b"
+          : "#a1a1aa";
     return {
       id: c.id,
-      title: c.note || c.categoryName || "Conflict",
+      title: c.title || "Conflict",
       start: c.startDateTime,
       end: c.endDateTime,
       backgroundColor: color,
@@ -172,25 +163,11 @@ export function ConflictsCalendar({
               className="rounded-md border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-600 dark:bg-zinc-900"
             />
           </Field>
-          <Field label="Category">
-            <select
-              value={draft.categoryId}
-              onChange={(e) => setDraft({ ...draft, categoryId: e.target.value })}
-              className="rounded-md border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-600 dark:bg-zinc-900"
-            >
-              <option value="">Uncategorized</option>
-              {categories.map((cat) => (
-                <option key={cat.id} value={cat.id}>
-                  {cat.name}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Note" grow>
+          <Field label="What is it?" grow>
             <input
-              value={draft.note}
-              onChange={(e) => setDraft({ ...draft, note: e.target.value })}
-              placeholder="What's the conflict?"
+              value={draft.title}
+              onChange={(e) => setDraft({ ...draft, title: e.target.value })}
+              placeholder="Orgo lab, work shift, family thing…"
               className="w-full rounded-md border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-600 dark:bg-zinc-900"
             />
           </Field>
@@ -223,6 +200,8 @@ export function ConflictsCalendar({
       <FullCalendar
         plugins={[timeGridPlugin, dayGridPlugin, interactionPlugin]}
         initialView="timeGridWeek"
+        // Monday-first, matching the app's Monday-based weeks elsewhere.
+        firstDay={1}
         headerToolbar={{
           left: "prev,next today",
           center: "title",

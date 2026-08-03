@@ -4,10 +4,18 @@ import {
   addMembership,
   deleteDance,
   removeMembership,
+  setDanceArchived,
+  setDanceDefaultDuration,
 } from "@/lib/actions/dances";
 
+const archivedFormatter = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+});
+
 export default async function DancesPage() {
-  const [dances, users] = await Promise.all([
+  const [allDances, users] = await Promise.all([
     prisma.dance.findMany({
       orderBy: { name: "asc" },
       include: {
@@ -15,16 +23,28 @@ export default async function DancesPage() {
           include: { user: true },
           orderBy: [{ role: "asc" }, { user: { name: "asc" } }],
         },
+        _count: { select: { practices: true } },
       },
     }),
     prisma.user.findMany({ orderBy: { name: "asc" } }),
   ]);
 
+  const dances = allDances.filter((d) => d.archivedAt === null);
+  const archived = allDances.filter((d) => d.archivedAt !== null);
+
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">
-        Dances
-      </h1>
+      <div>
+        <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">
+          Dances
+        </h1>
+        <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+          When a piece finishes its run, archive it. It disappears from the
+          Schedule Builder and from everyone&rsquo;s personal screens, but all
+          its practices and attendance stay in the system and come back if you
+          unarchive it.
+        </p>
+      </div>
 
       <form
         action={addDance}
@@ -70,14 +90,48 @@ export default async function DancesPage() {
                   <p className="text-xs text-zinc-500">{dance.season}</p>
                 )}
               </div>
-              <form action={deleteDance.bind(null, dance.id)}>
-                <button
-                  type="submit"
-                  className="text-xs font-medium text-red-600 hover:underline"
+              <div className="flex items-center gap-3">
+                <form
+                  action={setDanceDefaultDuration.bind(null, dance.id)}
+                  className="flex items-center gap-1.5"
                 >
-                  Delete dance
-                </button>
-              </form>
+                  <label className="text-xs text-zinc-500">
+                    Usual practice length
+                  </label>
+                  <input
+                    type="number"
+                    name="defaultDurationMinutes"
+                    min={15}
+                    max={480}
+                    step={15}
+                    defaultValue={dance.defaultDurationMinutes}
+                    className="w-20 rounded-md border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-800"
+                  />
+                  <span className="text-xs text-zinc-500">min</span>
+                  <button
+                    type="submit"
+                    className="text-xs font-medium text-sky-600 hover:underline dark:text-sky-400"
+                  >
+                    Save
+                  </button>
+                </form>
+                <form action={setDanceArchived.bind(null, dance.id, true)}>
+                  <button
+                    type="submit"
+                    className="text-xs font-medium text-zinc-500 hover:underline"
+                  >
+                    Archive
+                  </button>
+                </form>
+                <form action={deleteDance.bind(null, dance.id)}>
+                  <button
+                    type="submit"
+                    className="text-xs font-medium text-red-600 hover:underline"
+                  >
+                    Delete dance
+                  </button>
+                </form>
+              </div>
             </div>
 
             <ul className="mb-3 flex flex-col gap-1">
@@ -142,7 +196,50 @@ export default async function DancesPage() {
             </form>
           </section>
         ))}
+        {dances.length === 0 && (
+          <p className="text-sm text-zinc-500">
+            No active dances. Add one above, or unarchive a past piece.
+          </p>
+        )}
       </div>
+
+      {archived.length > 0 && (
+        <details className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
+          <summary className="cursor-pointer text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+            Archived dances ({archived.length})
+          </summary>
+          <ul className="mt-3 flex flex-col gap-1">
+            {archived.map((dance) => (
+              <li
+                key={dance.id}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-zinc-50 px-3 py-2 text-sm dark:bg-zinc-800"
+              >
+                <span className="text-zinc-800 dark:text-zinc-200">
+                  {dance.name}
+                  {dance.season && (
+                    <span className="ml-2 text-xs text-zinc-500">
+                      {dance.season}
+                    </span>
+                  )}
+                </span>
+                <span className="text-xs text-zinc-500">
+                  {dance._count.practices} practice
+                  {dance._count.practices === 1 ? "" : "s"} kept · archived{" "}
+                  {archivedFormatter.format(dance.archivedAt!)}
+                </span>
+                <form action={setDanceArchived.bind(null, dance.id, false)}>
+                  <button
+                    type="submit"
+                    className="text-xs font-medium text-sky-600 hover:underline dark:text-sky-400"
+                  >
+                    Unarchive
+                  </button>
+                </form>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
     </div>
   );
 }

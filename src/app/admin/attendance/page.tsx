@@ -1,12 +1,16 @@
+import { Fragment } from "react";
 import Link from "next/link";
 import { getAttendanceSettings } from "@/lib/actions/attendance";
 import {
   getChronicAbsenceFlags,
+  getOverallAbsenceFlags,
+  getPastPracticesWithAttendance,
+  getLatenessBySemester,
   getPersonRollups,
   getUnexcusedAbsences,
   getWeeklyRollupByDance,
 } from "@/lib/attendance-data";
-import { AttendanceBadge } from "@/components/attendance-badge";
+import { AttendanceBadge } from "@/components/status-badges";
 import { formatWeekLabel } from "@/lib/dates";
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", {
@@ -15,12 +19,14 @@ const dateFormatter = new Intl.DateTimeFormat("en-US", {
   day: "numeric",
 });
 
-type View = "person" | "unexcused" | "weekly";
+type View = "person" | "lateness" | "unexcused" | "weekly" | "practices";
 
 const VIEWS: { key: View; label: string }[] = [
   { key: "person", label: "By person" },
+  { key: "lateness", label: "Lateness by month" },
   { key: "unexcused", label: "Unexcused only" },
   { key: "weekly", label: "By dance, week by week" },
+  { key: "practices", label: "Every practice" },
 ];
 
 export default async function AdminAttendancePage({
@@ -34,10 +40,16 @@ export default async function AdminAttendancePage({
     : "person";
 
   const settings = await getAttendanceSettings();
-  const flags = await getChronicAbsenceFlags(
-    settings.chronicAbsenceThreshold,
-    settings.chronicAbsenceWindow,
-  );
+  const [flags, overallFlags] = await Promise.all([
+    getChronicAbsenceFlags(
+      settings.chronicAbsenceThreshold,
+      settings.chronicAbsenceWindow,
+    ),
+    getOverallAbsenceFlags(
+      settings.chronicAbsenceThreshold,
+      settings.chronicAbsenceWindow,
+    ),
+  ]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -48,7 +60,7 @@ export default async function AdminAttendancePage({
         <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
           Flags trip at {settings.chronicAbsenceThreshold}{" "}
           unexcused absences out of a dancer&rsquo;s last{" "}
-          {settings.chronicAbsenceWindow} practices for a dance —{" "}
+          {settings.chronicAbsenceWindow} practices —{" "}
           <Link href="/admin/settings" className="underline">
             change that in Settings
           </Link>
@@ -56,27 +68,71 @@ export default async function AdminAttendancePage({
         </p>
       </div>
 
-      {flags.length > 0 && (
-        <section className="rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-900 dark:bg-red-950">
-          <h2 className="mb-2 text-sm font-semibold text-red-900 dark:text-red-200">
-            Over the threshold ({flags.length})
-          </h2>
-          <ul className="flex flex-col gap-1">
-            {flags.map((flag) => (
-              <li
-                key={`${flag.userId}-${flag.danceId}`}
-                className="flex flex-wrap items-center justify-between gap-2 text-sm text-red-800 dark:text-red-300"
-              >
-                <span className="font-medium">{flag.name}</span>
-                <span>{flag.danceName}</span>
-                <span className="text-xs">
-                  {flag.unexcusedInWindow} unexcused in last {flag.windowSize}
-                </span>
-              </li>
-            ))}
-          </ul>
+      {/* Always rendered, even when empty — a dashboard that disappears when
+          there's nothing to report just reads as a missing feature. */}
+      <div className="grid gap-4 md:grid-cols-2">
+          <section className="rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-900 dark:bg-red-950">
+            <h2 className="text-sm font-semibold text-red-900 dark:text-red-200">
+              Letting down a specific dance ({flags.length})
+            </h2>
+            <p className="mb-2 text-xs text-red-700 dark:text-red-400">
+              Counted within one dance, so a choreographer can see who
+              keeps missing <em>their</em> rehearsals.
+            </p>
+            {flags.length === 0 ? (
+              <p className="text-sm text-red-800 dark:text-red-300">
+                Nobody over the threshold.
+              </p>
+            ) : (
+              <ul className="flex flex-col gap-1">
+                {flags.map((flag) => (
+                  <li
+                    key={`${flag.userId}-${flag.danceId}`}
+                    className="flex flex-wrap items-center justify-between gap-2 text-sm text-red-800 dark:text-red-300"
+                  >
+                    <span className="font-medium">{flag.name}</span>
+                    <span>{flag.danceName}</span>
+                    <span className="text-xs">
+                      {flag.unexcusedInWindow} of last {flag.windowSize}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section className="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-900 dark:bg-amber-950">
+            <h2 className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+              Slipping overall ({overallFlags.length})
+            </h2>
+            <p className="mb-2 text-xs text-amber-700 dark:text-amber-400">
+              Counted across everything they&rsquo;re in — catches someone
+              missing one practice of each piece, which no single dance sees.
+            </p>
+            {overallFlags.length === 0 ? (
+              <p className="text-sm text-amber-800 dark:text-amber-300">
+                Nobody over the threshold.
+              </p>
+            ) : (
+              <ul className="flex flex-col gap-1">
+                {overallFlags.map((flag) => (
+                  <li
+                    key={flag.userId}
+                    className="flex flex-wrap items-center justify-between gap-2 text-sm text-amber-800 dark:text-amber-300"
+                  >
+                    <span className="font-medium">{flag.name}</span>
+                    <span className="text-xs">
+                      {flag.danceNames.join(", ")}
+                    </span>
+                    <span className="text-xs">
+                      {flag.unexcusedInWindow} of last {flag.windowSize}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
         </section>
-      )}
+      </div>
 
       <nav className="flex flex-wrap gap-2 border-b border-zinc-200 pb-2 dark:border-zinc-800">
         {VIEWS.map((v) => (
@@ -100,10 +156,125 @@ export default async function AdminAttendancePage({
           windowSize={settings.chronicAbsenceWindow}
         />
       )}
+      {view === "lateness" && <LatenessView />}
       {view === "unexcused" && <UnexcusedView />}
       {view === "weekly" && <WeeklyView />}
+      {view === "practices" && <EveryPracticeView />}
     </div>
   );
+}
+
+/** Minutes late, per dance, summed by month and by semester.
+ *
+ * Minutes are the only figure shown, on purpose: the question this screen
+ * answers is "how many minutes late was this person", and anything else
+ * crowds it. */
+async function LatenessView() {
+  const semesters = await getLatenessBySemester();
+
+  if (semesters.length === 0) {
+    return (
+      <p className="rounded-xl border border-dashed border-zinc-300 px-4 py-8 text-center text-sm text-zinc-500 dark:border-zinc-700">
+        Nobody has been late to a practice yet.
+      </p>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-5">
+      <p className="text-sm text-zinc-500 dark:text-zinc-400">
+        Minutes late per person, broken out by dance and summed for each month
+        and each semester. Late is anything past the threshold in Settings; an
+        agreed late arrival never counts against anyone.
+      </p>
+
+      {semesters.map((semester) => (
+        <section
+          key={semester.key}
+          className="rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900"
+        >
+          <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
+            <h2 className="font-semibold text-zinc-900 dark:text-zinc-50">
+              {semester.label}
+            </h2>
+            <span className="text-sm font-medium text-amber-700 dark:text-amber-400">
+              {semester.total} min across the team
+            </span>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-max text-sm">
+              <thead>
+                <tr className="text-left text-xs uppercase text-zinc-400">
+                  <th className="px-4 py-2 font-medium">Person / dance</th>
+                  {semester.months.map((month) => (
+                    <th
+                      key={month.key}
+                      className="px-3 py-2 text-right font-medium"
+                    >
+                      {month.label}
+                    </th>
+                  ))}
+                  <th className="px-4 py-2 text-right font-medium">Semester</th>
+                </tr>
+              </thead>
+              <tbody>
+                {semester.people.map((person) => (
+                  <Fragment key={person.userId}>
+                    <tr className="border-t border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-800/60">
+                      <td className="px-4 py-2 font-medium text-zinc-900 dark:text-zinc-50">
+                        {person.name}
+                      </td>
+                      {semester.months.map((month) => (
+                        <td
+                          key={month.key}
+                          className="px-3 py-2 text-right font-medium text-zinc-700 dark:text-zinc-200"
+                        >
+                          {minutesCell(person.byMonth.get(month.key))}
+                        </td>
+                      ))}
+                      <td className="px-4 py-2 text-right font-semibold text-amber-700 dark:text-amber-400">
+                        {person.total} min
+                      </td>
+                    </tr>
+
+                    {person.dances.map((dance) => (
+                      <tr
+                        key={dance.danceId}
+                        className="border-t border-zinc-100 dark:border-zinc-800/60"
+                      >
+                        <td className="py-1.5 pl-8 pr-4 text-zinc-600 dark:text-zinc-400">
+                          {dance.danceName}
+                        </td>
+                        {semester.months.map((month) => (
+                          <td
+                            key={month.key}
+                            className="px-3 py-1.5 text-right text-zinc-600 dark:text-zinc-400"
+                          >
+                            {minutesCell(dance.byMonth.get(month.key))}
+                          </td>
+                        ))}
+                        <td className="px-4 py-1.5 text-right text-zinc-600 dark:text-zinc-400">
+                          {dance.total} min
+                        </td>
+                      </tr>
+                    ))}
+                  </Fragment>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ))}
+    </div>
+  );
+}
+
+function minutesCell(minutes: number | undefined) {
+  if (!minutes) {
+    return <span className="text-zinc-300 dark:text-zinc-700">—</span>;
+  }
+  return `${minutes} min`;
 }
 
 async function ByPersonView({
@@ -123,22 +294,36 @@ async function ByPersonView({
     <div className="flex flex-col gap-2">
       <p className="text-sm text-zinc-500 dark:text-zinc-400">
         Everyone on the roster, worst attendance first. Expand a row to see the
-        breakdown per dance.
+        breakdown per dance. Lateness is reported here but never counts toward
+        a flag.
       </p>
       {people.map((person) => (
         <details
           key={person.userId}
           className="rounded-lg border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900"
         >
-          <summary className="grid cursor-pointer grid-cols-2 items-center gap-2 text-sm sm:grid-cols-5">
-            <span className="font-medium text-zinc-900 dark:text-zinc-50">
+          <summary className="grid cursor-pointer grid-cols-2 items-center gap-2 text-sm sm:grid-cols-6">
+            <Link
+              href={`/admin/roster/${person.userId}`}
+              className="font-medium text-zinc-900 hover:underline dark:text-zinc-50"
+            >
               {person.name}
-            </span>
+            </Link>
             <span className="text-zinc-500">
               {person.totalPresent}/{person.totalPractices} attended
             </span>
             <span className="text-zinc-500">
               {person.totalExcused} excused
+            </span>
+            <span
+              className={
+                person.totalMinutesLate > 0
+                  ? "font-medium text-amber-700 dark:text-amber-400"
+                  : "text-zinc-500"
+              }
+            >
+              {person.totalLate} late
+              {person.totalMinutesLate > 0 && ` · ${person.totalMinutesLate} min`}
             </span>
             <span
               className={
@@ -159,6 +344,7 @@ async function ByPersonView({
               <tr>
                 <th className="py-1">Dance</th>
                 <th className="py-1">Practices</th>
+                <th className="py-1">Late</th>
                 <th className="py-1">Missed (excused)</th>
                 <th className="py-1">Missed (unexcused)</th>
               </tr>
@@ -176,6 +362,9 @@ async function ByPersonView({
                   </td>
                   <td className="py-1 text-zinc-600 dark:text-zinc-400">
                     {cell.present}/{cell.practicesMarked}
+                  </td>
+                  <td className="py-1 text-zinc-600 dark:text-zinc-400">
+                    {cell.late > 0 ? `${cell.late} · ${cell.minutesLate} min` : "—"}
                   </td>
                   <td className="py-1 text-zinc-600 dark:text-zinc-400">
                     {cell.excused}
@@ -246,7 +435,7 @@ async function UnexcusedView() {
                 <span className="text-zinc-500">
                   {dateFormatter.format(row.startDateTime)}
                 </span>
-                <AttendanceBadge kind={row.kind} />
+                <AttendanceBadge status="UNEXCUSED_ABSENT" />
               </li>
             ))}
           </ul>
@@ -330,6 +519,111 @@ async function WeeklyView() {
           </div>
         </section>
       ))}
+    </div>
+  );
+}
+
+async function EveryPracticeView() {
+  const practices = await getPastPracticesWithAttendance();
+
+  if (practices.length === 0) {
+    return <Empty message="No practices have happened yet." />;
+  }
+
+  // "Not submitted" is the thing that needs chasing now — a practice can
+  // have check-ins on it and still be waiting for a choreographer's sign-off.
+  const unmarked = practices.filter((p) => p.submittedAt === null);
+
+  return (
+    <div className="flex flex-col gap-4">
+      <p className="text-sm text-zinc-500 dark:text-zinc-400">
+        Every practice that has happened. Choreographers mark their own
+        dances — this is so you can see where that hasn&rsquo;t happened yet,
+        and step in if you need to.
+      </p>
+
+      {unmarked.length > 0 && (
+        <section className="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-900 dark:bg-amber-950">
+          <h2 className="mb-2 text-sm font-semibold text-amber-900 dark:text-amber-200">
+            Not submitted yet ({unmarked.length})
+          </h2>
+          <ul className="flex flex-col gap-1">
+            {unmarked.map((p) => (
+              <li
+                key={p.practiceId}
+                className="flex flex-wrap items-center justify-between gap-2 text-sm text-amber-800 dark:text-amber-300"
+              >
+                <span className="font-medium">{p.danceName}</span>
+                <span>{dateFormatter.format(p.startDateTime)}</span>
+                <Link
+                  href={`/attendance/${p.practiceId}`}
+                  className="text-xs font-medium underline"
+                >
+                  Open →
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      <div className="flex flex-col gap-3">
+        {practices.map((practice) => (
+          <details
+            key={practice.practiceId}
+            className="rounded-lg border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900"
+          >
+            <summary className="flex cursor-pointer flex-wrap items-center justify-between gap-2 text-sm">
+              <span className="font-medium text-zinc-900 dark:text-zinc-50">
+                {practice.danceName}
+              </span>
+              <span className="text-zinc-500">
+                {dateFormatter.format(practice.startDateTime)}
+              </span>
+              {practice.isMarked ? (
+                <span className="text-xs text-zinc-600 dark:text-zinc-300">
+                  {practice.summary.presentCount}/{practice.summary.markedCount}{" "}
+                  present · {practice.summary.absentPercent}% missing
+                  {practice.summary.unexcusedCount > 0 && (
+                    <span className="ml-1 font-medium text-red-600 dark:text-red-400">
+                      ({practice.summary.unexcusedCount} unexcused)
+                    </span>
+                  )}
+                </span>
+              ) : (
+                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900 dark:text-amber-300">
+                  Nobody checked in
+                </span>
+              )}
+              {practice.summary.lateCount > 0 && (
+                <span className="text-xs text-amber-700 dark:text-amber-400">
+                  {practice.summary.lateCount} late ·{" "}
+                  {practice.summary.totalMinutesLate} min
+                </span>
+              )}
+              <Link
+                href={`/attendance/${practice.practiceId}`}
+                className="text-xs font-medium text-sky-600 hover:underline dark:text-sky-400"
+              >
+                Open →
+              </Link>
+            </summary>
+            <ul className="mt-3 flex flex-col gap-1 border-t border-zinc-100 pt-3 dark:border-zinc-800">
+              {practice.rows.map((row) => (
+                <li
+                  key={row.userId}
+                  className="flex items-center justify-between text-sm"
+                >
+                  <span className="text-zinc-700 dark:text-zinc-300">
+                    {row.name}
+                  </span>
+                  <AttendanceBadge status={row.status} minutesLate={row.minutesLate} />
+                </li>
+              ))}
+            </ul>
+          </details>
+        ))}
+      </div>
     </div>
   );
 }

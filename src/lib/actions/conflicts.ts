@@ -3,8 +3,13 @@
 import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { requireAdmin, requireUser } from "@/lib/authz";
 import { startOfWeek, addDays } from "@/lib/dates";
-import { getGoogleCalendarClientForUser } from "@/lib/google-calendar";
+import {
+  getGoogleCalendarClientForUser,
+  listGoogleCalendarsForUser,
+  type GoogleCalendarSummary,
+} from "@/lib/google-calendar";
 
 // Recurring conflicts are materialized as independent rows up front (rather
 // than projected on read) so each week's instance is directly editable or
@@ -17,8 +22,7 @@ const RECURRING_WEEKS_AHEAD = 10;
 export async function addConflict(input: {
   startDateTime: string;
   endDateTime: string;
-  categoryId: string | null;
-  note: string | null;
+  title: string;
   isRecurring: boolean;
 }) {
   const session = await auth();
@@ -43,8 +47,7 @@ export async function addConflict(input: {
         weekOf: startOfWeek(occStart),
         startDateTime: occStart,
         endDateTime: occEnd,
-        categoryId: input.categoryId,
-        note: input.note,
+        title: input.title.trim() || null,
         isRecurring: input.isRecurring,
         recurrenceRule: input.isRecurring ? "WEEKLY" : null,
       };
@@ -97,10 +100,9 @@ export async function deleteConflict(conflictId: string) {
   revalidatePath("/admin/conflicts");
 }
 
-export async function updateConflictCategory(
-  conflictId: string,
-  formData: FormData,
-) {
+/** Rename a conflict. The title is all a dancer supplies now, so it's the
+ * only thing they can edit besides the time. */
+export async function updateConflictTitle(conflictId: string, title: string) {
   const session = await auth();
   const conflict = await prisma.conflict.findUniqueOrThrow({
     where: { id: conflictId },
@@ -108,13 +110,49 @@ export async function updateConflictCategory(
   if (conflict.userId !== session!.user.id && !session!.user.isAdmin) {
     throw new Error("Not authorized to edit this conflict");
   }
-  const categoryId = String(formData.get("categoryId") ?? "") || null;
   await prisma.conflict.update({
     where: { id: conflictId },
-    data: { categoryId },
+    data: { title: title.trim() || null },
   });
   revalidatePath("/conflicts");
   revalidatePath("/admin/conflicts");
+}
+
+/** The AD's call on one conflict. Dancers don't categorise anything any more;
+ * excused vs unexcused is entirely the AD's, and NOT_REVIEWED is a real state
+ * so the review screen can show what hasn't been looked at. */
+export async function setConflictStatus(
+  conflictId: string,
+  status: "NOT_REVIEWED" | "EXCUSED" | "UNEXCUSED",
+) {
+  const admin = await requireAdmin();
+  await prisma.conflict.update({
+    where: { id: conflictId },
+    data: {
+      status,
+      reviewedById: status === "NOT_REVIEWED" ? null : admin.id,
+      reviewedAt: status === "NOT_REVIEWED" ? null : new Date(),
+    },
+  });
+  revalidatePath("/admin/conflicts");
+  revalidatePath("/conflicts");
+  revalidatePath("/admin/schedule-builder");
+}
+
+/** Mark everything one person logged in a week at once — the common case
+ * when their whole week is classes. */
+export async function setWeekConflictStatus(
+  userId: string,
+  weekOfIso: string,
+  status: "EXCUSED" | "UNEXCUSED",
+) {
+  const admin = await requireAdmin();
+  await prisma.conflict.updateMany({
+    where: { userId, weekOf: startOfWeek(new Date(weekOfIso)) },
+    data: { status, reviewedById: admin.id, reviewedAt: new Date() },
+  });
+  revalidatePath("/admin/conflicts");
+  revalidatePath("/admin/schedule-builder");
 }
 
 export async function addUnavailability(formData: FormData) {
@@ -150,57 +188,159 @@ export async function deleteUnavailability(unavailabilityId: string) {
   revalidatePath("/conflicts");
 }
 
-export async function importGoogleCalendarWeek(weekStartIso: string) {
-  const session = await auth();
-  const userId = session!.user.id;
+/** The signed-in person's own Google calendars, so they can say which one is
+ * their PADT conflict calendar. Returns the failure as a value rather than
+ * throwing — the Conflicts page has to render whether or not Google is
+ * reachable. */
+export async function getMyCalendars(): Promise<
+  { calendars: GoogleCalendarSummary[] } | { error: string }
+> {
+  const user = await requireUser();
+  try {
+    return { calendars: await listGoogleCalendarsForUser(user.id) };
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : "Couldn't reach Google Calendar",
+    };
+  }
+}
 
-  const weekStart = new Date(weekStartIso);
-  const weekEnd = addDays(weekStart, 7);
+export async function setConflictCalendar(formData: FormData) {
+  const user = await requireUser();
+  const calendarId = String(formData.get("calendarId") ?? "").trim();
+  const calendarName = String(formData.get("calendarName") ?? "").trim();
 
-  const calendar = await getGoogleCalendarClientForUser(userId);
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      conflictCalendarId: calendarId || null,
+      conflictCalendarName: calendarId ? calendarName || calendarId : null,
+    },
+  });
+  revalidatePath("/conflicts");
+}
+
+export interface ConflictSyncResult {
+  added: number;
+  updated: number;
+  removed: number;
+  calendarName: string;
+}
+
+/** Pulls conflicts in from the person's chosen conflict calendar.
+ *
+ * `weeks` covers a whole term in one go — the point of a dedicated conflict
+ * calendar is that you keep it current and the app follows, so re-syncing has
+ * to be cheap to do and safe to repeat. Only rows a previous sync created are
+ * touched: conflicts typed into the app directly have no source id and are
+ * left alone, and an event deleted in Google disappears here next sync. */
+export async function syncConflictCalendar(
+  rangeStartIso: string,
+  weeks: number,
+): Promise<ConflictSyncResult> {
+  const user = await requireUser();
+  const me = await prisma.user.findUniqueOrThrow({
+    where: { id: user.id },
+    select: { conflictCalendarId: true, conflictCalendarName: true },
+  });
+
+  // Falling back to "primary" keeps the button working for anyone who hasn't
+  // picked a calendar yet, which is how it behaved before this existed.
+  const calendarId = me.conflictCalendarId ?? "primary";
+  const rangeStart = new Date(rangeStartIso);
+  const rangeEnd = addDays(rangeStart, weeks * 7);
+
+  const calendar = await getGoogleCalendarClientForUser(user.id);
   const { data } = await calendar.events.list({
-    calendarId: "primary",
-    timeMin: weekStart.toISOString(),
-    timeMax: weekEnd.toISOString(),
+    calendarId,
+    timeMin: rangeStart.toISOString(),
+    timeMax: rangeEnd.toISOString(),
     singleEvents: true,
     orderBy: "startTime",
+    maxResults: 2500,
   });
 
   const events = (data.items ?? []).filter(
-    (event) => event.id && event.start?.dateTime && event.end?.dateTime,
+    (event) =>
+      event.id &&
+      event.status !== "cancelled" &&
+      event.start?.dateTime &&
+      event.end?.dateTime,
   );
+
+  const existing = await prisma.conflict.findMany({
+    where: {
+      userId: user.id,
+      sourceGoogleEventId: { not: null },
+      startDateTime: { gte: rangeStart, lt: rangeEnd },
+    },
+    select: {
+      id: true,
+      sourceGoogleEventId: true,
+      startDateTime: true,
+      endDateTime: true,
+      title: true,
+    },
+  });
+  const existingByEventId = new Map(
+    existing.map((row) => [row.sourceGoogleEventId!, row]),
+  );
+
+  let added = 0;
+  let updated = 0;
 
   for (const event of events) {
     const start = new Date(event.start!.dateTime!);
     const end = new Date(event.end!.dateTime!);
-    const existing = await prisma.conflict.findFirst({
-      where: { userId, sourceGoogleEventId: event.id },
-      select: { id: true },
-    });
+    // The event's own title is the whole point — it's what the AD reads when
+    // deciding whether a conflict is excused.
+    const title = event.summary ?? null;
+    const row = existingByEventId.get(event.id!);
 
-    if (existing) {
-      await prisma.conflict.update({
-        where: { id: existing.id },
-        data: {
-          startDateTime: start,
-          endDateTime: end,
-          note: event.summary ?? null,
-          weekOf: startOfWeek(start),
-        },
-      });
+    if (row) {
+      existingByEventId.delete(event.id!);
+      const unchanged =
+        row.startDateTime.getTime() === start.getTime() &&
+        row.endDateTime.getTime() === end.getTime() &&
+        row.title === title;
+      if (!unchanged) {
+        await prisma.conflict.update({
+          where: { id: row.id },
+          data: {
+            startDateTime: start,
+            endDateTime: end,
+            title,
+            weekOf: startOfWeek(start),
+          },
+        });
+        updated++;
+      }
     } else {
       await prisma.conflict.create({
         data: {
-          userId,
+          userId: user.id,
           weekOf: startOfWeek(start),
           startDateTime: start,
           endDateTime: end,
-          note: event.summary ?? null,
+          title,
           sourceGoogleEventId: event.id,
         },
       });
+      added++;
     }
   }
 
+  const staleIds = Array.from(existingByEventId.values()).map((r) => r.id);
+  if (staleIds.length > 0) {
+    await prisma.conflict.deleteMany({ where: { id: { in: staleIds } } });
+  }
+
   revalidatePath("/conflicts");
+  revalidatePath("/admin/conflicts");
+  return {
+    added,
+    updated,
+    removed: staleIds.length,
+    calendarName: me.conflictCalendarName ?? "your main calendar",
+  };
 }

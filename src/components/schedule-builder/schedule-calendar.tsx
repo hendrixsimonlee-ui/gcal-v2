@@ -22,6 +22,7 @@ export interface PracticeEvent {
   startDateTime: string;
   endDateTime: string;
   status: "PROPOSED" | "CONFIRMED";
+  plannedArrivals?: { userId: string; name: string; arriveAt: string }[];
 }
 
 const DANCE_COLORS = [
@@ -90,6 +91,11 @@ export function ScheduleCalendar({
     <FullCalendar
       plugins={[timeGridPlugin, dayGridPlugin, interactionPlugin]}
       initialView="timeGridWeek"
+      // Monday-first, matching the Monday-based weeks the rest of the app keys
+      // off (conflict submissions, choreographer excuses, the week tracker).
+      // With FullCalendar's default Sunday start, the visible week and the
+      // week those features act on would be a day out of step.
+      firstDay={1}
       headerToolbar={{ left: "prev,next today", center: "title", right: "timeGridWeek,dayGridMonth" }}
       height="auto"
       slotMinTime={slotMinTime}

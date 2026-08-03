@@ -36,9 +36,15 @@ export interface RecurringWindow {
   endTime: string; // "HH:mm"
 }
 
+/** A one-off change to a space's hours on a single date. It *replaces* the
+ * usual weekly hours for that date rather than adding to them: `isAvailable:
+ * false` closes the space, and a start/end opens it for exactly those hours
+ * instead. */
 export interface DateOverride {
   date: Date;
   isAvailable: boolean;
+  startTime?: string | null;
+  endTime?: string | null;
 }
 
 /** One bookable room and everything needed to test slots against it. Passing
@@ -123,6 +129,14 @@ function dateKey(date: Date): string {
   return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
 }
 
+/** The same key for an override's date, which comes from a Prisma `@db.Date`
+ * column and is therefore anchored at UTC midnight. Reading it with local
+ * getters would move the closure to the day before for anyone west of
+ * Greenwich — a closed gym would still be offered as bookable. */
+function overrideDateKey(date: Date): string {
+  return `${date.getUTCFullYear()}-${date.getUTCMonth()}-${date.getUTCDate()}`;
+}
+
 /** Generates and ranks candidate practice slots for a dance across one or
  * more spaces. Hard-filters on space availability, room double-booking, and
  * mandatory choreographer availability; soft-scores the rest of the cast
@@ -151,36 +165,48 @@ export function generateCandidateSlots(input: SchedulingInput): CandidateSlot[] 
 
   for (const space of spaces) {
     const overrideByDateKey = new Map(
-      space.dateOverrides.map((o) => [dateKey(o.date), o.isAvailable]),
+      space.dateOverrides.map((o) => [overrideDateKey(o.date), o]),
     );
 
-    for (const window of space.recurringWindows) {
-      const windowStartMin = timeToMinutes(window.startTime);
-      const windowEndMin = timeToMinutes(window.endTime);
-      if (windowEndMin - windowStartMin < durationMinutes) continue;
+    // Walk the search range day by day and work out that day's real hours,
+    // rather than walking the weekly pattern and patching it: a one-off
+    // replaces the usual hours outright, so the two can't be layered.
+    const cursorDate = startOfWeek(searchStart);
+    while (cursorDate < searchEnd) {
+      const dayStart = new Date(cursorDate);
+      cursorDate.setDate(cursorDate.getDate() + 1);
+      if (dayStart >= searchEnd) break;
 
-      let cursorDate = startOfWeek(searchStart);
-      while (cursorDate < searchEnd) {
-        const dayOffset = (window.dayOfWeek - cursorDate.getDay() + 7) % 7;
-        const candidateDate = addDays(cursorDate, dayOffset);
-        if (candidateDate >= searchStart && candidateDate < searchEnd) {
-          const override = overrideByDateKey.get(dateKey(candidateDate));
-          if (override !== false) {
-            for (
-              let startMin = windowStartMin;
-              startMin + durationMinutes <= windowEndMin;
-              startMin += slotIncrementMinutes
-            ) {
-              const slotStart = new Date(candidateDate);
-              slotStart.setHours(0, startMin, 0, 0);
-              const slotEnd = new Date(slotStart.getTime() + durationMinutes * 60000);
-              if (slotStart < searchStart) continue;
+      const override = overrideByDateKey.get(dateKey(dayStart));
+      let windows: { startTime: string; endTime: string }[];
+      if (override) {
+        windows =
+          override.isAvailable && override.startTime && override.endTime
+            ? [{ startTime: override.startTime, endTime: override.endTime }]
+            : [];
+      } else {
+        windows = space.recurringWindows.filter(
+          (w) => w.dayOfWeek === dayStart.getDay(),
+        );
+      }
 
-              candidates.push(scoreCandidate(slotStart, slotEnd, space));
-            }
-          }
+      for (const window of windows) {
+        const windowStartMin = timeToMinutes(window.startTime);
+        const windowEndMin = timeToMinutes(window.endTime);
+        if (windowEndMin - windowStartMin < durationMinutes) continue;
+
+        for (
+          let startMin = windowStartMin;
+          startMin + durationMinutes <= windowEndMin;
+          startMin += slotIncrementMinutes
+        ) {
+          const slotStart = new Date(dayStart);
+          slotStart.setHours(0, startMin, 0, 0);
+          const slotEnd = new Date(slotStart.getTime() + durationMinutes * 60000);
+          if (slotStart < searchStart) continue;
+
+          candidates.push(scoreCandidate(slotStart, slotEnd, space));
         }
-        cursorDate = addWeeks(cursorDate, 1);
       }
     }
   }
@@ -190,7 +216,9 @@ export function generateCandidateSlots(input: SchedulingInput): CandidateSlot[] 
     end: Date,
     space: SpaceOption,
   ): CandidateSlot | null {
-    // Hard filter: don't double-book this space.
+    // Hard filter: don't double-book this space. Callers pass drafts as well
+    // as confirmed practices, so a slot the AD has already pencilled in
+    // stays reserved while they build out the rest of the term.
     for (const p of space.existingPractices) {
       if (overlaps(start, end, p.startDateTime, p.endDateTime)) return null;
     }
