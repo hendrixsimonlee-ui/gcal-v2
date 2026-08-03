@@ -4,11 +4,12 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
     "test": "tsx src/lib/scheduling.test.ts && tsx src/lib/attendance.test.ts",
-    "seed:demo": "tsx --env-file=.env prisma/seed-demo.ts"
+    "seed:demo": "tsx --env-file=.env prisma/seed-demo.ts",
+    "postinstall": "prisma generate"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.3",
