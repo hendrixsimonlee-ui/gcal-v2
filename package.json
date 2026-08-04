@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
- "build": "prisma generate && prisma migrate deploy && next build",
+    "build": "prisma generate && prisma migrate deploy && next build",
     "start": "next start",
     "lint": "eslint",
     "test": "TZ=UTC tsx src/lib/timezone.test.ts && TZ=UTC tsx src/lib/space-matching.test.ts && TZ=UTC tsx src/lib/scheduling.test.ts && TZ=UTC tsx src/lib/attendance.test.ts && TZ=UTC tsx src/lib/optimizer.test.ts",
