@@ -48,7 +48,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   trustHost: true,
   providers: [
     Google({
-<<<<<<< HEAD
       // Auth.js only infers credentials from AUTH_GOOGLE_ID/AUTH_GOOGLE_SECRET
       // (see @auth/core/lib/utils/env.js). Every doc here uses the
       // GOOGLE_CLIENT_* names, so read those explicitly — otherwise the
@@ -57,10 +56,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       // Auth.js fall back to its own AUTH_GOOGLE_* names.
       clientId: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-=======
-      clientId: process.env.GOOGLE_CLIENT_ID,
-   clientSecret: process.env.GOOGLE_CLIENT_SECRET,
->>>>>>> d530522d4cda6725d57c9f9f69a67ef03d8c9845
       authorization: {
         params: {
           scope: GOOGLE_SCOPES,
