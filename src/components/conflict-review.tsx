@@ -7,6 +7,7 @@ import {
   setConflictStatus,
   setWeekConflictStatus,
 } from "@/lib/actions/conflicts";
+import { SubmissionTracker } from "@/components/submission-tracker";
 import { APP_TIME_ZONE } from "@/lib/timezone";
 
 type Status = "NOT_REVIEWED" | "EXCUSED" | "UNEXCUSED";
@@ -115,10 +116,13 @@ export function ConflictReview({
           Conflict Review
         </h1>
         <p className="mt-1 text-sm text-ink-soft">
-          Go person by person and say whether each conflict is excused. This is
-          the step before you build the schedule.
+          Two jobs, in order: check everyone&rsquo;s conflicts are actually in,
+          then go person by person and say whether each one is excused. Both
+          come before building the schedule.
         </p>
       </div>
+
+      <SubmissionTracker weekOfIso={weekOfIso} weekLabel={weekLabel} />
 
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-surface px-4 py-3">
         <div className="flex items-center gap-3">

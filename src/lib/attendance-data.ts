@@ -778,6 +778,7 @@ export interface UpcomingPractice {
   danceName: string;
   spaceName: string | null;
   startDateTime: Date;
+  endDateTime: Date;
   expectedCount: number;
   excusedCount: number;
   lateCount: number;
@@ -838,6 +839,7 @@ export async function getUpcomingPracticesForDances(
       danceName: practice.dance.name,
       spaceName: practice.space?.name ?? null,
       startDateTime: practice.startDateTime,
+      endDateTime: practice.endDateTime,
       expectedCount: cast.filter((id) => !excused.has(id) && !late.has(id)).length,
       excusedCount: cast.filter((id) => excused.has(id) && !late.has(id)).length,
       lateCount: late.size,

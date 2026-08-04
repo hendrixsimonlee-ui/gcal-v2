@@ -55,7 +55,10 @@ export default async function ScheduleBuilderPage() {
         </h1>
         <p className="mt-1 max-w-2xl text-sm leading-relaxed text-ink-soft">
           Let the app propose the whole week, or place practices yourself by
-          dragging on the grid.
+          dragging on the grid. Everything you do here is a draft until you
+          publish: drafts hold their room so nothing gets double-booked, but
+          nobody outside this screen sees them. Move things as many times as
+          you like — the team hears about it once, when you press publish.
         </p>
       </div>
       <BuildWeek weekOfIso={startOfWeek(new Date()).toISOString()} />

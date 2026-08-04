@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/authz";
+import { startOfWeek } from "@/lib/dates";
 
 export async function addDance(formData: FormData) {
   await requireAdmin();
@@ -59,8 +60,11 @@ export async function setDanceWeekOff(
   off: boolean,
 ) {
   await requireAdmin();
-  const weekOf = new Date(weekOfIso);
-  if (Number.isNaN(weekOf.getTime())) throw new Error("Invalid week");
+  // Normalised the same way the tracker reads it, so a marker written from
+  // one screen is always found by the other.
+  const parsed = new Date(weekOfIso);
+  if (Number.isNaN(parsed.getTime())) throw new Error("Invalid week");
+  const weekOf = startOfWeek(parsed);
 
   if (off) {
     await prisma.danceWeekOff.upsert({

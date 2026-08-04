@@ -1,4 +1,4 @@
-import { google } from "googleapis";
+import { google, type calendar_v3 } from "googleapis";
 import { prisma } from "@/lib/prisma";
 import {
   appDateKey,
@@ -70,6 +70,45 @@ export async function listGoogleCalendarsForUser(
     .sort((a, b) => Number(b.primary) - Number(a.primary) || a.name.localeCompare(b.name));
 }
 
+/** Every timed event on a calendar in a range, following `nextPageToken`.
+ *
+ * Google caps `events.list` at 2500 results per page and hands back a token
+ * for the rest. A single call therefore looks successful while silently
+ * dropping everything past the first page — which is exactly what a whole
+ * term of room bookings, or a busy student's year of classes, will be. The
+ * page size stays at 2500 so the common case is still one round trip.
+ *
+ * The guard is a safety rail, not a limit anyone should hit: 40 pages is
+ * 100,000 events. If a token ever came back forever, this stops rather than
+ * looping until the function times out. */
+export async function listAllEvents(
+  calendar: calendar_v3.Calendar,
+  calendarId: string,
+  rangeStart: Date,
+  rangeEnd: Date,
+): Promise<calendar_v3.Schema$Event[]> {
+  const items: calendar_v3.Schema$Event[] = [];
+  let pageToken: string | undefined;
+  let pages = 0;
+
+  do {
+    const { data } = await calendar.events.list({
+      calendarId,
+      timeMin: rangeStart.toISOString(),
+      timeMax: rangeEnd.toISOString(),
+      singleEvents: true,
+      orderBy: "startTime",
+      maxResults: 2500,
+      pageToken,
+    });
+    items.push(...(data.items ?? []));
+    pageToken = data.nextPageToken ?? undefined;
+    pages++;
+  } while (pageToken && pages < 40);
+
+  return items;
+}
+
 export interface GoogleCalendarBlock {
   eventId: string;
   /** Calendar date as YYYY-MM-DD, in the viewer's timezone. */
@@ -95,19 +134,12 @@ export async function fetchCalendarBlocks(
   rangeEnd: Date,
 ): Promise<{ blocks: GoogleCalendarBlock[]; skippedAllDay: number }> {
   const calendar = await getGoogleCalendarClientForUser(userId);
-  const { data } = await calendar.events.list({
-    calendarId,
-    timeMin: rangeStart.toISOString(),
-    timeMax: rangeEnd.toISOString(),
-    singleEvents: true,
-    orderBy: "startTime",
-    maxResults: 2500,
-  });
+  const events = await listAllEvents(calendar, calendarId, rangeStart, rangeEnd);
 
   const blocks: GoogleCalendarBlock[] = [];
   let skippedAllDay = 0;
 
-  for (const event of data.items ?? []) {
+  for (const event of events) {
     if (!event.id) continue;
     if (event.status === "cancelled") continue;
     if (!event.start?.dateTime || !event.end?.dateTime) {

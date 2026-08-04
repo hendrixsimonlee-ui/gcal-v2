@@ -9,6 +9,7 @@ const ADMIN_NAV: NavItem[] = [
   { href: "/admin/roster", label: "Roster" },
   { href: "/admin/spaces", label: "Spaces" },
   { href: "/admin/dances", label: "Dances" },
+  { href: "/admin/dancer-calendars", label: "Dancer Calendars" },
   { href: "/admin/conflicts", label: "Conflict Review" },
   { href: "/admin/schedule-builder", label: "Schedule Builder" },
   { href: "/admin/attendance", label: "Attendance Review" },

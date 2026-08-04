@@ -67,6 +67,7 @@ enum NotificationType {
   CHECK_IN_OPEN
   ATTENDANCE_DUE
   PRACTICE_CHANGED
+  CONFLICTS_DUE
 }
 
 /// Dancers no longer categorise their own conflicts — they type a title and
@@ -122,6 +123,8 @@ model User {
   notesAbout          PracticeNote[]              @relation("NoteSubject")
   pushSubscriptions   PushSubscription[]
   notifications       Notification[]
+  conflictSubmissions ConflictSubmission[]
+  weeksReviewed       AttendanceWeekReview[]      @relation("WeekReviewer")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -314,6 +317,24 @@ model Practice {
   /// updates that event in place instead of creating a second one.
   googleEventId String?
 
+  /// When this practice was first published. Distinct from `status` because
+  /// the AD can unpublish and republish; this is the first time the cast was
+  /// ever told it exists.
+  publishedAt DateTime?
+
+  /// The last time the cast was actually told about this practice, and
+  /// whether it has been edited since. Between those two, the app knows the
+  /// difference between "published and accurate" and "published, then moved,
+  /// and nobody has been told yet" — which is what stops every drag of a
+  /// published practice from firing a notification at forty people.
+  announcedAt         DateTime?
+  pendingAnnouncement Boolean   @default(false)
+
+  /// What changed since the last announcement, in plain words ("moved to
+  /// Thursday 7:00pm", "room changed to Platt Studio B"). Collected so the
+  /// announcement can say what happened instead of "something changed".
+  pendingChangeNote String?
+
   attendance      Attendance[]
   plannedArrivals PlannedArrival[]
   notes           PracticeNote[]
@@ -502,10 +523,56 @@ model SpaceNameReview {
   /// Set when the AD explicitly says this title is not a room.
   ignored Boolean @default(false)
 
+  /// True when the sync made the room itself rather than waiting to be told
+  /// to. The bookings are already imported; this only marks the row as
+  /// "worth a glance" so the AD can rename or merge it. It clears the first
+  /// time they act on it.
+  autoCreated Boolean @default(false)
+
   firstSeenAt DateTime @default(now())
   lastSeenAt  DateTime @updatedAt
 
   @@index([ignored, resolvedSpaceId])
+}
+
+/// A dancer saying "my conflicts for this week are in".
+///
+/// Without this the AD can't tell an empty week apart from a week someone
+/// hasn't got round to yet, which is the difference between scheduling around
+/// them confidently and scheduling on top of a class they never logged.
+model ConflictSubmission {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  weekOf DateTime @db.Date
+
+  /// Null while the row exists only to remember a nudge. "Submitted" is the
+  /// dancer's own act and nothing else may set it — an AD reminder must never
+  /// make someone look like they answered.
+  submittedAt DateTime?
+
+  /// The last time the AD nudged them about this week, so a second nudge is
+  /// a deliberate act rather than an accident of clicking twice.
+  nudgedAt DateTime?
+
+  @@unique([userId, weekOf])
+  @@index([weekOf])
+}
+
+/// The AD ticking a week off as reviewed on the attendance archive. Locks
+/// that week's records against accidental edits; reopening is one click and
+/// leaves the row behind, so the tick is a working state rather than a
+/// one-way door.
+model AttendanceWeekReview {
+  id     String   @id @default(cuid())
+  weekOf DateTime @unique @db.Date
+
+  reviewedAt   DateTime @default(now())
+  reviewedById String?
+  reviewedBy   User?    @relation("WeekReviewer", fields: [reviewedById], references: [id])
+
+  @@index([weekOf])
 }
 
 /// A browser/phone that has agreed to receive push notifications. One person

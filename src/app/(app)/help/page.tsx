@@ -60,6 +60,28 @@ export default async function HelpPage() {
           <B>Out of town</B> at the bottom of that page instead. It takes you
           out of scheduling entirely for those dates.
         </p>
+        <p>
+          When you&rsquo;ve been through the week, press{" "}
+          <B>My conflicts are in</B>. Do it even if you have none — from the
+          AD&rsquo;s side, a blank week and a week nobody has looked at are
+          indistinguishable, and that&rsquo;s how a rehearsal ends up on top of
+          a midterm. You can still add or change things afterwards.
+        </p>
+      </Section>
+
+      <Section title="When the schedule changes">
+        <p>
+          You only hear from us when something is <B>published</B>. The AD
+          drafts a week, moves things around, and none of that reaches you. The
+          moment it&rsquo;s published you get one message listing everything
+          that&rsquo;s yours — not one per practice.
+        </p>
+        <p>
+          If a published practice gets moved or its room changes, the same rule
+          applies: the change waits until the AD sends it, and you get one
+          message covering everything that moved. The only automatic message is
+          the check-in nudge when practice actually starts.
+        </p>
       </Section>
 
       <Section title="Checking in at practice">

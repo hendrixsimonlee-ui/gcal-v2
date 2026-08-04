@@ -4,8 +4,10 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/authz";
 import { startOfWeek } from "@/lib/dates";
+import { APP_TIME_ZONE } from "@/lib/timezone";
 import { ANY_SPACE } from "@/lib/constants";
 import {
+  announcePracticeChanges,
   notifyPracticeChanged,
   notifyPracticeConfirmed,
   notifySchedulePublished,
@@ -25,6 +27,16 @@ import {
 
 const SEARCH_WEEKS = 4;
 const SLOT_INCREMENT_MINUTES = 30;
+
+/** "Thursday, Aug 6 at 7:00 PM" — the phrasing a change note reads best in. */
+const changeFormatter = new Intl.DateTimeFormat("en-US", {
+  timeZone: APP_TIME_ZONE,
+  weekday: "long",
+  month: "short",
+  day: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+});
 
 export async function getCandidateSlots(
   danceId: string,
@@ -213,17 +225,30 @@ export async function getSchedulingSidebarData(
   }));
 }
 
+/** What a dance's week is, in one word the AD picks from a dropdown.
+ *
+ * NOT_PRACTISING is set by hand. DRAFT and PUBLISHED are what the practices
+ * say, so the dropdown never disagrees with the grid: choosing PUBLISHED
+ * publishes, and choosing DRAFT takes it back. */
+export type WeekStatus = "NOT_PRACTISING" | "EMPTY" | "DRAFT" | "PUBLISHED";
+
 export interface WeekTrackerRow {
   danceId: string;
   danceName: string;
   defaultDurationMinutes: number;
   weekOff: boolean;
+  status: WeekStatus;
+  /** Published practices carrying an edit nobody has been told about yet. */
+  pendingChanges: number;
   practices: {
     id: string;
     startDateTime: Date;
     endDateTime: Date;
+    spaceId: string | null;
     spaceName: string | null;
     status: "PROPOSED" | "CONFIRMED";
+    pendingAnnouncement: boolean;
+    pendingChangeNote: string | null;
   }[];
 }
 
@@ -256,21 +281,110 @@ export async function getWeekTracker(
 
   const offIds = new Set(weeksOff.map((w) => w.danceId));
 
-  return dances.map((dance) => ({
-    danceId: dance.id,
-    danceName: dance.name,
-    defaultDurationMinutes: dance.defaultDurationMinutes,
-    weekOff: offIds.has(dance.id),
-    practices: practices
-      .filter((p) => p.danceId === dance.id)
-      .map((p) => ({
+  return dances.map((dance) => {
+    const mine = practices.filter((p) => p.danceId === dance.id);
+    const status: WeekStatus = offIds.has(dance.id)
+      ? "NOT_PRACTISING"
+      : mine.length === 0
+        ? "EMPTY"
+        : mine.every((p) => p.status === "CONFIRMED")
+          ? "PUBLISHED"
+          : "DRAFT";
+
+    return {
+      danceId: dance.id,
+      danceName: dance.name,
+      defaultDurationMinutes: dance.defaultDurationMinutes,
+      weekOff: offIds.has(dance.id),
+      status,
+      pendingChanges: mine.filter((p) => p.pendingAnnouncement).length,
+      practices: mine.map((p) => ({
         id: p.id,
         startDateTime: p.startDateTime,
         endDateTime: p.endDateTime,
+        spaceId: p.spaceId,
         spaceName: p.space?.name ?? null,
         status: p.status,
+        pendingAnnouncement: p.pendingAnnouncement,
+        pendingChangeNote: p.pendingChangeNote,
       })),
-  }));
+    };
+  });
+}
+
+export interface PracticeDetail {
+  id: string;
+  danceId: string;
+  danceName: string;
+  spaceId: string | null;
+  spaceName: string | null;
+  startIso: string;
+  endIso: string;
+  status: "PROPOSED" | "CONFIRMED";
+  pendingAnnouncement: boolean;
+  pendingChangeNote: string | null;
+  hasEnded: boolean;
+  attendanceSubmitted: boolean;
+  castSize: number;
+  plannedArrivals: { userId: string; name: string; arriveAtIso: string }[];
+  /** Rooms free for this practice's window, plus the one it's already in. */
+  availableSpaces: { id: string; name: string }[];
+}
+
+/** Everything one practice needs to be edited in one place.
+ *
+ * Before this, changing a room meant deleting the practice and building it
+ * again from scratch, which lost its late arrivals and re-announced it to the
+ * cast. Room, time, status and who's arriving late are all one panel now. */
+export async function getPracticeDetail(
+  practiceId: string,
+): Promise<PracticeDetail> {
+  await requireAdmin();
+  const practice = await prisma.practice.findUniqueOrThrow({
+    where: { id: practiceId },
+    include: {
+      dance: { select: { name: true, memberships: { select: { userId: true } } } },
+      space: { select: { name: true } },
+      plannedArrivals: { include: { user: { select: { name: true, email: true } } } },
+    },
+  });
+
+  const [spaces, clashes] = await Promise.all([
+    prisma.space.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
+    prisma.practice.findMany({
+      where: {
+        id: { not: practiceId },
+        startDateTime: { lt: practice.endDateTime },
+        endDateTime: { gt: practice.startDateTime },
+      },
+      select: { spaceId: true },
+    }),
+  ]);
+  const taken = new Set(clashes.map((c) => c.spaceId).filter(Boolean));
+
+  return {
+    id: practice.id,
+    danceId: practice.danceId,
+    danceName: practice.dance.name,
+    spaceId: practice.spaceId,
+    spaceName: practice.space?.name ?? null,
+    startIso: practice.startDateTime.toISOString(),
+    endIso: practice.endDateTime.toISOString(),
+    status: practice.status,
+    pendingAnnouncement: practice.pendingAnnouncement,
+    pendingChangeNote: practice.pendingChangeNote,
+    hasEnded: practice.endDateTime < new Date(),
+    attendanceSubmitted: practice.attendanceSubmittedAt !== null,
+    castSize: practice.dance.memberships.length,
+    plannedArrivals: practice.plannedArrivals.map((a) => ({
+      userId: a.userId,
+      name: a.user.name ?? a.user.email,
+      arriveAtIso: a.arriveAt.toISOString(),
+    })),
+    availableSpaces: spaces.filter(
+      (s) => !taken.has(s.id) || s.id === practice.spaceId,
+    ),
+  };
 }
 
 export async function createDraftPractice(
@@ -327,25 +441,101 @@ export async function updatePracticeTime(
   await requireAdmin();
   const before = await prisma.practice.findUniqueOrThrow({
     where: { id: practiceId },
-    select: { status: true, startDateTime: true },
+    select: { status: true, startDateTime: true, endDateTime: true },
   });
 
-  const practice = await prisma.practice.update({
+  const start = new Date(startDateTime);
+  const end = new Date(endDateTime);
+  const moved =
+    before.startDateTime.getTime() !== start.getTime() ||
+    before.endDateTime.getTime() !== end.getTime();
+
+  await prisma.practice.update({
     where: { id: practiceId },
     data: {
-      startDateTime: new Date(startDateTime),
-      endDateTime: new Date(endDateTime),
+      startDateTime: start,
+      endDateTime: end,
+      // A published practice that moves is staged, not announced. The AD
+      // shifts things around several times in one sitting; sending on every
+      // drag meant the cast got three messages for one decision and started
+      // ignoring all of them. "Publish changes" is what sends.
+      ...(before.status === "CONFIRMED" && moved
+        ? {
+            pendingAnnouncement: true,
+            pendingChangeNote: `moved to ${changeFormatter.format(start)}`,
+          }
+        : {}),
     },
   });
 
-  // Moving a published practice is a change the team needs to hear about,
-  // and the shared calendar has to follow it without anyone pressing a
-  // button. Dragging a draft around is just the AD thinking out loud.
+  // The shared calendar still follows immediately — it's a reference, not a
+  // notification, and a stale one is worse than a quiet one.
   if (before.status === "CONFIRMED") {
     await syncPracticeToTeamCalendar(practiceId);
-    if (before.startDateTime.getTime() !== practice.startDateTime.getTime()) {
-      await notifyPracticeChanged(practiceId, "moved");
+  }
+
+  revalidatePath("/admin/schedule-builder");
+  revalidatePath("/schedule");
+}
+
+/** Moves a practice to a different room. Late room changes are the single
+ * most common edit the AD makes, and until now the only way to make one was
+ * to delete the practice and rebuild it. */
+export async function updatePracticeSpace(
+  practiceId: string,
+  spaceId: string | null,
+) {
+  await requireAdmin();
+  const before = await prisma.practice.findUniqueOrThrow({
+    where: { id: practiceId },
+    select: {
+      status: true,
+      spaceId: true,
+      startDateTime: true,
+      endDateTime: true,
+    },
+  });
+  if (before.spaceId === spaceId) return;
+
+  if (spaceId) {
+    const clash = await prisma.practice.findFirst({
+      where: {
+        id: { not: practiceId },
+        spaceId,
+        startDateTime: { lt: before.endDateTime },
+        endDateTime: { gt: before.startDateTime },
+      },
+      select: { dance: { select: { name: true } } },
+    });
+    if (clash) {
+      throw new Error(`${clash.dance.name} already has that room then`);
     }
+  }
+
+  const space = spaceId
+    ? await prisma.space.findUnique({
+        where: { id: spaceId },
+        select: { name: true },
+      })
+    : null;
+
+  await prisma.practice.update({
+    where: { id: practiceId },
+    data: {
+      spaceId,
+      ...(before.status === "CONFIRMED"
+        ? {
+            pendingAnnouncement: true,
+            pendingChangeNote: space
+              ? `room changed to ${space.name}`
+              : "room to be confirmed",
+          }
+        : {}),
+    },
+  });
+
+  if (before.status === "CONFIRMED") {
+    await syncPracticeToTeamCalendar(practiceId);
   }
 
   revalidatePath("/admin/schedule-builder");
@@ -359,9 +549,16 @@ export async function confirmPractice(practiceId: string) {
     select: { status: true },
   });
 
+  const now = new Date();
   await prisma.practice.update({
     where: { id: practiceId },
-    data: { status: "CONFIRMED" },
+    data: {
+      status: "CONFIRMED",
+      publishedAt: now,
+      announcedAt: now,
+      pendingAnnouncement: false,
+      pendingChangeNote: null,
+    },
   });
 
   // Only announce the transition, so re-confirming an already-confirmed
@@ -371,15 +568,184 @@ export async function confirmPractice(practiceId: string) {
   }
   await syncPracticeToTeamCalendar(practiceId);
 
-  revalidatePath("/admin/schedule-builder");
-  revalidatePath("/schedule");
-  revalidatePath("/notifications");
+  revalidateSchedule();
 }
 
-/** Publishes the whole draft schedule in one go — the normal way to finish,
- * since the AD lays out a term's worth of practices before telling anyone.
- * Everyone affected gets a single summary rather than one message per
- * practice. Returns what happened so the UI can report it. */
+/** Takes a practice back off the board without deleting it. The cast is told
+ * once, and it returns to the draft pile where the AD can move it freely
+ * again. */
+export async function unpublishPractice(practiceId: string) {
+  await requireAdmin();
+  const practice = await prisma.practice.findUniqueOrThrow({
+    where: { id: practiceId },
+    select: { status: true },
+  });
+  if (practice.status !== "CONFIRMED") return;
+
+  await notifyPracticeChanged(practiceId, "cancelled");
+  await removePracticeFromTeamCalendar(practiceId);
+  await prisma.practice.update({
+    where: { id: practiceId },
+    data: {
+      status: "PROPOSED",
+      pendingAnnouncement: false,
+      pendingChangeNote: null,
+    },
+  });
+
+  revalidateSchedule();
+}
+
+export interface PublishResult {
+  published: number;
+  announced: number;
+  peopleNotified: number;
+  /** Dances with nothing booked this week that aren't marked as off. Set
+   * when the publish was refused; empty when it went through. */
+  missing: string[];
+}
+
+/** Publishes one dance's drafts for one week.
+ *
+ * Per-dance publish exists because a week is rarely finished all at once: one
+ * choreographer confirms on Sunday and another on Tuesday, and re-publishing
+ * the whole week to get that second dance out would re-announce the first to
+ * everyone in it. */
+export async function publishDance(
+  danceId: string,
+  weekOfIso: string,
+): Promise<PublishResult> {
+  await requireAdmin();
+  return publishScope({ danceId, weekOfIso });
+}
+
+/** Publishes every dance's drafts for a week.
+ *
+ * Refuses, rather than half-publishing, when a dance has nothing booked and
+ * hasn't been marked as not practising. That case is almost always the AD
+ * having missed one — and a schedule that goes out missing a dance is worse
+ * than one that goes out late, because the cast reads "no practice" as
+ * settled. `force` is the AD saying they meant it. */
+export async function publishWeek(
+  weekOfIso: string,
+  force = false,
+): Promise<PublishResult> {
+  await requireAdmin();
+
+  if (!force) {
+    const missing = await dancesWithNothingBooked(weekOfIso);
+    if (missing.length > 0) {
+      return { published: 0, announced: 0, peopleNotified: 0, missing };
+    }
+  }
+  return publishScope({ weekOfIso });
+}
+
+/** Active dances that have neither a practice nor a week-off marker for the
+ * given week — the publish guardrail's evidence. */
+export async function dancesWithNothingBooked(
+  weekOfIso: string,
+): Promise<string[]> {
+  await requireAdmin();
+  const weekOf = startOfWeek(new Date(weekOfIso));
+  const weekEnd = new Date(weekOf.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+  const [dances, practices, weeksOff] = await Promise.all([
+    prisma.dance.findMany({
+      where: { archivedAt: null },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    }),
+    prisma.practice.findMany({
+      where: { startDateTime: { gte: weekOf, lt: weekEnd } },
+      select: { danceId: true },
+    }),
+    prisma.danceWeekOff.findMany({ where: { weekOf }, select: { danceId: true } }),
+  ]);
+
+  const booked = new Set(practices.map((p) => p.danceId));
+  const off = new Set(weeksOff.map((w) => w.danceId));
+  return dances
+    .filter((d) => !booked.has(d.id) && !off.has(d.id))
+    .map((d) => d.name);
+}
+
+/** The shared body of both publish paths: send new practices out, send staged
+ * edits out, and do each as one message per person rather than one per
+ * practice. */
+async function publishScope(scope: {
+  weekOfIso: string;
+  danceId?: string;
+}): Promise<PublishResult> {
+  const weekOf = startOfWeek(new Date(scope.weekOfIso));
+  const weekEnd = new Date(weekOf.getTime() + 7 * 24 * 60 * 60 * 1000);
+  const window = {
+    startDateTime: { gte: weekOf, lt: weekEnd },
+    ...(scope.danceId ? { danceId: scope.danceId } : {}),
+    dance: { archivedAt: null },
+  };
+
+  const [drafts, staged] = await Promise.all([
+    prisma.practice.findMany({
+      where: { ...window, status: "PROPOSED" as const },
+      select: {
+        id: true,
+        dance: { select: { memberships: { select: { userId: true } } } },
+      },
+    }),
+    prisma.practice.findMany({
+      where: { ...window, status: "CONFIRMED" as const, pendingAnnouncement: true },
+      select: { id: true },
+    }),
+  ]);
+
+  const draftIds = drafts.map((d) => d.id);
+  const stagedIds = staged.map((s) => s.id);
+  const now = new Date();
+
+  if (draftIds.length > 0) {
+    await prisma.practice.updateMany({
+      where: { id: { in: draftIds } },
+      data: {
+        status: "CONFIRMED",
+        publishedAt: now,
+        announcedAt: now,
+        pendingAnnouncement: false,
+        pendingChangeNote: null,
+      },
+    });
+    await notifySchedulePublished(draftIds);
+    for (const id of draftIds) await syncPracticeToTeamCalendar(id);
+  }
+
+  let announcedPeople = 0;
+  if (stagedIds.length > 0) {
+    announcedPeople = await announcePracticeChanges(stagedIds);
+    await prisma.practice.updateMany({
+      where: { id: { in: stagedIds } },
+      data: {
+        announcedAt: now,
+        pendingAnnouncement: false,
+        pendingChangeNote: null,
+      },
+    });
+  }
+
+  const people = new Set(
+    drafts.flatMap((d) => d.dance.memberships.map((m) => m.userId)),
+  );
+
+  revalidateSchedule();
+  return {
+    published: draftIds.length,
+    announced: stagedIds.length,
+    peopleNotified: people.size + announcedPeople,
+    missing: [],
+  };
+}
+
+/** Publishes the whole draft schedule in one go, across every week — the
+ * "I've laid out the term, send it" button. */
 export async function confirmAllDrafts(): Promise<{
   confirmed: number;
   peopleNotified: number;
@@ -387,15 +753,22 @@ export async function confirmAllDrafts(): Promise<{
   await requireAdmin();
 
   const drafts = await prisma.practice.findMany({
-    where: { status: "PROPOSED" },
+    where: { status: "PROPOSED", dance: { archivedAt: null } },
     select: { id: true, dance: { select: { memberships: { select: { userId: true } } } } },
   });
   if (drafts.length === 0) return { confirmed: 0, peopleNotified: 0 };
 
   const ids = drafts.map((d) => d.id);
+  const now = new Date();
   await prisma.practice.updateMany({
     where: { id: { in: ids } },
-    data: { status: "CONFIRMED" },
+    data: {
+      status: "CONFIRMED",
+      publishedAt: now,
+      announcedAt: now,
+      pendingAnnouncement: false,
+      pendingChangeNote: null,
+    },
   });
 
   await notifySchedulePublished(ids);
@@ -408,10 +781,15 @@ export async function confirmAllDrafts(): Promise<{
     drafts.flatMap((d) => d.dance.memberships.map((m) => m.userId)),
   );
 
+  revalidateSchedule();
+  return { confirmed: ids.length, peopleNotified: people.size };
+}
+
+function revalidateSchedule() {
   revalidatePath("/admin/schedule-builder");
+  revalidatePath("/admin/attendance");
   revalidatePath("/schedule");
   revalidatePath("/notifications");
-  return { confirmed: ids.length, peopleNotified: people.size };
 }
 
 export async function deletePractice(practiceId: string) {
@@ -433,6 +811,63 @@ export async function deletePractice(practiceId: string) {
 
   revalidatePath("/admin/schedule-builder");
   revalidatePath("/schedule");
+}
+
+/** The dropdown on each tracker row. One action so the label the AD picks and
+ * what actually happens can never drift apart.
+ *
+ * Publishing from here goes through the same per-dance path as the Publish
+ * button, so it also carries out any staged edits for that dance. */
+export async function setWeekStatus(
+  danceId: string,
+  weekOfIso: string,
+  status: Exclude<WeekStatus, "EMPTY">,
+): Promise<PublishResult> {
+  await requireAdmin();
+  const weekOf = startOfWeek(new Date(weekOfIso));
+  const weekEnd = new Date(weekOf.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+  if (status === "NOT_PRACTISING") {
+    const booked = await prisma.practice.count({
+      where: { danceId, startDateTime: { gte: weekOf, lt: weekEnd } },
+    });
+    if (booked > 0) {
+      throw new Error(
+        "Remove this week's practices before marking the dance as sitting out",
+      );
+    }
+    await prisma.danceWeekOff.upsert({
+      where: { danceId_weekOf: { danceId, weekOf } },
+      update: {},
+      create: { danceId, weekOf },
+    });
+    revalidateSchedule();
+    return { published: 0, announced: 0, peopleNotified: 0, missing: [] };
+  }
+
+  await prisma.danceWeekOff.deleteMany({ where: { danceId, weekOf } });
+
+  if (status === "PUBLISHED") {
+    return publishScope({ danceId, weekOfIso });
+  }
+
+  // Back to draft: take every published practice for this dance off the
+  // board, telling the cast once, so "draft" means the same thing here as it
+  // does everywhere else — nobody outside this screen is counting on it.
+  const published = await prisma.practice.findMany({
+    where: {
+      danceId,
+      status: "CONFIRMED",
+      startDateTime: { gte: weekOf, lt: weekEnd },
+    },
+    select: { id: true },
+  });
+  for (const p of published) {
+    await unpublishPractice(p.id);
+  }
+
+  revalidateSchedule();
+  return { published: 0, announced: 0, peopleNotified: 0, missing: [] };
 }
 
 export async function setChoreographerWeeklyExcuse(

@@ -15,6 +15,7 @@ import {
   statusFromCheckIn,
   type AttendanceStatus,
 } from "@/lib/attendance";
+import { formatWeekLabel, startOfWeek } from "@/lib/dates";
 
 const SETTINGS_ID = "singleton";
 
@@ -246,6 +247,23 @@ export async function settleAttendance(practiceId: string): Promise<number> {
   return missing.length;
 }
 
+/** Throws if the AD has ticked this practice's week off as reviewed.
+ *
+ * The tick is the AD's own tracking — "I've been through this week" — and its
+ * job is to stop the record moving under them afterwards. It's never a dead
+ * end: reopening the week from the archive is one click. */
+async function assertWeekOpen(startDateTime: Date) {
+  const review = await prisma.attendanceWeekReview.findUnique({
+    where: { weekOf: startOfWeek(startDateTime) },
+    select: { id: true },
+  });
+  if (review) {
+    throw new Error(
+      "That week has been reviewed and locked. Reopen it on Attendance Review to make changes.",
+    );
+  }
+}
+
 /** A choreographer or admin correcting one person's record — they were there
  * but their phone died, or an absence deserves excusing after the fact. */
 export async function overrideAttendance(
@@ -255,9 +273,10 @@ export async function overrideAttendance(
 ) {
   const practice = await prisma.practice.findUniqueOrThrow({
     where: { id: practiceId },
-    select: { danceId: true },
+    select: { danceId: true, startDateTime: true },
   });
   const marker = await requireChoreographerOrAdmin(practice.danceId);
+  await assertWeekOpen(practice.startDateTime);
 
   await prisma.attendance.upsert({
     where: { practiceId_userId: { practiceId, userId } },
@@ -345,9 +364,10 @@ export async function setActualStartTime(
 export async function submitAttendance(practiceId: string) {
   const practice = await prisma.practice.findUniqueOrThrow({
     where: { id: practiceId },
-    select: { danceId: true },
+    select: { danceId: true, startDateTime: true },
   });
   const submitter = await requireChoreographerOrAdmin(practice.danceId);
+  await assertWeekOpen(practice.startDateTime);
 
   await settleAttendance(practiceId);
   await prisma.practice.update({
@@ -368,9 +388,10 @@ export async function submitAttendance(practiceId: string) {
 export async function unsubmitAttendance(practiceId: string) {
   const practice = await prisma.practice.findUniqueOrThrow({
     where: { id: practiceId },
-    select: { danceId: true },
+    select: { danceId: true, startDateTime: true },
   });
   await requireChoreographerOrAdmin(practice.danceId);
+  await assertWeekOpen(practice.startDateTime);
 
   await prisma.practice.update({
     where: { id: practiceId },
@@ -378,4 +399,100 @@ export async function unsubmitAttendance(practiceId: string) {
   });
   revalidatePath("/attendance");
   revalidatePath(`/attendance/${practiceId}`);
+}
+
+export interface AttendanceWeekRow {
+  weekOfIso: string;
+  weekLabel: string;
+  practiceCount: number;
+  submittedCount: number;
+  presentCount: number;
+  unexcusedCount: number;
+  lateCount: number;
+  reviewedAtIso: string | null;
+  reviewedByName: string | null;
+}
+
+/** The archive: every week that had practices, newest first, with the AD's
+ * own reviewed tick.
+ *
+ * Attendance Review was a flat list that grew all term and had no notion of
+ * "I've dealt with this". A week is the unit the AD actually works in, so
+ * that's the unit that gets ticked off. */
+export async function getAttendanceWeeks(): Promise<AttendanceWeekRow[]> {
+  await requireAdmin();
+
+  const [practices, reviews] = await Promise.all([
+    prisma.practice.findMany({
+      where: { status: "CONFIRMED", startDateTime: { lt: new Date() } },
+      select: {
+        startDateTime: true,
+        attendanceSubmittedAt: true,
+        attendance: { select: { status: true } },
+      },
+      orderBy: { startDateTime: "desc" },
+    }),
+    prisma.attendanceWeekReview.findMany({
+      include: { reviewedBy: { select: { name: true, email: true } } },
+    }),
+  ]);
+
+  const reviewByWeek = new Map(
+    reviews.map((r) => [r.weekOf.toISOString(), r]),
+  );
+  const weeks = new Map<string, AttendanceWeekRow>();
+
+  for (const practice of practices) {
+    const weekOf = startOfWeek(practice.startDateTime);
+    const key = weekOf.toISOString();
+    const review = reviewByWeek.get(key);
+    const row =
+      weeks.get(key) ??
+      ({
+        weekOfIso: key,
+        weekLabel: formatWeekLabel(weekOf),
+        practiceCount: 0,
+        submittedCount: 0,
+        presentCount: 0,
+        unexcusedCount: 0,
+        lateCount: 0,
+        reviewedAtIso: review?.reviewedAt.toISOString() ?? null,
+        reviewedByName:
+          review?.reviewedBy?.name ?? review?.reviewedBy?.email ?? null,
+      } satisfies AttendanceWeekRow);
+
+    row.practiceCount++;
+    if (practice.attendanceSubmittedAt) row.submittedCount++;
+    for (const record of practice.attendance) {
+      if (record.status === "PRESENT") row.presentCount++;
+      else if (record.status === "LATE") {
+        row.presentCount++;
+        row.lateCount++;
+      } else if (record.status === "UNEXCUSED_ABSENT") row.unexcusedCount++;
+    }
+    weeks.set(key, row);
+  }
+
+  return Array.from(weeks.values()).sort((a, b) =>
+    b.weekOfIso.localeCompare(a.weekOfIso),
+  );
+}
+
+/** Ticks a week off, or reopens it. Reopening leaves no trace beyond the row
+ * disappearing — the tick is a working state, not a permanent record. */
+export async function setWeekReviewed(weekOfIso: string, reviewed: boolean) {
+  const admin = await requireAdmin();
+  const weekOf = startOfWeek(new Date(weekOfIso));
+
+  if (reviewed) {
+    await prisma.attendanceWeekReview.upsert({
+      where: { weekOf },
+      update: { reviewedAt: new Date(), reviewedById: admin.id },
+      create: { weekOf, reviewedById: admin.id },
+    });
+  } else {
+    await prisma.attendanceWeekReview.deleteMany({ where: { weekOf } });
+  }
+  revalidatePath("/admin/attendance");
+  revalidatePath("/attendance");
 }

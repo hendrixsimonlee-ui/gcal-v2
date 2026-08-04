@@ -63,10 +63,21 @@ export default async function SpacesPage() {
       where: { id: "singleton" },
       select: { spacesCalendarName: true },
     }),
+    // Rows worth showing are the ones the sync created and the AD hasn't
+    // looked at yet, plus anything left unlinked (a title they reopened).
+    // A row they've renamed, merged or ignored drops out on its own.
     prisma.spaceNameReview.findMany({
-      where: { ignored: false, resolvedSpaceId: null },
+      where: {
+        ignored: false,
+        OR: [{ autoCreated: true }, { resolvedSpaceId: null }],
+      },
       orderBy: { eventCount: "desc" },
-      select: { id: true, rawTitle: true, eventCount: true },
+      select: {
+        id: true,
+        rawTitle: true,
+        eventCount: true,
+        resolvedSpace: { select: { name: true } },
+      },
     }),
   ]);
 
@@ -86,7 +97,12 @@ export default async function SpacesPage() {
       <SpacesCalendarPanel
         calendarName={settings?.spacesCalendarName ?? null}
         terms={terms}
-        pendingReviews={pendingReviews}
+        pendingReviews={pendingReviews.map((r) => ({
+          id: r.id,
+          rawTitle: r.rawTitle,
+          spaceName: r.resolvedSpace?.name ?? null,
+          eventCount: r.eventCount,
+        }))}
         spaces={spaces.map((s) => ({ id: s.id, name: s.name }))}
       />
 
@@ -303,7 +319,7 @@ export default async function SpacesPage() {
             >
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-medium text-ink-soft">
-                  One-off date
+                  Close this room on
                 </label>
                 <input
                   type="date"
@@ -312,29 +328,18 @@ export default async function SpacesPage() {
                   className="rounded-lg border border-line-strong px-2 py-1.5 text-sm bg-surface"
                 />
               </div>
-              <label className="flex items-center gap-2 pb-2 text-sm text-ink-soft">
-                <input type="checkbox" name="closed" />
-                Closed all day
-              </label>
-              <input
-                type="time"
-                name="startTime"
-                aria-label="Replacement start time"
-                className="rounded-lg border border-line-strong px-2 py-1.5 text-sm bg-surface"
-              />
-              <span className="text-sm text-ink-soft">to</span>
-              <input
-                type="time"
-                name="endTime"
-                aria-label="Replacement end time"
-                className="rounded-lg border border-line-strong px-2 py-1.5 text-sm bg-surface"
-              />
               <button
                 type="submit"
                 className="rounded-lg border border-line-strong px-3 py-1.5 text-sm font-medium text-ink-soft hover:bg-surface-3"
               >
-                Add one-off change
+                Close for the day
               </button>
+              <p className="w-full text-xs text-ink-soft">
+                A closure beats everything — the weekly hours and the spaces
+                calendar both. To <em>open</em> a room, book it on the spaces
+                calendar and sync; that way the booking exists somewhere real,
+                not just in here.
+              </p>
             </form>
           </section>
         ))}

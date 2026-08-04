@@ -8,6 +8,7 @@ import {
   ignoreReview,
   listCalendarsForAdmin,
   mapReviewToSpace,
+  renameReviewSpace,
   setSpacesCalendar,
   syncSpacesCalendar,
   type SpacesCalendarSyncResult,
@@ -18,13 +19,15 @@ import type { TermRange } from "@/lib/terms";
 export type PendingReview = {
   id: string;
   rawTitle: string;
+  spaceName: string | null;
   eventCount: number;
 };
 
 /** Step one of setting up a term: point the app at the one calendar carrying
  * every room's bookings, and sync it. Each event becomes a block that room is
- * ours. Titles the app can't place wait here for an answer rather than
- * quietly becoming rooms. */
+ * ours, and a title naming a room we don't have yet makes that room — so the
+ * first sync of a term fills the schedule rather than handing back a list of
+ * questions. The panel below is where those new rooms get tidied up. */
 export function SpacesCalendarPanel({
   calendarName,
   terms,
@@ -205,10 +208,13 @@ export function SpacesCalendarPanel({
             </p>
           )}
           {result.needsReview.length > 0 && (
-            <p className="mt-1 text-xs text-warn">
-              {result.needsReview.length} unfamiliar{" "}
-              {result.needsReview.length === 1 ? "title" : "titles"} need a
-              decision below.
+            <p className="mt-1 text-xs text-ink-soft">
+              Made {result.needsReview.length} new{" "}
+              {result.needsReview.length === 1 ? "room" : "rooms"} from titles
+              on the calendar —{" "}
+              {result.needsReview.map((r) => r.spaceName).join(", ")}. Their
+              bookings are in. Rename or merge them below if the names
+              aren&rsquo;t right.
             </p>
           )}
           {result.duplicateSpaces.map((d) => (
@@ -225,36 +231,66 @@ export function SpacesCalendarPanel({
       )}
 
       {pendingReviews.length > 0 && (
-        <div className="rounded-lg border border-warn/35 bg-warn-soft p-3">
-          <h3 className="text-sm font-semibold text-warn">
-            Titles we didn&rsquo;t recognise
+        <div className="rounded-lg border border-line-strong bg-surface-2 p-3">
+          <h3 className="text-sm font-semibold text-ink">
+            Rooms made from calendar titles
           </h3>
-          <p className="mt-1 text-xs text-warn">
-            Nothing was created for these. Say what each one is and the app
-            will remember.
+          <p className="mt-1 text-xs text-ink-soft">
+            These rooms and their bookings are already in — nothing is waiting
+            on you. Tidy a name up, merge one into a room you already had, or
+            say it isn&rsquo;t a room at all.
           </p>
           <ul className="mt-3 flex flex-col gap-2">
             {pendingReviews.map((review) => (
               <li
                 key={review.id}
-                className="flex flex-wrap items-center gap-2 rounded-lg bg-surface p-2"
+                className="flex flex-col gap-2 rounded-lg bg-surface p-2 sm:flex-row sm:flex-wrap sm:items-center"
               >
-                <span className="text-sm font-medium text-ink">
-                  {review.rawTitle}
-                </span>
-                <span className="text-xs tabular-nums text-ink-soft">
-                  {review.eventCount}{" "}
-                  {review.eventCount === 1 ? "booking" : "bookings"}
-                </span>
-                <span className="flex-1" />
-                <button
-                  type="button"
-                  disabled={isPending}
-                  onClick={() => run(() => createSpaceFromReview(review.id))}
-                  className="rounded-lg bg-accent px-2 py-1 text-xs font-medium text-on-accent hover:bg-accent-hover disabled:opacity-45"
-                >
-                  It&rsquo;s a new room
-                </button>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-ink">
+                    {review.spaceName ?? review.rawTitle}
+                  </p>
+                  <p className="truncate text-xs text-ink-soft">
+                    from &ldquo;{review.rawTitle}&rdquo; ·{" "}
+                    <span className="tabular-nums">{review.eventCount}</span>{" "}
+                    {review.eventCount === 1 ? "booking" : "bookings"}
+                  </p>
+                </div>
+
+                {review.spaceName ? (
+                  <form
+                    action={(fd) =>
+                      run(() =>
+                        renameReviewSpace(review.id, String(fd.get("name") ?? "")),
+                      )
+                    }
+                    className="flex items-center gap-1"
+                  >
+                    <input
+                      name="name"
+                      defaultValue={review.spaceName}
+                      aria-label={`Name for ${review.rawTitle}`}
+                      className="w-40 rounded-lg border border-line-strong bg-surface px-2 py-1 text-xs"
+                    />
+                    <button
+                      type="submit"
+                      disabled={isPending}
+                      className="rounded-lg border border-line-strong px-2 py-1 text-xs font-medium text-ink-soft hover:bg-surface-2 disabled:opacity-45"
+                    >
+                      Rename
+                    </button>
+                  </form>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={isPending}
+                    onClick={() => run(() => createSpaceFromReview(review.id))}
+                    className="rounded-lg bg-accent px-2 py-1 text-xs font-medium text-on-accent hover:bg-accent-hover disabled:opacity-45"
+                  >
+                    Make it a room
+                  </button>
+                )}
+
                 {spaces.length > 0 && (
                   <select
                     defaultValue=""
@@ -263,14 +299,16 @@ export function SpacesCalendarPanel({
                       e.target.value &&
                       run(() => mapReviewToSpace(review.id, e.target.value))
                     }
-                    className="rounded-lg border border-line-strong px-2 py-1 text-xs bg-surface"
+                    className="rounded-lg border border-line-strong bg-surface px-2 py-1 text-xs"
                   >
-                    <option value="">It&rsquo;s one we have…</option>
-                    {spaces.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}
-                      </option>
-                    ))}
+                    <option value="">Merge into…</option>
+                    {spaces
+                      .filter((s) => s.name !== review.spaceName)
+                      .map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name}
+                        </option>
+                      ))}
                   </select>
                 )}
                 <button

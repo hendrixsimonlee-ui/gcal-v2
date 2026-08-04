@@ -4,11 +4,13 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin, requireUser } from "@/lib/authz";
-import { startOfWeek, addDays } from "@/lib/dates";
+import { startOfWeek, addDays, formatWeekLabel } from "@/lib/dates";
+import { notifyConflictsDue } from "@/lib/notify";
 import { clampToSupportedRange } from "@/lib/timezone";
 import { activeRange } from "@/lib/terms";
 import {
   getGoogleCalendarClientForUser,
+  listAllEvents,
   listGoogleCalendarsForUser,
   type GoogleCalendarSummary,
 } from "@/lib/google-calendar";
@@ -158,6 +160,126 @@ export async function setWeekConflictStatus(
   revalidatePath("/admin/schedule-builder");
 }
 
+/** "My conflicts for this week are in."
+ *
+ * Without this the AD can't tell an empty week from an unanswered one, and
+ * every week began with chasing forty people to find out which was which.
+ * Submitting doesn't lock anything — someone remembering a class on Wednesday
+ * can still add it, and doing so quietly leaves the week submitted, because
+ * the point is "I've thought about it", not "this is now frozen". */
+export async function submitWeeklyConflicts(weekOfIso: string) {
+  const user = await requireUser();
+  const weekOf = startOfWeek(new Date(weekOfIso));
+
+  await prisma.conflictSubmission.upsert({
+    where: { userId_weekOf: { userId: user.id, weekOf } },
+    update: { submittedAt: new Date() },
+    create: { userId: user.id, weekOf },
+  });
+  revalidatePath("/conflicts");
+  revalidatePath("/admin/conflicts");
+}
+
+export async function unsubmitWeeklyConflicts(weekOfIso: string) {
+  const user = await requireUser();
+  const weekOf = startOfWeek(new Date(weekOfIso));
+  await prisma.conflictSubmission.deleteMany({
+    where: { userId: user.id, weekOf },
+  });
+  revalidatePath("/conflicts");
+  revalidatePath("/admin/conflicts");
+}
+
+export interface ConflictSubmissionRow {
+  userId: string;
+  name: string;
+  email: string;
+  submittedAtIso: string | null;
+  nudgedAtIso: string | null;
+  conflictCount: number;
+  hasCalendarLinked: boolean;
+}
+
+/** Who has answered for a week and who hasn't — the AD's dashboard.
+ *
+ * Everyone on the roster appears, so the answer to "who's outstanding?" is
+ * read off one screen rather than reconstructed from who happens to have
+ * logged something. */
+export async function getWeeklySubmissions(
+  weekOfIso: string,
+): Promise<ConflictSubmissionRow[]> {
+  await requireAdmin();
+  const weekOf = startOfWeek(new Date(weekOfIso));
+  const weekEnd = addDays(weekOf, 7);
+
+  const [users, submissions, conflicts] = await Promise.all([
+    prisma.user.findMany({
+      where: { memberships: { some: {} } },
+      orderBy: [{ name: "asc" }, { email: "asc" }],
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        conflictCalendarId: true,
+      },
+    }),
+    prisma.conflictSubmission.findMany({ where: { weekOf } }),
+    prisma.conflict.findMany({
+      where: { startDateTime: { gte: weekOf, lt: weekEnd } },
+      select: { userId: true },
+    }),
+  ]);
+
+  const byUser = new Map(submissions.map((s) => [s.userId, s]));
+  const counts = new Map<string, number>();
+  for (const c of conflicts) {
+    counts.set(c.userId, (counts.get(c.userId) ?? 0) + 1);
+  }
+
+  return users.map((u) => ({
+    userId: u.id,
+    name: u.name ?? u.email,
+    email: u.email,
+    submittedAtIso: byUser.get(u.id)?.submittedAt?.toISOString() ?? null,
+    nudgedAtIso: byUser.get(u.id)?.nudgedAt?.toISOString() ?? null,
+    conflictCount: counts.get(u.id) ?? 0,
+    hasCalendarLinked: Boolean(u.conflictCalendarId),
+  }));
+}
+
+/** Nudges everyone who hasn't submitted for a week. Only them — a reminder
+ * that reaches people who already did the thing is how a team learns to
+ * ignore reminders. */
+export async function nudgeMissingSubmissions(
+  weekOfIso: string,
+): Promise<{ nudged: number }> {
+  await requireAdmin();
+  const weekOf = startOfWeek(new Date(weekOfIso));
+  const rows = await getWeeklySubmissions(weekOfIso);
+  const missing = rows.filter((r) => r.submittedAtIso === null);
+  if (missing.length === 0) return { nudged: 0 };
+
+  const count = await notifyConflictsDue(
+    missing.map((m) => m.userId),
+    formatWeekLabel(weekOf),
+  );
+
+  // Recorded so a second nudge is a decision, not a double-click. The row
+  // carries no submittedAt, so being reminded never makes anyone look like
+  // they answered.
+  const now = new Date();
+  for (const person of missing) {
+    await prisma.conflictSubmission.upsert({
+      where: { userId_weekOf: { userId: person.userId, weekOf } },
+      update: { nudgedAt: now },
+      create: { userId: person.userId, weekOf, nudgedAt: now },
+    });
+  }
+
+  revalidatePath("/admin/conflicts");
+  return { nudged: count };
+}
+
 export async function addUnavailability(formData: FormData) {
   const session = await auth();
   const userId = session!.user.id;
@@ -208,6 +330,22 @@ export async function getMyCalendars(): Promise<
   }
 }
 
+/** Every calendar the club account can see — its own plus everything the
+ * dancers have shared with it. This is the list the AD attaches people to. */
+export async function listCalendarsVisibleToAdmin(): Promise<
+  { calendars: GoogleCalendarSummary[] } | { error: string }
+> {
+  const admin = await requireAdmin();
+  try {
+    return { calendars: await listGoogleCalendarsForUser(admin.id) };
+  } catch (error) {
+    return {
+      error:
+        error instanceof Error ? error.message : "Couldn't reach Google Calendar",
+    };
+  }
+}
+
 export async function setConflictCalendar(formData: FormData) {
   const user = await requireUser();
   const calendarId = String(formData.get("calendarId") ?? "").trim();
@@ -221,6 +359,121 @@ export async function setConflictCalendar(formData: FormData) {
     },
   });
   revalidatePath("/conflicts");
+}
+
+/** Points a dancer's conflicts at a calendar the *club account* can see.
+ *
+ * The team's actual practice is that everyone shares their PADT conflict
+ * calendar with the club Google account. That makes the AD the one person who
+ * can see all of them, so the AD should be the one who can wire them up —
+ * otherwise setting up a term means forty people each doing a four-step thing
+ * correctly, and the ones who don't are invisible until a rehearsal lands on
+ * their midterm. */
+export async function setConflictCalendarForUser(
+  userId: string,
+  calendarId: string,
+  calendarName: string,
+) {
+  await requireAdmin();
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      conflictCalendarId: calendarId || null,
+      conflictCalendarName: calendarId ? calendarName || calendarId : null,
+    },
+  });
+  revalidatePath("/admin/dancer-calendars");
+  revalidatePath("/admin/conflicts");
+}
+
+export interface DancerCalendarRow {
+  userId: string;
+  name: string;
+  email: string;
+  calendarId: string | null;
+  calendarName: string | null;
+  conflictsInTerm: number;
+  lastSyncedIso: string | null;
+}
+
+/** Who's wired up and who isn't, for the whole roster at once. */
+export async function getDancerCalendars(): Promise<DancerCalendarRow[]> {
+  await requireAdmin();
+  const { range } = await activeRange();
+
+  const [users, counts] = await Promise.all([
+    prisma.user.findMany({
+      orderBy: [{ name: "asc" }, { email: "asc" }],
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        conflictCalendarId: true,
+        conflictCalendarName: true,
+      },
+    }),
+    prisma.conflict.groupBy({
+      by: ["userId"],
+      where: {
+        sourceGoogleEventId: { not: null },
+        startDateTime: { gte: range.start, lt: range.end },
+      },
+      _count: { _all: true },
+      _max: { updatedAt: true },
+    }),
+  ]);
+
+  const byUser = new Map(counts.map((c) => [c.userId, c]));
+  return users.map((u) => ({
+    userId: u.id,
+    name: u.name ?? u.email,
+    email: u.email,
+    calendarId: u.conflictCalendarId,
+    calendarName: u.conflictCalendarName,
+    conflictsInTerm: byUser.get(u.id)?._count._all ?? 0,
+    lastSyncedIso: byUser.get(u.id)?._max.updatedAt?.toISOString() ?? null,
+  }));
+}
+
+/** Syncs the whole term for every dancer who has a calendar linked.
+ *
+ * Setting up a term is one button, not forty. Failures are collected rather
+ * than thrown: one dancer having revoked access must not stop the other
+ * thirty-nine from importing. */
+export async function syncAllDancerCalendars(): Promise<{
+  synced: number;
+  added: number;
+  failures: { name: string; reason: string }[];
+}> {
+  await requireAdmin();
+  const rows = await prisma.user.findMany({
+    where: { conflictCalendarId: { not: null } },
+    select: { id: true, name: true, email: true },
+  });
+
+  let synced = 0;
+  let added = 0;
+  const failures: { name: string; reason: string }[] = [];
+
+  for (const person of rows) {
+    try {
+      const result = await syncConflictCalendar("", 0, {
+        userId: person.id,
+        wholeTerm: true,
+      });
+      added += result.added;
+      synced++;
+    } catch (e) {
+      failures.push({
+        name: person.name ?? person.email,
+        reason: e instanceof Error ? e.message : "Sync failed",
+      });
+    }
+  }
+
+  revalidatePath("/admin/dancer-calendars");
+  revalidatePath("/admin/conflicts");
+  return { synced, added, failures };
 }
 
 export interface ConflictSyncResult {
@@ -271,17 +524,18 @@ export async function syncConflictCalendar(
     rangeEnd = addDays(rangeStart, weeks * 7);
   }
 
-  const calendar = await getGoogleCalendarClientForUser(targetId);
-  const { data } = await calendar.events.list({
-    calendarId,
-    timeMin: rangeStart.toISOString(),
-    timeMax: rangeEnd.toISOString(),
-    singleEvents: true,
-    orderBy: "startTime",
-    maxResults: 2500,
-  });
-
-  const events = (data.items ?? []).filter(
+  // Read with whoever is asking.
+  //
+  // When a dancer syncs their own calendar it's their token, as before. When
+  // the AD syncs on someone's behalf it's the AD's — which is the only thing
+  // that can work, because the team's arrangement is that everyone shares
+  // their PADT conflict calendar with the club account. Using the dancer's
+  // token there would require them to have signed in and granted calendar
+  // access, which is exactly the step the AD is doing this to avoid.
+  const calendar = await getGoogleCalendarClientForUser(actor.id);
+  const events = (
+    await listAllEvents(calendar, calendarId, rangeStart, rangeEnd)
+  ).filter(
     (event) =>
       event.id &&
       event.status !== "cancelled" &&

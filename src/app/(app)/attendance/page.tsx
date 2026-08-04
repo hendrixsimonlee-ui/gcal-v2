@@ -15,6 +15,11 @@ const dateFormatter = new Intl.DateTimeFormat("en-US", {
   hour: "numeric",
   minute: "2-digit",
 });
+const clockFormatter = new Intl.DateTimeFormat("en-US", {
+  timeZone: APP_TIME_ZONE,
+  hour: "numeric",
+  minute: "2-digit",
+});
 
 export default async function AttendanceCheckOffPage() {
   const session = await auth();
@@ -80,7 +85,8 @@ export default async function AttendanceCheckOffPage() {
                     {p.danceName}
                   </span>
                   <span className="text-ink-soft">
-                    {dateFormatter.format(p.startDateTime)}
+                    {dateFormatter.format(p.startDateTime)} –{" "}
+                    {clockFormatter.format(p.endDateTime)}
                   </span>
                   {p.spaceName && (
                     <span className="text-xs text-ink-soft">{p.spaceName}</span>
@@ -115,7 +121,8 @@ export default async function AttendanceCheckOffPage() {
                     {p.danceName}
                   </span>
                   <span className="text-ink-soft">
-                    {dateFormatter.format(p.startDateTime)}
+                    {dateFormatter.format(p.startDateTime)} –{" "}
+                    {clockFormatter.format(p.endDateTime)}
                   </span>
                   <span className="text-xs font-medium text-warn">
                     Review &amp; submit →
@@ -144,7 +151,8 @@ export default async function AttendanceCheckOffPage() {
                     {p.danceName}
                   </span>
                   <span className="text-ink-soft">
-                    {dateFormatter.format(p.startDateTime)}
+                    {dateFormatter.format(p.startDateTime)} –{" "}
+                    {clockFormatter.format(p.endDateTime)}
                   </span>
                   <span className="text-xs text-ink-soft">
                     {p.summary.presentCount}/{p.summary.markedCount} there

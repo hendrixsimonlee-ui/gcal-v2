@@ -10,6 +10,7 @@ import {
 } from "@/lib/actions/conflicts";
 import { ConflictCalendarSync } from "@/components/conflict-calendar-sync";
 import { ConflictStatusBadge } from "@/components/status-badges";
+import { SubmitWeekButton } from "@/components/submit-week-button";
 import { APP_TIME_ZONE } from "@/lib/timezone";
 
 const timeFormatter = new Intl.DateTimeFormat("en-US", {
@@ -37,7 +38,7 @@ export default async function MyConflictsPage({
   const prevWeek = toDateParam(addDays(weekStart, -7));
   const nextWeek = toDateParam(addDays(weekStart, 7));
 
-  const [me, weekConflicts, calendarConflicts, unavailabilities] =
+  const [me, weekConflicts, calendarConflicts, unavailabilities, submission] =
     await Promise.all([
       prisma.user.findUniqueOrThrow({
         where: { id: userId },
@@ -60,6 +61,10 @@ export default async function MyConflictsPage({
       prisma.unavailability.findMany({
         where: { userId, endDate: { gte: new Date() } },
         orderBy: { startDate: "asc" },
+      }),
+      prisma.conflictSubmission.findUnique({
+        where: { userId_weekOf: { userId, weekOf: weekStart } },
+        select: { submittedAt: true },
       }),
     ]);
 
@@ -119,6 +124,15 @@ export default async function MyConflictsPage({
               Next →
             </Link>
           </div>
+        </div>
+
+        <div className="mb-4">
+          <SubmitWeekButton
+            weekOfIso={weekStart.toISOString()}
+            weekLabel={formatWeekLabel(weekStart)}
+            submittedAtIso={submission?.submittedAt?.toISOString() ?? null}
+            conflictCount={weekConflicts.length}
+          />
         </div>
 
         <ul className="flex flex-col gap-1">

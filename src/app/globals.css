@@ -142,10 +142,28 @@ time {
   --fc-border-color: var(--line);
   --fc-page-bg-color: var(--surface);
   --fc-neutral-bg-color: var(--surface-2);
-  --fc-today-bg-color: var(--accent-soft);
+  /* Today's column is context, not content. At full accent-soft it washed the
+   * whole column and made the room-availability shading in it impossible to
+   * read against the other six days — so the one day you most need to judge
+   * was the one you couldn't. Quarter strength keeps the "you are here" cue
+   * without competing with what's drawn on top of it. */
+  --fc-today-bg-color: color-mix(in srgb, var(--accent) 6%, transparent);
   --fc-now-indicator-color: var(--bad);
-  --fc-business-hours-bg-color: color-mix(in srgb, var(--good) 10%, transparent);
+  /* Matched to the dated availability bands drawn as background events, so a
+   * room's weekly hours and its imported bookings read as the same thing. */
+  --fc-business-hours-bg-color: color-mix(in srgb, var(--good) 26%, transparent);
   font-size: 0.8125rem;
+}
+/* Practices are the content. Give them enough weight to read at a glance
+ * against the availability shading now sitting behind them. */
+.fc .fc-timegrid-event {
+  border-radius: 0.35rem;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.18);
+  font-weight: 550;
+}
+.fc .fc-timegrid-event:hover {
+  filter: brightness(1.08);
+  cursor: pointer;
 }
 .fc .fc-toolbar-title {
   font-size: 0.9375rem;

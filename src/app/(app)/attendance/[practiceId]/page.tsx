@@ -18,6 +18,11 @@ const dateFormatter = new Intl.DateTimeFormat("en-US", {
   hour: "numeric",
   minute: "2-digit",
 });
+const clockFormatter = new Intl.DateTimeFormat("en-US", {
+  timeZone: APP_TIME_ZONE,
+  hour: "numeric",
+  minute: "2-digit",
+});
 
 export default async function PracticePage({
   params,
@@ -101,7 +106,8 @@ export default async function PracticePage({
           {attendance.danceName}
         </h1>
         <p className="mt-1 text-sm text-ink-soft">
-          {dateFormatter.format(attendance.startDateTime)}
+          {dateFormatter.format(attendance.startDateTime)} –{" "}
+          {clockFormatter.format(attendance.endDateTime)}
           {attendance.spaceName ? ` · ${attendance.spaceName}` : ""}
         </p>
       </div>

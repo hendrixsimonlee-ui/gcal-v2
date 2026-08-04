@@ -60,34 +60,29 @@ export async function addRecurringAvailability(
   revalidatePath("/admin/spaces");
 }
 
-/** A one-off change for a single date — the gym is closed for an event, or
- * open unusually. Overrides the recurring weekly pattern for that day. */
+/** Closes a room for one date, overriding whatever the weekly hours or the
+ * spaces calendar say.
+ *
+ * This used to also let the AD *open* a room on a date by hand, which was the
+ * wrong shape: an opening is a real room booking and belongs on the spaces
+ * calendar, where it's a record the whole club can see. Typing one here made
+ * the app promise a room nobody had actually reserved, and the schedule
+ * builder would happily place a practice in it. Closures are the opposite —
+ * they're the AD saying "don't use this, whatever the calendar claims" — so
+ * they stay. */
 export async function addDateOverride(spaceId: string, formData: FormData) {
   await requireAdmin();
   const dateRaw = String(formData.get("date") ?? "");
-  const closed = formData.get("closed") === "on";
-  const startTime = String(formData.get("startTime") ?? "");
-  const endTime = String(formData.get("endTime") ?? "");
-
   const date = calendarDateFromInput(dateRaw);
   if (Number.isNaN(date.getTime())) throw new Error("Pick a valid date");
-
-  if (!closed) {
-    if (!startTime || !endTime) {
-      throw new Error("Give the hours it's open, or tick 'closed all day'");
-    }
-    if (startTime >= endTime) {
-      throw new Error("Start time must be before end time");
-    }
-  }
 
   await prisma.spaceAvailability.create({
     data: {
       spaceId,
       date,
-      isAvailable: !closed,
-      startTime: closed ? null : startTime,
-      endTime: closed ? null : endTime,
+      isAvailable: false,
+      startTime: null,
+      endTime: null,
     },
   });
   revalidatePath("/admin/spaces");

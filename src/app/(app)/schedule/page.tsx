@@ -137,7 +137,8 @@ export default async function MySchedulePage() {
                   className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-surface-2 px-3 py-2 text-sm bg-surface/60"
                 >
                   <span className="font-medium text-ink">
-                    {dateFormatter.format(practice.startDateTime)}
+                    {dateFormatter.format(practice.startDateTime)} –{" "}
+                    {timeFormatter.format(practice.endDateTime)}
                   </span>
                   <span className="text-xs text-ink-soft">
                     {practice.space?.name ?? "Space TBD"}

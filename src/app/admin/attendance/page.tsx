@@ -1,6 +1,10 @@
 import { Fragment } from "react";
 import Link from "next/link";
-import { getAttendanceSettings } from "@/lib/actions/attendance";
+import {
+  getAttendanceSettings,
+  getAttendanceWeeks,
+} from "@/lib/actions/attendance";
+import { AttendanceArchive } from "@/components/attendance-archive";
 import {
   getChronicAbsenceFlags,
   getOverallAbsenceFlags,
@@ -42,6 +46,7 @@ export default async function AdminAttendancePage({
     : "person";
 
   const settings = await getAttendanceSettings();
+  const weeks = await getAttendanceWeeks();
   const [flags, overallFlags] = await Promise.all([
     getChronicAbsenceFlags(
       settings.chronicAbsenceThreshold,
@@ -69,6 +74,8 @@ export default async function AdminAttendancePage({
           .
         </p>
       </div>
+
+      <AttendanceArchive weeks={weeks} />
 
       {/* Always rendered, even when empty — a dashboard that disappears when
           there's nothing to report just reads as a missing feature. */}

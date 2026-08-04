@@ -5,9 +5,7 @@ import { useRouter } from "next/navigation";
 import { ANY_SPACE } from "@/lib/constants";
 import {
   confirmAllDrafts,
-  confirmPractice,
   createDraftPractice,
-  deletePractice,
   getCandidateSlots,
   getSchedulingSidebarData,
   setChoreographerWeeklyExcuse,
@@ -21,8 +19,8 @@ import {
   type PracticeEvent,
 } from "@/components/schedule-builder/schedule-calendar";
 import { WeekTracker } from "@/components/schedule-builder/week-tracker";
+import { PracticeEditor } from "@/components/schedule-builder/practice-editor";
 import { ConflictStatusBadge } from "@/components/status-badges";
-import { LateArrivals } from "@/components/schedule-builder/late-arrivals";
 import { APP_TIME_ZONE } from "@/lib/timezone";
 
 interface DanceOption {
@@ -54,6 +52,20 @@ const timeFormatter = new Intl.DateTimeFormat("en-US", {
   minute: "2-digit",
 });
 
+const clockFormatter = new Intl.DateTimeFormat("en-US", {
+  timeZone: APP_TIME_ZONE,
+  hour: "numeric",
+  minute: "2-digit",
+});
+
+/** "Thu, Aug 6 · 7:00 PM – 8:30 PM". Both ends of every slot, everywhere.
+ *
+ * A suggestion you can't see the length of isn't a suggestion you can accept
+ * without opening something else first. */
+function slotRange(start: Date, end: Date): string {
+  return `${timeFormatter.format(start)} – ${clockFormatter.format(end)}`;
+}
+
 export function ScheduleBuilder({
   dances,
   spaces,
@@ -76,6 +88,8 @@ export function ScheduleBuilder({
   const [candidates, setCandidates] = useState<CandidateSlot[]>([]);
   const [sidebar, setSidebar] = useState<SidebarCastMember[]>([]);
   const [publishResult, setPublishResult] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [hint, setHint] = useState<string | null>(null);
   // Candidates are client state, so router.refresh() alone won't recompute
   // them. Every mutation bumps this so the list reflects the new practices
   // (a fresh draft holds its room, so it must drop out of the suggestions).
@@ -188,6 +202,10 @@ export function ScheduleBuilder({
     });
   }
 
+  function bump() {
+    setRefreshKey((k) => k + 1);
+  }
+
   const relevantSpaces = useMemo(
     () =>
       spaceId === ANY_SPACE ? spaces : spaces.filter((s) => s.id === spaceId),
@@ -229,10 +247,109 @@ export function ScheduleBuilder({
     [relevantSpaces],
   );
 
-  const draftPracticesForDance = initialPractices.filter(
-    (p) => p.danceId === danceId && p.status === "PROPOSED",
-  );
   const allDrafts = initialPractices.filter((p) => p.status === "PROPOSED");
+  const practicesThisWeek = useMemo(
+    () =>
+      initialPractices
+        .filter((p) => {
+          const start = new Date(p.startDateTime);
+          return start >= startOfWeek(visibleRange.start) &&
+            start <
+              new Date(
+                startOfWeek(visibleRange.start).getTime() +
+                  7 * 24 * 60 * 60 * 1000,
+              );
+        })
+        .sort((a, b) => a.startDateTime.localeCompare(b.startDateTime)),
+    [initialPractices, visibleRange.start],
+  );
+
+  /** Candidates, cut down to the week the AD is looking at.
+   *
+   * The engine searches four weeks ahead so a dance with a genuinely full
+   * week still gets an answer. But the AD works one week at a time, and a
+   * ranked list whose top suggestion was eleven days away read as "there is
+   * nothing this week" when there usually was. Anything further out is kept
+   * behind a count, not thrown away. */
+  const weekStart = useMemo(
+    () => startOfWeek(visibleRange.start),
+    [visibleRange.start],
+  );
+  const weekEnd = useMemo(
+    () => new Date(weekStart.getTime() + 7 * 24 * 60 * 60 * 1000),
+    [weekStart],
+  );
+  const candidatesThisWeek = useMemo(
+    () =>
+      candidates.filter(
+        (c) => c.startDateTime >= weekStart && c.startDateTime < weekEnd,
+      ),
+    [candidates, weekStart, weekEnd],
+  );
+  const laterCandidateCount = candidates.length - candidatesThisWeek.length;
+
+  /** The windows any room in view is actually open, as instants.
+   *
+   * Used to hide conflicts nobody could have been scheduled into anyway: a
+   * 9am lecture is irrelevant when every room the team has is an evening
+   * booking, and listing it buried the two conflicts that did matter. */
+  const openWindows = useMemo(() => {
+    const windows: { start: number; end: number }[] = [];
+    const toMinutes = (t: string) => {
+      const [h, m] = t.split(":").map(Number);
+      return h * 60 + m;
+    };
+
+    for (const a of datedAvailability) {
+      const day = new Date(`${a.dateKey}T00:00:00`);
+      windows.push({
+        start: day.getTime() + toMinutes(a.startTime) * 60000,
+        end: day.getTime() + toMinutes(a.endTime) * 60000,
+      });
+    }
+    for (
+      let day = new Date(weekStart);
+      day < weekEnd;
+      day = new Date(day.getTime() + 24 * 60 * 60 * 1000)
+    ) {
+      for (const b of businessHours) {
+        if (!b.daysOfWeek.includes(day.getDay())) continue;
+        const midnight = new Date(day);
+        midnight.setHours(0, 0, 0, 0);
+        windows.push({
+          start: midnight.getTime() + toMinutes(b.startTime) * 60000,
+          end: midnight.getTime() + toMinutes(b.endTime) * 60000,
+        });
+      }
+    }
+    return windows;
+  }, [datedAvailability, businessHours, weekStart, weekEnd]);
+
+  const choreographers = useMemo(
+    () => sidebar.filter((m) => m.role === "CHOREOGRAPHER"),
+    [sidebar],
+  );
+  const dancers = useMemo(
+    () => sidebar.filter((m) => m.role === "DANCER"),
+    [sidebar],
+  );
+
+  const overlapsOpenTime = useMemo(() => {
+    return (startIso: string | Date, endIso: string | Date) => {
+      if (openWindows.length === 0) return true;
+      const s = new Date(startIso).getTime();
+      const e = new Date(endIso).getTime();
+      return openWindows.some((w) => s < w.end && e > w.start);
+    };
+  }, [openWindows]);
+
+  const visibleConflicts = useMemo(
+    () => (member: SidebarCastMember) =>
+      member.conflicts.filter((c) =>
+        overlapsOpenTime(c.startDateTime, c.endDateTime),
+      ),
+    [overlapsOpenTime],
+  );
 
   function publishAll() {
     if (
@@ -339,155 +456,236 @@ export function ScheduleBuilder({
       </div>
 
       <WeekTracker
-        weekOf={startOfWeek(visibleRange.start)}
+        weekOf={weekStart}
         refreshKey={refreshKey}
         selectedDanceId={danceId}
-        onPickDance={selectDance}
+        onPickDance={(id) => {
+          selectDance(id);
+          setEditingId(null);
+          setHint(
+            `${dances.find((d) => d.id === id)?.name ?? "That dance"} is loaded — the slots and cast below are now for it.`,
+          );
+        }}
       />
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[280px_1fr_280px]">
+      {hint && (
+        <p className="rounded-lg bg-accent-soft px-3 py-2 text-sm text-accent">
+          {hint}
+        </p>
+      )}
+
+      {editingId && (
+        <PracticeEditor
+          practiceId={editingId}
+          onClose={() => setEditingId(null)}
+          onChanged={bump}
+        />
+      )}
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[280px_1fr_300px]">
         <section className="rounded-lg border border-line bg-surface p-4">
-          <h2 className="mb-2 text-sm font-semibold text-ink">
-            Best candidates
-          </h2>
-          {candidates.length === 0 && (
+          <h2 className="text-sm font-semibold text-ink">Best times this week</h2>
+          <p className="mb-2 mt-0.5 text-xs text-ink-soft">
+            Ranked by how much of the cast can make it. Only slots in the week
+            you&rsquo;re looking at.
+          </p>
+          {candidatesThisWeek.length === 0 && (
             <p className="text-xs text-ink-soft">
-              No open slots found in the next 4 weeks for this space/duration.
+              {laterCandidateCount > 0
+                ? `Nothing fits this week. There ${ laterCandidateCount === 1 ? "is 1 option" : `are ${laterCandidateCount} options`
+                  } in the following weeks — use the calendar arrows to look ahead.`
+                : "No open slots at all for this room and duration. Check the room's hours, or shorten the practice."}
             </p>
           )}
           <ul className="flex flex-col gap-2">
-            {candidates.map((c, i) => (
-              <li
-                key={c.startDateTime.toISOString()}
-                className="rounded-lg border border-line p-2 text-xs"
-              >
-                <div className="font-medium text-ink">
-                  #{i + 1} {timeFormatter.format(c.startDateTime)}
-                </div>
-                <div className="text-ink-soft">
-                  {c.spaceName}
-                </div>
-                <div className="text-ink-soft">
-                  {c.conflictedCastMembers.length > 0
-                    ? `${new Set(c.conflictedCastMembers.map((m) => m.userId)).size} affected`
-                    : "Everyone free"}
-                </div>
-                <button
-                  onClick={() => applyCandidate(c)}
-                  className="mt-1 rounded-lg border border-line-strong bg-surface px-2 py-1 text-xs font-medium text-ink transition-colors hover:border-accent hover:text-accent"
+            {candidatesThisWeek.map((c, i) => {
+              const affected = new Set(
+                c.conflictedCastMembers.map((m) => m.userId),
+              ).size;
+              return (
+                <li
+                  key={c.startDateTime.toISOString()}
+                  className="rounded-lg border border-line p-2 text-xs"
                 >
-                  Use this slot
-                </button>
-              </li>
-            ))}
+                  <div className="font-medium tabular-nums text-ink">
+                    #{i + 1} {slotRange(c.startDateTime, c.endDateTime)}
+                  </div>
+                  <div className="text-ink-soft">{c.spaceName}</div>
+                  <div className={affected > 0 ? "text-warn" : "text-good"}>
+                    {affected > 0
+                      ? `${affected} can't make it`
+                      : "Everyone can make it"}
+                  </div>
+                  <button
+                    onClick={() => applyCandidate(c)}
+                    className="mt-1 rounded-lg border border-line-strong bg-surface px-2 py-1 text-xs font-medium text-ink transition-colors hover:border-accent hover:text-accent"
+                  >
+                    Use this slot
+                  </button>
+                </li>
+              );
+            })}
           </ul>
+          {candidatesThisWeek.length > 0 && laterCandidateCount > 0 && (
+            <p className="mt-2 text-xs text-ink-faint">
+              {laterCandidateCount} more in later weeks.
+            </p>
+          )}
         </section>
 
         <section className="rounded-lg border border-line bg-surface p-2">
           <ScheduleCalendar
             practices={initialPractices}
-            candidates={candidates}
+            candidates={candidatesThisWeek}
             businessHours={businessHours}
             datedAvailability={datedAvailability}
             legendSpaceCount={relevantSpaces.length}
             onSelectRange={handleSelectRange}
             onEventMove={handleEventMove}
+            onEventClick={(id) => {
+              setHint(null);
+              setEditingId(id);
+            }}
             onDatesSet={(start, end) => setVisibleRange({ start, end })}
           />
-          {draftPracticesForDance.length > 0 && (
-            <div className="mt-2 flex flex-wrap gap-2 border-t border-line pt-2">
-              {draftPracticesForDance.map((p) => (
-                <div
+          {practicesThisWeek.length > 0 && (
+            <ul className="mt-2 flex flex-col gap-1 border-t border-line pt-2">
+              {practicesThisWeek.map((p) => (
+                <li
                   key={p.id}
-                  className="flex w-full flex-col gap-1 rounded-lg bg-warn-soft px-2 py-1 text-xs text-warn"
+                  className="flex flex-wrap items-center gap-2 rounded-lg bg-surface-2 px-2 py-1.5 text-xs"
                 >
-                  <div className="flex items-center gap-2">
-                  {timeFormatter.format(new Date(p.startDateTime))}
-                  <button
-                    onClick={() =>
-                      startTransition(async () => {
-                        await confirmPractice(p.id);
-                        setRefreshKey((k) => k + 1);
-                        router.refresh();
-                      })
-                    }
-                    className="font-medium text-good hover:underline"
+                  <span className="font-medium text-ink">{p.danceName}</span>
+                  <span className="tabular-nums text-ink-soft">
+                    {slotRange(new Date(p.startDateTime), new Date(p.endDateTime))}
+                  </span>
+                  <span className="text-ink-soft">
+                    {p.spaceName ?? "no room yet"}
+                  </span>
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${ p.status === "PROPOSED"
+                        ? "bg-info-soft text-info"
+                        : "bg-good-soft text-good"
+                    }`}
                   >
-                    Confirm
-                  </button>
+                    {p.status === "PROPOSED" ? "Draft" : "Published"}
+                  </span>
                   <button
-                    onClick={() =>
-                      startTransition(async () => {
-                        await deletePractice(p.id);
-                        setRefreshKey((k) => k + 1);
-                        router.refresh();
-                      })
-                    }
-                    className="font-medium text-ink-faint transition-colors hover:text-bad"
+                    onClick={() => {
+                      setHint(null);
+                      setEditingId(p.id);
+                    }}
+                    className="ml-auto font-medium text-accent hover:underline"
                   >
-                    Discard
+                    Edit
                   </button>
-                  </div>
-                  <LateArrivals
-                    practiceId={p.id}
-                    existing={p.plannedArrivals ?? []}
-                  />
-                </div>
+                </li>
               ))}
-            </div>
+            </ul>
           )}
         </section>
 
-        <section className="rounded-lg border border-line bg-surface p-4">
-          <h2 className="mb-2 text-sm font-semibold text-ink">
-            Cast &amp; conflicts this week
-          </h2>
-          <div className="flex flex-col gap-3">
-            {sidebar
-              .filter((m) => m.role === "CHOREOGRAPHER")
-              .map((m) => (
-                <div key={m.userId} className="text-xs">
-                  <div className="flex items-center justify-between">
-                    <span className="font-medium text-ink">
-                      {m.name}{" "}
-                      <span className="rounded-full bg-purple-100 px-1.5 py-0.5 text-[10px] font-medium text-purple-700 dark:bg-purple-900 dark:text-purple-300">
-                        Choreographer
-                      </span>
-                    </span>
-                    <label className="flex items-center gap-1 text-ink-soft">
+        <section className="flex flex-col gap-4 rounded-lg border border-line bg-surface p-4">
+          <div>
+            <h2 className="text-sm font-semibold text-ink">
+              Cast &amp; conflicts this week
+            </h2>
+            <p className="mt-0.5 text-xs text-ink-soft">
+              Only conflicts that land on hours a room is actually open — the
+              rest can&rsquo;t affect this dance&rsquo;s options.
+            </p>
+          </div>
+
+          {choreographers.length > 0 && (
+            <div>
+              <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
+                Choreographers · must be there
+              </p>
+              <div className="flex flex-col gap-2.5">
+                {choreographers.map((m) => (
+                  <div key={m.userId} className="text-xs">
+                    <label className="flex items-start gap-2">
                       <input
                         type="checkbox"
                         checked={m.excusedThisWeek}
                         onChange={() =>
                           toggleChoreographerExcuse(m.userId, m.excusedThisWeek)
                         }
+                        className="mt-0.5"
                       />
-                      Excused this week
+                      <span>
+                        <span className="font-medium text-ink">{m.name}</span>
+                        <span className="block text-ink-faint">
+                          {m.excusedThisWeek
+                            ? "Excused this week — the app will schedule without them"
+                            : "Tick to excuse them this week only"}
+                        </span>
+                      </span>
                     </label>
-                  </div>
-                  <ConflictList conflicts={m.conflicts} />
-                </div>
-              ))}
-
-            {sidebar
-              .filter((m) => m.role === "DANCER")
-              .map((m) => (
-                <div key={m.userId} className="text-xs">
-                  <label className="flex items-center gap-1.5">
-                    <input
-                      type="checkbox"
-                      checked={ignoredUserIds.has(m.userId)}
-                      onChange={() => toggleIgnored(m.userId)}
+                    <ConflictList
+                      conflicts={visibleConflicts(m)}
+                      hidden={m.conflicts.length - visibleConflicts(m).length}
                     />
-                    <span className="font-medium text-ink">
-                      {m.name}
-                    </span>
-                    <span className="text-ink-faint">ignore</span>
-                  </label>
-                  <ConflictList conflicts={m.conflicts} />
-                </div>
-              ))}
-          </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {dancers.length > 0 && (
+            <div>
+              <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-ink-faint">
+                Dancers
+              </p>
+              <p className="mb-1.5 text-xs text-ink-soft">
+                Ticking someone leaves them out of this week&rsquo;s
+                scheduling: their conflicts stop counting against every slot.
+                It changes nothing in their record.
+              </p>
+              <div className="flex flex-col gap-2.5">
+                {dancers.map((m) => {
+                  const shown = visibleConflicts(m);
+                  return (
+                    <div key={m.userId} className="text-xs">
+                      <label className="flex items-start gap-2">
+                        <input
+                          type="checkbox"
+                          checked={ignoredUserIds.has(m.userId)}
+                          onChange={() => toggleIgnored(m.userId)}
+                          className="mt-0.5"
+                        />
+                        <span
+                          className={
+                            ignoredUserIds.has(m.userId)
+                              ? "font-medium text-ink-faint line-through"
+                              : "font-medium text-ink"
+                          }
+                        >
+                          {m.name}
+                        </span>
+                        {shown.length > 0 && (
+                          <span className="ml-auto text-warn">
+                            {shown.length}
+                          </span>
+                        )}
+                      </label>
+                      <ConflictList
+                        conflicts={shown}
+                        hidden={m.conflicts.length - shown.length}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {sidebar.length === 0 && (
+            <p className="text-xs text-ink-soft">
+              Nobody is cast in this dance yet. Add the cast on the Dances
+              screen.
+            </p>
+          )}
         </section>
       </div>
     </div>
@@ -496,21 +694,39 @@ export function ScheduleBuilder({
 
 function ConflictList({
   conflicts,
+  hidden = 0,
 }: {
   conflicts: SidebarCastMember["conflicts"];
+  /** Conflicts left out because they don't touch any open room time. Named
+   * rather than silently dropped, so the panel is never quietly lying. */
+  hidden?: number;
 }) {
-  if (conflicts.length === 0) return null;
+  if (conflicts.length === 0) {
+    return hidden > 0 ? (
+      <p className="mt-0.5 pl-6 text-ink-faint">
+        Free whenever a room is open ({hidden} other{" "}
+        {hidden === 1 ? "conflict" : "conflicts"} this week)
+      </p>
+    ) : null;
+  }
   return (
-    <ul className="mt-1 flex flex-col gap-0.5 pl-1 text-ink-soft">
-      {conflicts.map((c) => (
-        <li key={c.id} className="flex flex-wrap items-center gap-1">
-          <span>{timeFormatter.format(new Date(c.startDateTime))}</span>
-          {c.title && (
-            <span className="text-ink-soft">{c.title}</span>
-          )}
-          <ConflictStatusBadge status={c.status} />
-        </li>
-      ))}
-    </ul>
+    <>
+      <ul className="mt-1 flex flex-col gap-0.5 pl-6 text-ink-soft">
+        {conflicts.map((c) => (
+          <li key={c.id} className="flex flex-wrap items-center gap-1">
+            <span className="tabular-nums">
+              {slotRange(new Date(c.startDateTime), new Date(c.endDateTime))}
+            </span>
+            {c.title && <span className="text-ink-soft">{c.title}</span>}
+            <ConflictStatusBadge status={c.status} />
+          </li>
+        ))}
+      </ul>
+      {hidden > 0 && (
+        <p className="pl-6 text-ink-faint">
+          + {hidden} outside any room&rsquo;s hours
+        </p>
+      )}
+    </>
   );
 }

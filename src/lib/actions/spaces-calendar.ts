@@ -31,9 +31,10 @@ export type SpacesCalendarSyncResult = {
   added: number;
   updated: number;
   removed: number;
-  /** Titles that matched no known room and are now waiting in the review
-   * list. Nothing was created for these. */
-  needsReview: { rawTitle: string; eventCount: number }[];
+  /** Titles that matched no known room, so the sync made the room. Their
+   * bookings are imported — this list is what to rename or merge, not a
+   * queue of work blocking the import. */
+  needsReview: { rawTitle: string; spaceName: string; eventCount: number }[];
   /** All-day entries, which are notes rather than bookings. */
   skippedAllDay: number;
   /** Rooms already in the app whose names reduce to the same thing. The
@@ -93,9 +94,16 @@ export async function clearSpacesCalendar() {
 /** Reads the shared calendar over a term and turns every event into a window
  * on the room its title names.
  *
- * Rooms the AD hasn't got yet are *not* created — their titles go to the
- * review list, so "Platt B" showing up for the first time is a decision
- * rather than a surprise. Everything else imports immediately. */
+ * A title naming a room the app hasn't got yet creates that room and imports
+ * its bookings in the same pass. The earlier version queued those titles for
+ * review and imported nothing for them, which meant the very first sync — when
+ * by definition no room is known — reported every booking as failed and left
+ * the AD with an empty schedule and a list of homework.
+ *
+ * The review list survives as a tidy-up: rooms created this way are flagged
+ * so the AD can rename "PLATT B — DANCE" to "Platt Studio B", merge it into a
+ * room they already had, or say it isn't a room at all. Ignoring a title
+ * deletes its imported windows, so nothing is stuck either way. */
 export async function syncSpacesCalendar(
   termId?: string,
 ): Promise<SpacesCalendarSyncResult> {
@@ -169,33 +177,51 @@ export async function syncSpacesCalendar(
     ).map((r) => r.matchKey),
   );
 
-  const known: { spaceId: string; block: (typeof blocks)[number] }[] = [];
   const unknownTitles: string[] = [];
-
   for (const block of blocks) {
     const key = spaceMatchKey(stripBookingNotes(block.title));
-    if (!key) continue;
-    const spaceId = spaceByKey.get(key);
-    if (spaceId) known.push({ spaceId, block });
-    else if (!ignoredKeys.has(key)) unknownTitles.push(block.title);
+    if (!key || ignoredKeys.has(key) || spaceByKey.has(key)) continue;
+    unknownTitles.push(block.title);
   }
 
-  // Queue anything unrecognised for the AD, with a count so a real room is
-  // distinguishable from a typo.
+  // Make the rooms the calendar is asking for, then carry on as if they'd
+  // been there all along. Grouping first means "EM SACHS" and "Em Sachs
+  // Theater" become one room, not two.
   const groups = groupTitles(unknownTitles);
+  const createdNames = new Map<string, string>();
+
   for (const group of groups) {
+    const name = suggestedSpaceName(group.displayTitle);
+    const space = await prisma.space.create({
+      data: { name, matchKey: group.matchKey },
+    });
+    spaceByKey.set(group.matchKey, space.id);
+    createdNames.set(group.matchKey, name);
+
     await prisma.spaceNameReview.upsert({
       where: { matchKey: group.matchKey },
       create: {
         matchKey: group.matchKey,
         rawTitle: group.displayTitle,
         eventCount: group.eventCount,
+        resolvedSpaceId: space.id,
+        autoCreated: true,
       },
       update: {
         rawTitle: group.displayTitle,
         eventCount: group.eventCount,
+        resolvedSpaceId: space.id,
+        autoCreated: true,
       },
     });
+  }
+
+  const known: { spaceId: string; block: (typeof blocks)[number] }[] = [];
+  for (const block of blocks) {
+    const key = spaceMatchKey(stripBookingNotes(block.title));
+    if (!key || ignoredKeys.has(key)) continue;
+    const spaceId = spaceByKey.get(key);
+    if (spaceId) known.push({ spaceId, block });
   }
 
   // Replace this calendar's imported windows for the term. Windows the AD
@@ -266,6 +292,7 @@ export async function syncSpacesCalendar(
     removed: staleIds.length,
     needsReview: groups.map((g) => ({
       rawTitle: g.displayTitle,
+      spaceName: createdNames.get(g.matchKey) ?? g.displayTitle,
       eventCount: g.eventCount,
     })),
     skippedAllDay,
@@ -274,12 +301,14 @@ export async function syncSpacesCalendar(
   };
 }
 
-/** Turns a reviewed title into a new room. */
+/** Turns a reviewed title into a new room. Only reachable for a title that
+ * was previously ignored or unlinked — a sync makes the room itself. */
 export async function createSpaceFromReview(reviewId: string) {
   await requireAdmin();
   const review = await prisma.spaceNameReview.findUniqueOrThrow({
     where: { id: reviewId },
   });
+  if (review.resolvedSpaceId) return;
 
   const space = await prisma.space.create({
     data: {
@@ -289,39 +318,118 @@ export async function createSpaceFromReview(reviewId: string) {
   });
   await prisma.spaceNameReview.update({
     where: { id: reviewId },
-    data: { resolvedSpaceId: space.id },
+    data: { resolvedSpaceId: space.id, ignored: false, autoCreated: false },
   });
 
+  revalidatePath("/admin/spaces");
+}
+
+/** Renames the room a title created, for when "PLATT B - DANCE" should read
+ * "Platt Studio B". Clears the auto-created flag: the AD has looked at it. */
+export async function renameReviewSpace(reviewId: string, name: string) {
+  await requireAdmin();
+  const trimmed = name.trim();
+  if (!trimmed) throw new Error("Give the room a name");
+
+  const review = await prisma.spaceNameReview.findUniqueOrThrow({
+    where: { id: reviewId },
+  });
+  if (!review.resolvedSpaceId) throw new Error("That title has no room yet");
+
+  await prisma.space.update({
+    where: { id: review.resolvedSpaceId },
+    data: { name: trimmed },
+  });
+  await prisma.spaceNameReview.update({
+    where: { id: reviewId },
+    data: { autoCreated: false },
+  });
   revalidatePath("/admin/spaces");
 }
 
 /** Files a reviewed title under a room that already exists — the answer to
- * "Platt B is what we call Platt Studio B". */
+ * "Platt B is what we call Platt Studio B".
+ *
+ * If the sync had already made a room for this title, its imported windows
+ * move across and the spare room is deleted, so merging doesn't strand a
+ * term's bookings on a room nobody looks at. Only imported windows move:
+ * a window the AD typed by hand belongs to whoever they typed it on. */
 export async function mapReviewToSpace(reviewId: string, spaceId: string) {
   await requireAdmin();
+  const review = await prisma.spaceNameReview.findUniqueOrThrow({
+    where: { id: reviewId },
+  });
+
+  const orphanId =
+    review.resolvedSpaceId && review.resolvedSpaceId !== spaceId
+      ? review.resolvedSpaceId
+      : null;
+
   await prisma.spaceNameReview.update({
     where: { id: reviewId },
-    data: { resolvedSpaceId: spaceId },
+    data: { resolvedSpaceId: spaceId, ignored: false, autoCreated: false },
   });
+
+  if (orphanId) {
+    await prisma.spaceAvailability.updateMany({
+      where: { spaceId: orphanId, sourceGoogleEventId: { not: null } },
+      data: { spaceId },
+    });
+    await prisma.practice.updateMany({
+      where: { spaceId: orphanId },
+      data: { spaceId },
+    });
+    // Safe to remove only if it was the sync's own creation and nothing
+    // hand-made is left on it.
+    const leftovers = await prisma.spaceAvailability.count({
+      where: { spaceId: orphanId },
+    });
+    if (review.autoCreated && leftovers === 0) {
+      await prisma.space.delete({ where: { id: orphanId } });
+    }
+  }
+
   revalidatePath("/admin/spaces");
+  revalidatePath("/admin/schedule-builder");
 }
 
-/** Marks a title as not a room, so it stops being offered. */
+/** Marks a title as not a room, so it stops being offered — and takes back
+ * what the sync imported under it, since those windows were never real. */
 export async function ignoreReview(reviewId: string) {
   await requireAdmin();
+  const review = await prisma.spaceNameReview.findUniqueOrThrow({
+    where: { id: reviewId },
+  });
+
+  if (review.resolvedSpaceId && review.autoCreated) {
+    const spaceId = review.resolvedSpaceId;
+    await prisma.spaceAvailability.deleteMany({
+      where: { spaceId, sourceGoogleEventId: { not: null } },
+    });
+    const practices = await prisma.practice.count({ where: { spaceId } });
+    const leftovers = await prisma.spaceAvailability.count({
+      where: { spaceId },
+    });
+    if (practices === 0 && leftovers === 0) {
+      await prisma.space.delete({ where: { id: spaceId } });
+    }
+  }
+
   await prisma.spaceNameReview.update({
     where: { id: reviewId },
-    data: { ignored: true, resolvedSpaceId: null },
+    data: { ignored: true, resolvedSpaceId: null, autoCreated: false },
   });
   revalidatePath("/admin/spaces");
+  revalidatePath("/admin/schedule-builder");
 }
 
-/** Puts an ignored or resolved title back in the queue. */
+/** Puts an ignored title back in play. The next sync recreates its room and
+ * re-imports its bookings. */
 export async function reopenReview(reviewId: string) {
   await requireAdmin();
   await prisma.spaceNameReview.update({
     where: { id: reviewId },
-    data: { ignored: false, resolvedSpaceId: null },
+    data: { ignored: false, resolvedSpaceId: null, autoCreated: false },
   });
   revalidatePath("/admin/spaces");
 }

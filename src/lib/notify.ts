@@ -171,6 +171,125 @@ export async function notifySchedulePublished(practiceIds: string[]) {
   await Promise.all(emails.map((e) => sendEmail(e.to, e.subject, e.html)));
 }
 
+/** Announces edits made to practices that were already published.
+ *
+ * Moving a published practice used to message the whole cast the moment the
+ * AD let go of the mouse — so nudging three practices around on a Sunday
+ * evening meant three rounds of pings, and people stopped reading them. Now
+ * an edit is staged, and this sends one message per person covering
+ * everything that changed for them, whatever it was and however many times
+ * the AD moved it.
+ *
+ * Returns how many people were written to, so the button can say so. */
+export async function announcePracticeChanges(
+  practiceIds: string[],
+): Promise<number> {
+  if (practiceIds.length === 0) return 0;
+
+  const practices = await prisma.practice.findMany({
+    where: { id: { in: practiceIds } },
+    include: {
+      dance: { include: { memberships: { include: { user: true } } } },
+      space: true,
+    },
+    orderBy: { startDateTime: "asc" },
+  });
+  if (practices.length === 0) return 0;
+
+  const perUser = new Map<
+    string,
+    { user: { id: string; email: string }; lines: string[] }
+  >();
+
+  for (const practice of practices) {
+    const when = dateFormatter.format(practice.startDateTime);
+    const where = practice.space?.name ?? "space TBD";
+    const line = `${practice.dance.name} — ${when}, ${where}${ practice.pendingChangeNote ? ` (${practice.pendingChangeNote})` : ""
+    }`;
+
+    for (const membership of practice.dance.memberships) {
+      const entry = perUser.get(membership.userId);
+      if (entry) entry.lines.push(line);
+      else
+        perUser.set(membership.userId, {
+          user: { id: membership.userId, email: membership.user.email },
+          lines: [line],
+        });
+    }
+  }
+
+  const notifications: {
+    userId: string;
+    type: NotificationType;
+    message: string;
+    href: string;
+  }[] = [];
+  const emails: { to: string; subject: string; html: string }[] = [];
+
+  for (const [userId, { user, lines }] of perUser) {
+    const message =
+      lines.length === 1
+        ? `Schedule change — ${lines[0]}`
+        : `${lines.length} of your practices changed`;
+    notifications.push({
+      userId,
+      type: "PRACTICE_CHANGED",
+      message,
+      href: "/schedule",
+    });
+    emails.push({
+      to: user.email,
+      subject:
+        lines.length === 1
+          ? "A practice of yours changed"
+          : `${lines.length} of your practices changed`,
+      html: `<p>The schedule has been updated. Here's what changed for you:</p><ul>${lines
+        .map((l) => `<li>${escapeHtml(l)}</li>`)
+        .join("")}</ul>`,
+    });
+  }
+
+  await prisma.notification.createMany({ data: notifications });
+  await sendPushToUsers(
+    Array.from(perUser.keys()),
+    {
+      title: "PADT Calendar",
+      body: "The schedule changed — open the app for the details",
+      href: "/schedule",
+    },
+  );
+  await Promise.all(emails.map((e) => sendEmail(e.to, e.subject, e.html)));
+
+  return perUser.size;
+}
+
+/** "Your conflicts for next week aren't in yet." The AD's nudge, sent only to
+ * the people who haven't submitted — never to the whole roster. */
+export async function notifyConflictsDue(
+  userIds: string[],
+  weekLabel: string,
+): Promise<number> {
+  if (userIds.length === 0) return 0;
+  const users = await prisma.user.findMany({
+    where: { id: { in: userIds } },
+    select: { id: true, email: true },
+  });
+
+  await notify(
+    users,
+    "CONFLICTS_DUE",
+    `Your conflicts for the week of ${weekLabel} aren't in yet`,
+    {
+      href: "/conflicts",
+      emailSubject: "Your PADT conflicts are due",
+      emailHtml: `<p>The schedule for the week of ${escapeHtml(
+        weekLabel,
+      )} is being built now.</p><p>Open PADT Calendar and submit your conflicts so nothing gets booked over you.</p>`,
+    },
+  );
+  return users.length;
+}
+
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, "&amp;")

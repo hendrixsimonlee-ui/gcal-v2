@@ -58,6 +58,7 @@ export function ScheduleCalendar({
   legendSpaceCount,
   onSelectRange,
   onEventMove,
+  onEventClick,
   onDatesSet,
 }: {
   practices: PracticeEvent[];
@@ -76,6 +77,9 @@ export function ScheduleCalendar({
   legendSpaceCount: number;
   onSelectRange: (startIso: string, endIso: string) => void;
   onEventMove: (practiceId: string, startIso: string, endIso: string) => void;
+  /** Clicking a practice opens it for editing rather than doing nothing,
+   * which is what a block on a calendar is expected to do. */
+  onEventClick: (practiceId: string) => void;
   onDatesSet: (start: Date, end: Date) => void;
 }) {
   const practiceEvents: EventInput[] = practices.map((p) => {
@@ -88,7 +92,11 @@ export function ScheduleCalendar({
       backgroundColor: color,
       borderColor: color,
       classNames: p.status === "PROPOSED" ? ["opacity-60", "border-dashed"] : [],
-      extendedProps: { status: p.status },
+      extendedProps: {
+        status: p.status,
+        spaceName: p.spaceName,
+        danceName: p.danceName,
+      },
     };
   });
 
@@ -109,11 +117,16 @@ export function ScheduleCalendar({
   // Dated windows shade the grid the same way the weekly pattern does, so a
   // room imported from the shared calendar reads identically to one whose
   // hours were typed in by hand.
+  //
+  // The fill is deliberately strong. At 14% opacity these bands were all but
+  // invisible against the grid lines, and "where do we actually have a room?"
+  // is the single question this screen exists to answer — it should be the
+  // loudest thing on it, not the quietest.
   const availabilityEvents: EventInput[] = datedAvailability.map((a) => ({
     start: `${a.dateKey}T${a.startTime}:00`,
     end: `${a.dateKey}T${a.endTime}:00`,
     display: "background",
-    backgroundColor: "rgba(16, 185, 129, 0.14)",
+    backgroundColor: "rgba(16, 185, 129, 0.34)",
     title: a.spaceName,
   }));
 
@@ -144,8 +157,8 @@ export function ScheduleCalendar({
           Suggested slot
         </span>
         <span className="ml-auto">
-          Drag on an empty space to place a practice, or drag a practice to
-          move it.
+          Drag on shaded time to place a practice, drag a practice to move it,
+          or click one to change its room, time or cast.
         </span>
       </div>
     <FullCalendar
@@ -179,6 +192,11 @@ export function ScheduleCalendar({
         if (!info.event.start || !info.event.end) return;
         onEventMove(info.event.id, info.event.start.toISOString(), info.event.end.toISOString());
       }}
+      eventClick={(info) => {
+        if (info.event.id.startsWith("candidate-")) return;
+        if (!info.event.id) return;
+        onEventClick(info.event.id);
+      }}
       datesSet={(arg) => onDatesSet(arg.start, arg.end)}
       />
     </>
@@ -208,12 +226,38 @@ function visibleTimeRange(
   return { slotMinTime: pad(earliest - 60), slotMaxTime: pad(latest + 60) };
 }
 
+const blockTimeFormatter = new Intl.DateTimeFormat("en-US", {
+  hour: "numeric",
+  minute: "2-digit",
+});
+
+/** Name, both times, room. The block used to show only the name and the room,
+ * so answering "when does this finish?" meant measuring it against the axis
+ * by eye. */
 function renderEventContent(arg: EventContentArg) {
   const status = arg.event.extendedProps.status as string | undefined;
+  if (arg.event.display === "background") {
+    return <div className="px-1 pt-0.5 text-[10px] font-medium opacity-70">{arg.event.title}</div>;
+  }
+
+  const { start, end } = arg.event;
+  const range =
+    start && end
+      ? `${blockTimeFormatter.format(start)}–${blockTimeFormatter.format(end)}`
+      : "";
+
   return (
-    <div className="truncate px-1 text-xs">
-      {arg.event.title}
-      {status === "PROPOSED" && <span className="ml-1 italic">(draft)</span>}
+    <div className="overflow-hidden px-1 text-xs leading-tight">
+      <div className="truncate font-semibold">
+        {String(arg.event.extendedProps.danceName ?? arg.event.title)}
+        {status === "PROPOSED" && <span className="ml-1 font-normal italic">draft</span>}
+      </div>
+      <div className="truncate tabular-nums opacity-90">{range}</div>
+      {arg.event.extendedProps.spaceName ? (
+        <div className="truncate opacity-80">
+          {String(arg.event.extendedProps.spaceName)}
+        </div>
+      ) : null}
     </div>
   );
 }
