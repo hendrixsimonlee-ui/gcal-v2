@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
-import { addDays } from "@/lib/dates";
+import { addDays, startOfWeek } from "@/lib/dates";
+import { BuildWeek } from "@/components/schedule-builder/build-week";
 import { ScheduleBuilder } from "@/components/schedule-builder/schedule-builder";
 
 export default async function ScheduleBuilderPage() {
@@ -33,10 +34,10 @@ export default async function ScheduleBuilderPage() {
   if (dances.length === 0 || spaces.length === 0) {
     return (
       <div className="flex flex-col gap-2">
-        <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">
+        <h1 className="text-xl font-semibold text-ink">
           Schedule Builder
         </h1>
-        <p className="text-sm text-zinc-500 dark:text-zinc-400">
+        <p className="text-sm text-ink-soft">
           You need at least one dance and one space set up before you can
           build a schedule. Head to{" "}
           <span className="font-medium">Dances</span> and{" "}
@@ -47,7 +48,18 @@ export default async function ScheduleBuilderPage() {
   }
 
   return (
-    <ScheduleBuilder
+    <div className="flex flex-col gap-4">
+      <div>
+        <h1 className="text-xl font-semibold tracking-[-0.015em] text-ink">
+          Schedule Builder
+        </h1>
+        <p className="mt-1 max-w-2xl text-sm leading-relaxed text-ink-soft">
+          Let the app propose the whole week, or place practices yourself by
+          dragging on the grid.
+        </p>
+      </div>
+      <BuildWeek weekOfIso={startOfWeek(new Date()).toISOString()} />
+      <ScheduleBuilder
       dances={dances.map((d) => ({
         id: d.id,
         name: d.name,
@@ -62,6 +74,10 @@ export default async function ScheduleBuilderPage() {
           dayOfWeek: a.dayOfWeek,
           startTime: a.startTime,
           endTime: a.endTime,
+          // Dated windows are what a shared-calendar import produces, so the
+          // grid needs them or a synced term looks empty.
+          date: a.date ? a.date.toISOString() : null,
+          isAvailable: a.isAvailable,
         })),
       }))}
       initialPractices={practices.map((p) => ({
@@ -79,6 +95,7 @@ export default async function ScheduleBuilderPage() {
           arriveAt: a.arriveAt.toISOString(),
         })),
       }))}
-    />
+      />
+    </div>
   );
 }

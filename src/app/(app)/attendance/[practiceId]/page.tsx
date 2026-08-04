@@ -8,8 +8,10 @@ import {
   PracticeAttendancePanel,
   type PanelRow,
 } from "@/components/practice-attendance-panel";
+import { APP_TIME_ZONE } from "@/lib/timezone";
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", {
+  timeZone: APP_TIME_ZONE,
   weekday: "long",
   month: "long",
   day: "numeric",
@@ -91,14 +93,14 @@ export default async function PracticePage({
       <div>
         <Link
           href={backHref}
-          className="text-sm text-zinc-500 hover:underline dark:text-zinc-400"
+          className="text-sm text-ink-soft hover:underline"
         >
           ← Back
         </Link>
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+        <h1 className="mt-2 text-2xl font-semibold tracking-tight text-ink">
           {attendance.danceName}
         </h1>
-        <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+        <p className="mt-1 text-sm text-ink-soft">
           {dateFormatter.format(attendance.startDateTime)}
           {attendance.spaceName ? ` · ${attendance.spaceName}` : ""}
         </p>

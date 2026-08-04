@@ -6,14 +6,17 @@ import { useRouter } from "next/navigation";
 import { overrideAttendance } from "@/lib/actions/attendance";
 import { AttendanceBadge } from "@/components/status-badges";
 import type { AttendanceStatus } from "@/lib/attendance";
+import { APP_TIME_ZONE } from "@/lib/timezone";
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", {
+  timeZone: APP_TIME_ZONE,
   weekday: "short",
   month: "short",
   day: "numeric",
   year: "numeric",
 });
 const timeFormatter = new Intl.DateTimeFormat("en-US", {
+  timeZone: APP_TIME_ZONE,
   hour: "numeric",
   minute: "2-digit",
 });
@@ -49,23 +52,23 @@ export function PersonAttendanceRow({
   const [isPending, startTransition] = useTransition();
 
   return (
-    <li className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-zinc-50 px-3 py-2 text-sm dark:bg-zinc-800/60">
-      <span className="font-medium text-zinc-900 dark:text-zinc-50">
+    <li className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-surface-2 px-3 py-2 text-sm bg-surface/60">
+      <span className="font-medium text-ink">
         {danceName}
       </span>
       {danceArchived && (
-        <span className="rounded-full bg-zinc-200 px-2 py-0.5 text-[10px] font-medium text-zinc-600 dark:bg-zinc-700 dark:text-zinc-300">
+        <span className="rounded-full bg-surface-3 px-2 py-0.5 text-[10px] font-medium text-ink-soft">
           archived
         </span>
       )}
-      <span className="text-zinc-600 dark:text-zinc-400">
+      <span className="text-ink-soft">
         {dateFormatter.format(new Date(startDateTime))}
       </span>
       {spaceName && (
-        <span className="text-xs text-zinc-500">{spaceName}</span>
+        <span className="text-xs text-ink-soft">{spaceName}</span>
       )}
       {checkedInAt && (
-        <span className="text-xs text-zinc-500">
+        <span className="text-xs text-ink-soft">
           in at {timeFormatter.format(new Date(checkedInAt))}
         </span>
       )}
@@ -73,7 +76,7 @@ export function PersonAttendanceRow({
       <span className="ml-auto flex items-center gap-2">
         <AttendanceBadge status={status} minutesLate={minutesLate} />
         {isOverride && (
-          <span className="text-[10px] uppercase text-zinc-400">edited</span>
+          <span className="text-[10px] uppercase text-ink-faint">edited</span>
         )}
         <select
           value={status ?? ""}
@@ -88,7 +91,7 @@ export function PersonAttendanceRow({
               router.refresh();
             })
           }
-          className="rounded-lg border border-zinc-300 px-1.5 py-0.5 text-xs disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-800"
+          className="rounded-lg border border-line-strong px-1.5 py-0.5 text-xs disabled:opacity-45 bg-surface-3"
         >
           <option value="" disabled>
             Change…
@@ -100,7 +103,7 @@ export function PersonAttendanceRow({
         </select>
         <Link
           href={`/attendance/${practiceId}`}
-          className="text-xs font-medium text-sky-600 hover:underline dark:text-sky-400"
+          className="text-xs font-medium text-accent hover:underline"
         >
           Open
         </Link>

@@ -2,6 +2,9 @@ import Image from "next/image";
 import Link from "next/link";
 import { SignOutButton } from "@/components/sign-out-button";
 
+/** The one bar that's on every screen. Identity on the left, the things you
+ * reach for from anywhere on the right — help, what's happened, and who
+ * you're signed in as. Deliberately thin: it's a frame, not a screen. */
 export function Header({
   userName,
   userImage,
@@ -12,19 +15,28 @@ export function Header({
   unreadCount?: number;
 }) {
   return (
-    <header className="flex h-14 shrink-0 items-center justify-between border-b border-zinc-200 bg-white px-4 dark:border-zinc-800 dark:bg-zinc-950">
-      <span className="font-semibold text-zinc-900 dark:text-zinc-50">
-        Dance Scheduler
-      </span>
-      <div className="flex items-center gap-3">
+    <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center justify-between border-b border-line bg-surface/85 px-4 backdrop-blur">
+      <Link
+        href="/schedule"
+        className="flex items-center gap-2 text-[15px] font-semibold tracking-[-0.01em] text-ink"
+      >
+        <span
+          aria-hidden="true"
+          className="grid h-6 w-6 place-content-center rounded-lg bg-accent text-[11px] font-bold text-on-accent"
+        >
+          P
+        </span>
+        PADT
+      </Link>
+
+      <div className="flex items-center gap-1 sm:gap-2">
         <Link
           href="/help"
-          aria-label="How this works"
-          title="How this works"
-          className="rounded-md px-2 py-1 text-sm font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-50"
+          className="rounded-lg px-2.5 py-1.5 text-sm font-medium text-ink-soft transition-colors hover:bg-surface-3 hover:text-ink"
         >
           Help
         </Link>
+
         <Link
           href="/notifications"
           aria-label={
@@ -32,7 +44,7 @@ export function Header({
               ? `Notifications, ${unreadCount} unread`
               : "Notifications"
           }
-          className="relative rounded-md p-1.5 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-50"
+          className="relative rounded-lg p-2 text-ink-soft transition-colors hover:bg-surface-3 hover:text-ink"
         >
           <svg
             width="18"
@@ -49,23 +61,31 @@ export function Header({
             <path d="M13.73 21a2 2 0 0 1-3.46 0" />
           </svg>
           {unreadCount > 0 && (
-            <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-sky-500 px-1 text-[10px] font-semibold text-white">
+            <span className="absolute right-0.5 top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-semibold tabular-nums text-on-accent">
               {unreadCount > 9 ? "9+" : unreadCount}
             </span>
           )}
         </Link>
+
+        <span className="mx-1 hidden h-5 w-px bg-line sm:block" />
+
         {userImage ? (
           <Image
             src={userImage}
-            alt={userName ?? "User"}
+            alt=""
             width={28}
             height={28}
-            className="rounded-full"
+            className="rounded-full ring-1 ring-line"
           />
         ) : (
-          <div className="h-7 w-7 rounded-full bg-zinc-200 dark:bg-zinc-800" />
+          <div
+            aria-hidden="true"
+            className="grid h-7 w-7 place-content-center rounded-full bg-surface-3 text-xs font-semibold text-ink-soft"
+          >
+            {(userName ?? "?").trim().charAt(0).toUpperCase()}
+          </div>
         )}
-        <span className="hidden text-sm text-zinc-700 sm:inline dark:text-zinc-300">
+        <span className="hidden max-w-32 truncate text-sm text-ink-soft sm:inline">
           {userName}
         </span>
         <SignOutButton />

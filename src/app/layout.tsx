@@ -14,14 +14,14 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Dance Scheduler",
+  title: "PADT Calendar",
   description:
     "Schedule dance practices around conflicts, spaces, and choreographers.",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "Dance Sched",
+    title: "PADT Cal",
   },
   icons: {
     icon: [

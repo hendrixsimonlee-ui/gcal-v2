@@ -127,32 +127,32 @@ export function ConflictsCalendar({
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs text-zinc-500 dark:text-zinc-400">
+        <p className="text-xs text-ink-soft">
           Drag across any empty time to add a conflict. Drag an existing one to
           move it, or click it to delete.
         </p>
         <button
           onClick={() => openDraft()}
-          className="rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-700 dark:bg-white dark:text-zinc-900"
+          className="rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-on-accent hover:bg-accent-hover"
         >
           + Add conflict
         </button>
       </div>
 
       {error && (
-        <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">
+        <p className="rounded-lg bg-bad-soft px-3 py-2 text-sm text-bad">
           {error}
         </p>
       )}
 
       {draft && (
-        <div className="flex flex-wrap items-end gap-3 rounded-lg border border-zinc-300 bg-zinc-50 p-3 dark:border-zinc-700 dark:bg-zinc-800">
+        <div className="flex flex-wrap items-end gap-3 rounded-lg border border-line-strong bg-surface-2 p-3 bg-surface-3">
           <Field label="Start">
             <input
               type="datetime-local"
               value={draft.start}
               onChange={(e) => setDraft({ ...draft, start: e.target.value })}
-              className="rounded-md border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-600 dark:bg-zinc-900"
+              className="rounded-lg border border-line-strong px-2 py-1.5 text-sm"
             />
           </Field>
           <Field label="End">
@@ -160,7 +160,7 @@ export function ConflictsCalendar({
               type="datetime-local"
               value={draft.end}
               onChange={(e) => setDraft({ ...draft, end: e.target.value })}
-              className="rounded-md border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-600 dark:bg-zinc-900"
+              className="rounded-lg border border-line-strong px-2 py-1.5 text-sm"
             />
           </Field>
           <Field label="What is it?" grow>
@@ -168,10 +168,10 @@ export function ConflictsCalendar({
               value={draft.title}
               onChange={(e) => setDraft({ ...draft, title: e.target.value })}
               placeholder="Orgo lab, work shift, family thing…"
-              className="w-full rounded-md border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-600 dark:bg-zinc-900"
+              className="w-full rounded-lg border border-line-strong px-2 py-1.5 text-sm"
             />
           </Field>
-          <label className="flex items-center gap-2 pb-2 text-sm text-zinc-700 dark:text-zinc-300">
+          <label className="flex items-center gap-2 pb-2 text-sm text-ink-soft">
             <input
               type="checkbox"
               checked={draft.isRecurring}
@@ -184,13 +184,13 @@ export function ConflictsCalendar({
           <button
             onClick={submitDraft}
             disabled={isPending}
-            className="rounded-md bg-zinc-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-zinc-700 disabled:opacity-50 dark:bg-white dark:text-zinc-900"
+            className="rounded-lg bg-accent px-4 py-1.5 text-sm font-medium text-on-accent hover:bg-accent-hover disabled:opacity-50"
           >
             {isPending ? "Adding…" : "Add"}
           </button>
           <button
             onClick={() => setDraft(null)}
-            className="rounded-md px-3 py-1.5 text-sm text-zinc-500 hover:bg-zinc-200 dark:hover:bg-zinc-700"
+            className="rounded-lg px-3 py-1.5 text-sm text-ink-soft hover:bg-surface-3"
           >
             Cancel
           </button>
@@ -248,7 +248,7 @@ function Field({
 }) {
   return (
     <div className={`flex flex-col gap-1 ${grow ? "min-w-[12rem] flex-1" : ""}`}>
-      <label className="text-xs font-medium text-zinc-500">{label}</label>
+      <label className="text-xs font-medium text-ink-soft">{label}</label>
       {children}
     </div>
   );

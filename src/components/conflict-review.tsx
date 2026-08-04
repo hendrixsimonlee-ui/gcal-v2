@@ -7,6 +7,7 @@ import {
   setConflictStatus,
   setWeekConflictStatus,
 } from "@/lib/actions/conflicts";
+import { APP_TIME_ZONE } from "@/lib/timezone";
 
 type Status = "NOT_REVIEWED" | "EXCUSED" | "UNEXCUSED";
 
@@ -26,11 +27,13 @@ interface ReviewPerson {
 }
 
 const timeFormatter = new Intl.DateTimeFormat("en-US", {
+  timeZone: APP_TIME_ZONE,
   weekday: "short",
   hour: "numeric",
   minute: "2-digit",
 });
 const dayFormatter = new Intl.DateTimeFormat("en-US", {
+  timeZone: APP_TIME_ZONE,
   month: "short",
   day: "numeric",
 });
@@ -108,42 +111,42 @@ export function ConflictReview({
   return (
     <div className="flex flex-col gap-5">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+        <h1 className="text-2xl font-semibold tracking-tight text-ink">
           Conflict Review
         </h1>
-        <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+        <p className="mt-1 text-sm text-ink-soft">
           Go person by person and say whether each conflict is excused. This is
           the step before you build the schedule.
         </p>
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-zinc-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-surface px-4 py-3">
         <div className="flex items-center gap-3">
           <Link
             href={`/admin/conflicts?week=${prevWeek}`}
-            className="rounded-lg border border-zinc-300 px-2.5 py-1 text-sm text-zinc-600 transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+            className="rounded-lg border border-line-strong px-2.5 py-1 text-sm text-ink-soft transition-colors hover:bg-surface-3"
           >
             ←
           </Link>
-          <span className="text-sm font-medium text-zinc-900 dark:text-zinc-50">
+          <span className="text-sm font-medium text-ink">
             Week of {weekLabel}
           </span>
           <Link
             href={`/admin/conflicts?week=${nextWeek}`}
-            className="rounded-lg border border-zinc-300 px-2.5 py-1 text-sm text-zinc-600 transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+            className="rounded-lg border border-line-strong px-2.5 py-1 text-sm text-ink-soft transition-colors hover:bg-surface-3"
           >
             →
           </Link>
         </div>
         <p className="text-sm">
           {total === 0 ? (
-            <span className="text-zinc-500">Nothing logged this week.</span>
+            <span className="text-ink-soft">Nothing logged this week.</span>
           ) : outstanding === 0 ? (
-            <span className="font-medium text-emerald-600 dark:text-emerald-400">
+            <span className="font-medium text-good">
               All {total} reviewed — ready to schedule
             </span>
           ) : (
-            <span className="font-medium text-amber-700 dark:text-amber-400">
+            <span className="font-medium text-warn">
               {outstanding} of {total} still to review
             </span>
           )}
@@ -151,11 +154,11 @@ export function ConflictReview({
       </div>
 
       {awayThisWeek.length > 0 && (
-        <section className="rounded-xl border border-sky-200 bg-sky-50 p-4 dark:border-sky-900 dark:bg-sky-950/50">
-          <h2 className="text-sm font-semibold text-sky-900 dark:text-sky-200">
+        <section className="rounded-xl border border-info/35 bg-info-soft p-4">
+          <h2 className="text-sm font-semibold text-info">
             Away this week ({awayThisWeek.length})
           </h2>
-          <p className="mb-2 text-xs text-sky-800/80 dark:text-sky-300/80">
+          <p className="mb-2 text-xs text-info /80">
             Out of town, so they&rsquo;re out of scheduling entirely — nothing
             to excuse here, but worth knowing before you build the week.
           </p>
@@ -163,7 +166,7 @@ export function ConflictReview({
             {awayThisWeek.map((away) => (
               <li
                 key={away.id}
-                className="flex flex-wrap items-center gap-x-2 text-sm text-sky-900 dark:text-sky-200"
+                className="flex flex-wrap items-center gap-x-2 text-sm text-info"
               >
                 <span className="font-medium">{away.name}</span>
                 <span className="text-xs">
@@ -187,30 +190,30 @@ export function ConflictReview({
           return (
             <section
               key={person.userId}
-              className="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900"
+              className="rounded-xl border border-line bg-surface p-4"
             >
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                <h2 className="font-medium text-zinc-900 dark:text-zinc-50">
+                <h2 className="font-medium text-ink">
                   {person.name}
                   {todo > 0 && (
-                    <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+                    <span className="ml-2 rounded-full bg-warn-soft px-2 py-0.5 text-[11px] font-medium text-warn">
                       {todo} to review
                     </span>
                   )}
                 </h2>
                 <div className="flex items-center gap-2 text-xs">
-                  <span className="text-zinc-400">Whole week:</span>
+                  <span className="text-ink-faint">Whole week:</span>
                   <button
                     onClick={() => markWeek(person.userId, "EXCUSED")}
                     disabled={isPending}
-                    className="rounded-lg border border-emerald-200 px-2.5 py-1 font-medium text-emerald-700 transition-colors hover:bg-emerald-50 disabled:opacity-40 dark:border-emerald-900 dark:text-emerald-400 dark:hover:bg-emerald-950"
+                    className="rounded-lg border border-good/35 px-2.5 py-1 font-medium text-good transition-colors hover:bg-good-soft disabled:opacity-45 dark:hover:bg-surface-2"
                   >
                     Excuse all
                   </button>
                   <button
                     onClick={() => markWeek(person.userId, "UNEXCUSED")}
                     disabled={isPending}
-                    className="rounded-lg border border-amber-200 px-2.5 py-1 font-medium text-amber-800 transition-colors hover:bg-amber-50 disabled:opacity-40 dark:border-amber-900 dark:text-amber-400 dark:hover:bg-amber-950"
+                    className="rounded-lg border border-warn/35 px-2.5 py-1 font-medium text-warn transition-colors hover:bg-warn-soft disabled:opacity-45 dark:hover:bg-surface-2"
                   >
                     Unexcuse all
                   </button>
@@ -221,12 +224,12 @@ export function ConflictReview({
                 {person.conflicts.map((conflict) => (
                   <li
                     key={conflict.id}
-                    className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-zinc-50 px-3 py-2 dark:bg-zinc-800/60"
+                    className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-surface-2 px-3 py-2 bg-surface-3/60"
                   >
-                    <span className="font-medium text-zinc-900 dark:text-zinc-50">
+                    <span className="font-medium text-ink">
                       {conflict.title || "Untitled conflict"}
                     </span>
-                    <span className="text-xs text-zinc-500">
+                    <span className="text-xs text-ink-soft">
                       {timeFormatter.format(new Date(conflict.startDateTime))} –{" "}
                       {timeFormatter.format(new Date(conflict.endDateTime))}
                       {conflict.fromGoogle && " · from their calendar"}
@@ -234,7 +237,7 @@ export function ConflictReview({
                     <div className="ml-auto flex items-center gap-1">
                       <Choice
                         active={conflict.status === "EXCUSED"}
-                        activeClass="bg-emerald-600 text-white"
+                        activeClass="bg-good text-surface"
                         onClick={() =>
                           markOne(person.userId, conflict.id, "EXCUSED")
                         }
@@ -243,7 +246,7 @@ export function ConflictReview({
                       </Choice>
                       <Choice
                         active={conflict.status === "UNEXCUSED"}
-                        activeClass="bg-amber-600 text-white"
+                        activeClass="bg-warn text-surface"
                         onClick={() =>
                           markOne(person.userId, conflict.id, "UNEXCUSED")
                         }
@@ -259,7 +262,7 @@ export function ConflictReview({
         })}
 
         {optimistic.length === 0 && (
-          <p className="rounded-xl border border-dashed border-zinc-300 px-4 py-8 text-center text-sm text-zinc-500 dark:border-zinc-700">
+          <p className="rounded-xl border border-dashed border-line-strong px-4 py-8 text-center text-sm text-ink-soft">
             Nobody logged a conflict for this week.
           </p>
         )}
@@ -282,10 +285,9 @@ function Choice({
   return (
     <button
       onClick={onClick}
-      className={`rounded-lg px-2.5 py-1 text-xs font-medium transition-colors ${
-        active
+      className={`rounded-lg px-2.5 py-1 text-xs font-medium transition-colors ${ active
           ? activeClass
-          : "bg-white text-zinc-500 ring-1 ring-zinc-200 hover:bg-zinc-100 dark:bg-zinc-900 dark:text-zinc-400 dark:ring-zinc-700 dark:hover:bg-zinc-800"
+          : "bg-surface text-ink-soft ring-1 ring-line hover:bg-surface-2  dark:ring-line "
       }`}
     >
       {children}

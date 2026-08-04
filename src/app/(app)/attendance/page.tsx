@@ -5,8 +5,10 @@ import {
   getPastPracticesWithAttendance,
   getUpcomingPracticesForDances,
 } from "@/lib/attendance-data";
+import { APP_TIME_ZONE } from "@/lib/timezone";
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", {
+  timeZone: APP_TIME_ZONE,
   weekday: "short",
   month: "short",
   day: "numeric",
@@ -27,10 +29,10 @@ export default async function AttendanceCheckOffPage() {
   if (danceIds.length === 0) {
     return (
       <div className="flex flex-col gap-2">
-        <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">
+        <h1 className="text-xl font-semibold text-ink">
           Attendance
         </h1>
-        <p className="text-sm text-zinc-500 dark:text-zinc-400">
+        <p className="text-sm text-ink-soft">
           You don&rsquo;t choreograph any dances, so there&rsquo;s nothing to
           sign off here.
         </p>
@@ -50,10 +52,10 @@ export default async function AttendanceCheckOffPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">
+        <h1 className="text-xl font-semibold text-ink">
           Attendance
         </h1>
-        <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+        <p className="mt-1 text-sm text-ink-soft">
           Practices for the dances you choreograph. Everyone checks themselves
           in — you look over the recap and submit it.
         </p>
@@ -61,10 +63,10 @@ export default async function AttendanceCheckOffPage() {
 
       {upcoming.length > 0 && (
         <section>
-          <h2 className="mb-2 text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+          <h2 className="mb-2 text-sm font-semibold text-ink">
             Coming up
           </h2>
-          <p className="mb-2 text-xs text-zinc-500 dark:text-zinc-400">
+          <p className="mb-2 text-xs text-ink-soft">
             Open one to see who&rsquo;s expected, who&rsquo;s excused, and
             who&rsquo;s arriving late.
           </p>
@@ -72,24 +74,22 @@ export default async function AttendanceCheckOffPage() {
             {upcoming.map((p) => (
               <li key={p.practiceId}>
                 <Link
-                  href={`/attendance/${p.practiceId}`}
-                  className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm transition-colors hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:bg-zinc-800"
+                  href={`/attendance/${p.practiceId}`} className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-line bg-surface px-3 py-2 text-sm transition-colors hover:bg-surface-2"
                 >
-                  <span className="font-medium text-zinc-900 dark:text-zinc-50">
+                  <span className="font-medium text-ink">
                     {p.danceName}
                   </span>
-                  <span className="text-zinc-600 dark:text-zinc-400">
+                  <span className="text-ink-soft">
                     {dateFormatter.format(p.startDateTime)}
                   </span>
                   {p.spaceName && (
-                    <span className="text-xs text-zinc-500">{p.spaceName}</span>
+                    <span className="text-xs text-ink-soft">{p.spaceName}</span>
                   )}
-                  <span className="ml-auto text-xs text-zinc-500">
+                  <span className="ml-auto text-xs text-ink-soft">
                     {p.expectedCount} expected
-                    {p.excusedCount > 0 && ` · ${p.excusedCount} excused`}
-                    {p.lateCount > 0 && ` · ${p.lateCount} arriving late`}
+                    {p.excusedCount > 0 && ` · ${p.excusedCount} excused`} {p.lateCount > 0 && ` · ${p.lateCount} arriving late`}
                   </span>
-                  <span className="text-zinc-300 dark:text-zinc-600">→</span>
+                  <span className="text-ink-soft">→</span>
                 </Link>
               </li>
             ))}
@@ -98,26 +98,26 @@ export default async function AttendanceCheckOffPage() {
       )}
 
       <section>
-        <h2 className="mb-2 text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+        <h2 className="mb-2 text-sm font-semibold text-ink">
           Needs your sign-off ({unmarked.length})
         </h2>
         {unmarked.length === 0 ? (
-          <p className="text-sm text-zinc-500">All caught up.</p>
+          <p className="text-sm text-ink-soft">All caught up.</p>
         ) : (
           <ul className="flex flex-col gap-2">
             {unmarked.map((p) => (
               <li key={p.practiceId}>
                 <Link
                   href={`/attendance/${p.practiceId}`}
-                  className="flex items-center justify-between rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm hover:bg-amber-100 dark:border-amber-900 dark:bg-amber-950 dark:hover:bg-amber-900"
+                  className="flex items-center justify-between rounded-lg border border-warn/35 bg-warn-soft px-3 py-2 text-sm hover:bg-warn-soft"
                 >
-                  <span className="font-medium text-zinc-900 dark:text-zinc-50">
+                  <span className="font-medium text-ink">
                     {p.danceName}
                   </span>
-                  <span className="text-zinc-600 dark:text-zinc-400">
+                  <span className="text-ink-soft">
                     {dateFormatter.format(p.startDateTime)}
                   </span>
-                  <span className="text-xs font-medium text-amber-700 dark:text-amber-300">
+                  <span className="text-xs font-medium text-warn">
                     Review &amp; submit →
                   </span>
                 </Link>
@@ -128,29 +128,27 @@ export default async function AttendanceCheckOffPage() {
       </section>
 
       <section>
-        <h2 className="mb-2 text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+        <h2 className="mb-2 text-sm font-semibold text-ink">
           Signed off
         </h2>
         {marked.length === 0 ? (
-          <p className="text-sm text-zinc-500">Nothing signed off yet.</p>
+          <p className="text-sm text-ink-soft">Nothing signed off yet.</p>
         ) : (
           <ul className="flex flex-col gap-2">
             {marked.map((p) => (
               <li key={p.practiceId}>
                 <Link
-                  href={`/attendance/${p.practiceId}`}
-                  className="flex items-center justify-between rounded-md bg-zinc-50 px-3 py-2 text-sm hover:bg-zinc-100 dark:bg-zinc-800 dark:hover:bg-zinc-700"
+                  href={`/attendance/${p.practiceId}`} className="flex items-center justify-between rounded-lg bg-surface-2 px-3 py-2 text-sm hover:bg-surface-3"
                 >
-                  <span className="font-medium text-zinc-900 dark:text-zinc-50">
+                  <span className="font-medium text-ink">
                     {p.danceName}
                   </span>
-                  <span className="text-zinc-600 dark:text-zinc-400">
+                  <span className="text-ink-soft">
                     {dateFormatter.format(p.startDateTime)}
                   </span>
-                  <span className="text-xs text-zinc-500">
+                  <span className="text-xs text-ink-soft">
                     {p.summary.presentCount}/{p.summary.markedCount} there
-                    {p.summary.lateCount > 0 && ` · ${p.summary.lateCount} late`}
-                    {p.summary.unexcusedCount > 0 &&
+                    {p.summary.lateCount > 0 && ` · ${p.summary.lateCount} late`} {p.summary.unexcusedCount > 0 &&
                       ` · ${p.summary.unexcusedCount} unexcused`}
                   </span>
                 </Link>

@@ -4,13 +4,16 @@ import { prisma } from "@/lib/prisma";
 import { getAttendanceSettings } from "@/lib/actions/attendance";
 import { getPersonAttendance } from "@/lib/attendance-data";
 import { AttendanceBadge } from "@/components/status-badges";
+import { APP_TIME_ZONE } from "@/lib/timezone";
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", {
+  timeZone: APP_TIME_ZONE,
   weekday: "short",
   month: "short",
   day: "numeric",
 });
 const timeFormatter = new Intl.DateTimeFormat("en-US", {
+  timeZone: APP_TIME_ZONE,
   hour: "numeric",
   minute: "2-digit",
 });
@@ -48,19 +51,18 @@ export default async function MyAttendancePage() {
   return (
     <div className="flex flex-col gap-5">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+        <h1 className="text-2xl font-semibold tracking-tight text-ink">
           My Attendance
         </h1>
-        <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+        <p className="mt-1 text-sm text-ink-soft">
           Every practice you&rsquo;ve had, and what was recorded. Tap any one
           to see the full record for that practice.
           {totalMinutesLate > 0 &&
-            ` You're ${totalMinutesLate} minutes late in total so far.`}
-        </p>
+            ` You're ${totalMinutesLate} minutes late in total so far.`} </p>
       </div>
 
       {groups.length === 0 && (
-        <p className="rounded-xl border border-dashed border-zinc-300 px-4 py-8 text-center text-sm text-zinc-500 dark:border-zinc-700">
+        <p className="rounded-xl border border-dashed border-line-strong px-4 py-8 text-center text-sm text-ink-soft">
           You&rsquo;re not in any dances yet.
         </p>
       )}
@@ -70,8 +72,8 @@ export default async function MyAttendancePage() {
       ))}
 
       {past.length > 0 && (
-        <details className="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
-          <summary className="cursor-pointer text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+        <details className="rounded-xl border border-line bg-surface p-4">
+          <summary className="cursor-pointer text-sm font-semibold text-ink">
             Past seasons ({past.length})
           </summary>
           <div className="mt-3 flex flex-col gap-4">
@@ -91,24 +93,24 @@ function DanceHistory({ group, bare }: { group: Group; bare?: boolean }) {
   const body = (
     <>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <h2 className="font-medium text-zinc-900 dark:text-zinc-50">
+        <h2 className="font-medium text-ink">
           {group.danceName}
         </h2>
         <div className="flex flex-wrap items-center gap-2 text-xs">
-          <span className="text-zinc-500">
+          <span className="text-ink-soft">
             {group.presentCount} there · {group.excusedAbsences} excused ·{" "}
             {group.unexcusedAbsences} unexcused
             {group.totalMinutesLate > 0 &&
               ` · ${group.totalMinutesLate} min late`}
           </span>
-          <span className="rounded-full bg-zinc-100 px-2 py-0.5 font-medium text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200">
+          <span className="rounded-full bg-surface-3 px-2 py-0.5 font-medium text-ink-soft bg-surface-3">
             {group.attendanceRate}%
           </span>
         </div>
       </div>
 
       {group.isFlagged && (
-        <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-xs font-medium text-red-700 dark:bg-red-950 dark:text-red-300">
+        <p className="mb-3 rounded-lg bg-bad-soft px-3 py-2 text-xs font-medium text-bad">
           Heads up: you&rsquo;ve missed {group.unexcusedAbsences} recent
           practices without an excused conflict. Your choreographer and the AD
           can see this.
@@ -116,25 +118,25 @@ function DanceHistory({ group, bare }: { group: Group; bare?: boolean }) {
       )}
 
       {group.entries.length === 0 ? (
-        <p className="text-sm text-zinc-500">Nothing recorded yet.</p>
+        <p className="text-sm text-ink-soft">Nothing recorded yet.</p>
       ) : (
         <ul className="flex flex-col gap-1">
           {group.entries.map((entry) => (
             <li key={entry.practiceId}>
               <Link
                 href={`/attendance/${entry.practiceId}`}
-                className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-zinc-50 px-3 py-2 text-sm transition-colors hover:bg-zinc-100 dark:bg-zinc-800/60 dark:hover:bg-zinc-800"
+                className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-surface-2 px-3 py-2 text-sm transition-colors hover:bg-surface-3/60"
               >
-                <span className="text-zinc-800 dark:text-zinc-200">
+                <span className="text-ink">
                   {dateFormatter.format(entry.startDateTime)}
                 </span>
                 {entry.spaceName && (
-                  <span className="text-xs text-zinc-500">
+                  <span className="text-xs text-ink-soft">
                     {entry.spaceName}
                   </span>
                 )}
                 {entry.checkedInAt && (
-                  <span className="text-xs text-zinc-500">
+                  <span className="text-xs text-ink-soft">
                     checked in {timeFormatter.format(entry.checkedInAt)}
                   </span>
                 )}
@@ -143,7 +145,7 @@ function DanceHistory({ group, bare }: { group: Group; bare?: boolean }) {
                     status={entry.status}
                     minutesLate={entry.minutesLate}
                   />
-                  <span className="text-zinc-300 dark:text-zinc-600">→</span>
+                  <span className="text-ink-soft">→</span>
                 </span>
               </Link>
             </li>
@@ -155,7 +157,7 @@ function DanceHistory({ group, bare }: { group: Group; bare?: boolean }) {
 
   if (bare) return <div>{body}</div>;
   return (
-    <section className="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
+    <section className="rounded-xl border border-line bg-surface p-4">
       {body}
     </section>
   );

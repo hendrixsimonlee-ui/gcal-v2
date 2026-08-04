@@ -6,8 +6,10 @@ import { getOpenCheckIns } from "@/lib/actions/attendance";
 import { CheckInCard } from "@/components/check-in-card";
 import { PushToggle } from "@/components/push-toggle";
 import { startOfWeek, addDays, formatWeekLabel, toDateParam } from "@/lib/dates";
+import { APP_TIME_ZONE } from "@/lib/timezone";
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", {
+  timeZone: APP_TIME_ZONE,
   weekday: "short",
   month: "short",
   day: "numeric",
@@ -15,6 +17,7 @@ const dateFormatter = new Intl.DateTimeFormat("en-US", {
   minute: "2-digit",
 });
 const timeFormatter = new Intl.DateTimeFormat("en-US", {
+  timeZone: APP_TIME_ZONE,
   hour: "numeric",
   minute: "2-digit",
 });
@@ -61,15 +64,15 @@ export default async function MySchedulePage() {
     }),
   ]);
 
-  const greeting = `Hi ${firstName(user.name, user.email ?? "")} 👋`;
+  const greeting = `Hi ${firstName(user.name, user.email ?? "")}`;
 
   if (memberships.length === 0) {
     return (
       <div className="flex flex-col gap-2">
-        <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+        <h1 className="text-2xl font-semibold tracking-tight text-ink">
           {greeting}
         </h1>
-        <p className="text-sm text-zinc-500 dark:text-zinc-400">
+        <p className="text-sm text-ink-soft">
           You&rsquo;re not in any dances yet. Once the AD adds you to one,
           it&rsquo;ll show up here.
         </p>
@@ -80,10 +83,10 @@ export default async function MySchedulePage() {
   return (
     <div className="flex flex-col gap-5">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+        <h1 className="text-2xl font-semibold tracking-tight text-ink">
           {greeting}
         </h1>
-        <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+        <p className="mt-1 text-sm text-ink-soft">
           {thisWeekCount === 0
             ? "Nothing on your schedule this week."
             : `You have ${thisWeekCount} practice${thisWeekCount === 1 ? "" : "s"} this week.`}
@@ -97,12 +100,12 @@ export default async function MySchedulePage() {
       {thisWeekCount > 0 && (
         <a
           href={`/api/my-week.ics?week=${toDateParam(weekStart)}`}
-          className="flex items-center justify-between rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm transition-colors hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:bg-zinc-800"
+          className="flex items-center justify-between rounded-xl border border-line bg-surface px-4 py-3 text-sm transition-colors hover:bg-surface-2"
         >
-          <span className="text-zinc-700 dark:text-zinc-300">
+          <span className="text-ink-soft">
             Add this week ({formatWeekLabel(weekStart)}) to your calendar
           </span>
-          <span className="font-medium text-sky-600 dark:text-sky-400">
+          <span className="font-medium text-accent">
             Download →
           </span>
         </a>
@@ -111,19 +114,19 @@ export default async function MySchedulePage() {
       {memberships.map(({ dance, role }) => (
         <section
           key={dance.id}
-          className="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900"
+          className="rounded-xl border border-line bg-surface p-4"
         >
           <div className="mb-3 flex items-center gap-2">
-            <h2 className="font-medium text-zinc-900 dark:text-zinc-50">
+            <h2 className="font-medium text-ink">
               {dance.name}
             </h2>
-            <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] font-medium text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
+            <span className="rounded-full bg-surface-3 px-2 py-0.5 text-[11px] font-medium text-ink-soft bg-surface-3">
               {role === "CHOREOGRAPHER" ? "Choreographer" : "Dancer"}
             </span>
           </div>
 
           {dance.practices.length === 0 ? (
-            <p className="text-sm text-zinc-500 dark:text-zinc-400">
+            <p className="text-sm text-ink-soft">
               Nothing scheduled yet.
             </p>
           ) : (
@@ -131,29 +134,29 @@ export default async function MySchedulePage() {
               {dance.practices.map((practice) => (
                 <li
                   key={practice.id}
-                  className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-zinc-50 px-3 py-2 text-sm dark:bg-zinc-800/60"
+                  className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-surface-2 px-3 py-2 text-sm bg-surface/60"
                 >
-                  <span className="font-medium text-zinc-800 dark:text-zinc-200">
+                  <span className="font-medium text-ink">
                     {dateFormatter.format(practice.startDateTime)}
                   </span>
-                  <span className="text-xs text-zinc-500">
+                  <span className="text-xs text-ink-soft">
                     {practice.space?.name ?? "Space TBD"}
                   </span>
                   {practice.plannedArrivals[0] && (
-                    <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-medium text-sky-700 dark:bg-sky-950 dark:text-sky-300">
+                    <span className="rounded-full bg-info-soft px-2 py-0.5 text-[11px] font-medium text-accent">
                       you&rsquo;re due at{" "}
                       {timeFormatter.format(practice.plannedArrivals[0].arriveAt)}
                     </span>
                   )}
                   {practice.status === "PROPOSED" && (
-                    <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+                    <span className="rounded-full bg-warn-soft px-2 py-0.5 text-[11px] font-medium text-warn">
                       Not final yet
                     </span>
                   )}
                   {practice.status === "CONFIRMED" && (
                     <Link
                       href={`/attendance/${practice.id}`}
-                      className="ml-auto text-xs font-medium text-zinc-500 hover:underline"
+                      className="ml-auto text-xs font-medium text-accent underline-offset-2 hover:underline"
                     >
                       Who&rsquo;s coming
                     </Link>
@@ -170,7 +173,7 @@ export default async function MySchedulePage() {
                       })}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-xs font-medium text-sky-600 hover:underline dark:text-sky-400"
+                      className="text-xs font-medium text-accent hover:underline"
                     >
                       Add to calendar
                     </a>

@@ -4,6 +4,7 @@ import {
   summarizePerson,
   type AttendanceStatus,
 } from "@/lib/attendance";
+import { APP_TIME_ZONE, appDateKey } from "@/lib/timezone";
 
 export interface PersonPracticeRow {
   practiceId: string;
@@ -62,6 +63,7 @@ export interface PersonDossier {
 }
 
 const monthLabel = new Intl.DateTimeFormat("en-US", {
+  timeZone: APP_TIME_ZONE,
   month: "short",
   year: "numeric",
 });
@@ -137,9 +139,7 @@ export async function getPersonDossier(
   const monthly = new Map<string, { label: string; minutes: number }>();
   for (const practice of recorded) {
     if (!practice.minutesLate) continue;
-    const key = `${practice.startDateTime.getFullYear()}-${String(
-      practice.startDateTime.getMonth() + 1,
-    ).padStart(2, "0")}`;
+    const key = appDateKey(practice.startDateTime).slice(0, 7);
     const entry = monthly.get(key) ?? {
       label: monthLabel.format(practice.startDateTime),
       minutes: 0,

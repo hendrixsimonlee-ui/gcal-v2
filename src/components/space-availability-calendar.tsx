@@ -101,9 +101,9 @@ export function SpaceAvailabilityCalendar({
   }, [spaces, range]);
 
   return (
-    <div className="rounded-lg border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900">
+    <div className="rounded-lg border border-line bg-surface p-3">
       <div className="mb-2 flex flex-wrap items-center gap-3 text-xs">
-        <span className="font-medium text-zinc-700 dark:text-zinc-300">
+        <span className="font-medium text-ink-soft">
           Shaded = usual hours · solid block = changed hours ·
         </span>
         {spaces.map((s) => (
@@ -116,7 +116,7 @@ export function SpaceAvailabilityCalendar({
           </span>
         ))}
         <span className="flex items-center gap-1.5">
-          <span className="inline-block h-3 w-3 rounded bg-red-600" />
+          <span className="inline-block h-3 w-3 rounded bg-bad" />
           Closed all day
         </span>
       </div>

@@ -13,12 +13,12 @@ export default async function SignInPage() {
     : [];
 
   return (
-    <div className="flex flex-1 items-center justify-center bg-zinc-50 px-4 py-10 dark:bg-zinc-950">
-      <div className="w-full max-w-sm rounded-xl border border-zinc-200 bg-white p-8 text-center shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-        <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">
-          Dance Scheduler
+    <div className="flex flex-1 items-center justify-center bg-surface-2 px-4 py-10">
+      <div className="w-full max-w-sm rounded-xl border border-line bg-surface p-8 text-center shadow-sm">
+        <h1 className="text-xl font-semibold text-ink">
+          PADT Calendar
         </h1>
-        <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
+        <p className="mt-2 text-sm text-ink-soft">
           Sign in with your Google account to view your schedule, log
           conflicts, and (if you connect it) import events from Google
           Calendar.
@@ -31,25 +31,25 @@ export default async function SignInPage() {
         >
           <button
             type="submit"
-            className="mt-6 flex w-full items-center justify-center gap-2 rounded-lg bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-zinc-700 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200"
+            className="mt-6 flex w-full items-center justify-center gap-2 rounded-lg bg-accent px-4 py-2.5 text-sm font-medium text-on-accent transition-colors hover:bg-accent-hover"
           >
             Sign in with Google
           </button>
         </form>
 
         {showDevLogin && (
-          <div className="mt-8 border-t border-dashed border-amber-400 pt-6 text-left">
-            <p className="text-xs font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400">
+          <div className="mt-8 border-t border-dashed border-warn/50 pt-6 text-left">
+            <p className="text-xs font-semibold uppercase tracking-wide text-warn">
               Local development only
             </p>
-            <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+            <p className="mt-1 text-xs text-ink-soft">
               Sign in as anyone on the roster without Google. This block
               cannot appear in a real deployment.
             </p>
             {devUsers.length === 0 ? (
-              <p className="mt-3 text-xs text-zinc-500">
+              <p className="mt-3 text-xs text-ink-soft">
                 No roster members yet — run{" "}
-                <code className="rounded bg-zinc-100 px-1 dark:bg-zinc-800">
+                <code className="rounded bg-surface-3 px-1 bg-surface-3">
                   npm run seed:demo
                 </code>
                 .
@@ -62,11 +62,11 @@ export default async function SignInPage() {
                       <input type="hidden" name="email" value={user.email} />
                       <button
                         type="submit"
-                        className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-sm text-zinc-700 transition-colors hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                        className="flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-sm text-ink-soft transition-colors hover:bg-surface-3"
                       >
                         <span>{user.name ?? user.email}</span>
                         {user.isAdmin && (
-                          <span className="rounded-full bg-zinc-900 px-2 py-0.5 text-[10px] font-medium text-white dark:bg-white dark:text-zinc-900">
+                          <span className="rounded-full bg-accent px-2 py-0.5 text-[10px] font-medium text-white">
                             AD
                           </span>
                         )}

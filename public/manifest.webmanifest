@@ -1,6 +1,6 @@
 {
-  "name": "Dance Scheduler",
-  "short_name": "Dance Sched",
+  "name": "PADT Calendar",
+  "short_name": "PADT Cal",
   "description": "Schedule dance practices around conflicts, spaces, and choreographers.",
   "start_url": "/schedule",
   "scope": "/",

@@ -1,4 +1,4 @@
-# Putting the Dance Scheduler online
+# Putting the PADT Calendar online
 
 A step-by-step walkthrough for getting the app onto a real URL your team can
 use. No prior deployment experience assumed.
@@ -42,17 +42,17 @@ conflicts from their own Google Calendar.
    [console.cloud.google.com/apis/credentials](https://console.cloud.google.com/apis/credentials)
    and sign in.
 2. Create a new project (top-left dropdown → **New Project**). Name it
-   `Dance Scheduler`.
+   `PADT Calendar`.
 3. In the left menu, open **APIs & Services → Library**, search for
    **Google Calendar API**, and click **Enable**.
 4. Back in **Credentials**, click **Configure Consent Screen** if prompted:
    - User type: **External**
-   - App name: `Dance Scheduler`, your email for both support fields
+   - App name: `PADT Calendar`, your email for both support fields
    - Scopes: skip for now (you can add nothing here and it still works)
    - Test users: add your own email
 5. Now **Create Credentials → OAuth client ID**:
    - Application type: **Web application**
-   - Name: `Dance Scheduler Web`
+   - Name: `PADT Calendar Web`
    - **Authorized redirect URIs** — add this exactly, for now:
      `http://localhost:3000/api/auth/callback/google`
      (you'll add the real one in Step 5, once you know your URL)
@@ -174,6 +174,40 @@ Save. Google sometimes takes a few minutes to apply this.
 
 ---
 
+## Scheduled notifications
+
+Two notifications are time-based rather than triggered by someone clicking:
+"practice has started, check in" when a practice begins, and "review and
+submit attendance" for the choreographer when it ends. A web app can't wake
+itself up, so something has to call
+`/api/cron/practice-notifications` every few minutes.
+
+**Vercel's own cron won't do it on the free plan** — Hobby accounts allow one
+run per day, and these need roughly five-minute resolution. Use a free
+external scheduler instead:
+
+1. Sign up at [console.cron-job.org](https://console.cron-job.org).
+2. **Create cronjob**:
+   - Title: `PADT Calendar notifications`
+   - URL: `https://<your-vercel-url>/api/cron/practice-notifications`
+   - Schedule: **Every 5 minutes**
+3. Open the **Advanced** (or **Headers**) section and add one header:
+   - Key: `Authorization`
+   - Value: `Bearer <your CRON_SECRET>` — the word `Bearer`, a space, then
+     the same value you put in Vercel.
+4. Save, then hit **Test run**. A correct setup returns
+   `{"checkInSent":0,"attendanceSent":0,...}`. `Unauthorized` means the
+   header doesn't match `CRON_SECRET`.
+
+The endpoint is safe to call as often as you like — each notification is sent
+once per practice regardless of how many times it runs.
+
+**If you skip this entirely, the app still works.** The Check in button
+appears by itself while a practice is running, and choreographers can submit
+attendance whenever they want. You only lose the automatic nudges.
+
+---
+
 ## Optional — email notifications
 
 Without this, people still get notifications inside the app (the bell icon).
@@ -183,7 +217,7 @@ Email is extra.
    their test sending address to start.
 2. Create an API key.
 3. In Vercel: **Settings → Environment Variables**, add `RESEND_API_KEY` and
-   `EMAIL_FROM` (e.g. `Dance Scheduler <scheduler@yourdomain.edu>`), then
+   `EMAIL_FROM` (e.g. `PADT Calendar <scheduler@yourdomain.edu>`), then
    redeploy.
 
 If email is misconfigured the app carries on and logs the problem — it never

@@ -70,17 +70,17 @@ export function SpaceCalendarLink({
   }
 
   return (
-    <div className="mb-3 rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-800">
+    <div className="mb-3 rounded-lg border border-line bg-surface-2 px-3 py-2 text-sm bg-surface">
       {linkedCalendarName ? (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-          <span className="text-zinc-700 dark:text-zinc-300">
+          <span className="text-ink-soft">
             Google Calendar:{" "}
             <span className="font-medium">{linkedCalendarName}</span>
           </span>
           <button
             onClick={sync}
             disabled={isPending}
-            className="rounded-md bg-zinc-900 px-2.5 py-1 text-xs font-medium text-white hover:bg-zinc-700 disabled:opacity-40 dark:bg-white dark:text-zinc-900"
+            className="rounded-lg bg-accent px-2.5 py-1 text-xs font-medium text-on-accent hover:bg-accent-hover disabled:opacity-45"
           >
             {isPending ? "Syncing…" : "Sync bookings"}
           </button>
@@ -92,7 +92,7 @@ export function SpaceCalendarLink({
               })
             }
             disabled={isPending}
-            className="text-xs font-medium text-zinc-500 hover:underline"
+            className="text-xs font-medium text-ink-soft hover:underline"
           >
             Unlink
           </button>
@@ -103,7 +103,7 @@ export function SpaceCalendarLink({
             name="calendarId"
             required
             defaultValue=""
-            className="rounded-md border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-600 dark:bg-zinc-900"
+            className="rounded-lg border border-line-strong px-2 py-1 text-sm"
           >
             <option value="" disabled>
               Pick the calendar this room is booked on…
@@ -118,28 +118,28 @@ export function SpaceCalendarLink({
           <button
             type="submit"
             disabled={isPending}
-            className="rounded-md bg-zinc-900 px-2.5 py-1 text-xs font-medium text-white hover:bg-zinc-700 disabled:opacity-40 dark:bg-white dark:text-zinc-900"
+            className="rounded-lg bg-accent px-2.5 py-1 text-xs font-medium text-on-accent hover:bg-accent-hover disabled:opacity-45"
           >
             Link
           </button>
           <button
             type="button"
             onClick={() => setCalendars(null)}
-            className="text-xs font-medium text-zinc-500 hover:underline"
+            className="text-xs font-medium text-ink-soft hover:underline"
           >
             Cancel
           </button>
         </form>
       ) : (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-          <span className="text-zinc-500 dark:text-zinc-400">
+          <span className="text-ink-soft">
             No Google Calendar linked. Link one and each event on it becomes a
             block this room is open.
           </span>
           <button
             onClick={loadCalendars}
             disabled={isPending}
-            className="text-xs font-medium text-sky-600 hover:underline disabled:opacity-40 dark:text-sky-400"
+            className="text-xs font-medium text-accent hover:underline disabled:opacity-45"
           >
             {isPending ? "Loading…" : "Link a calendar"}
           </button>
@@ -147,12 +147,12 @@ export function SpaceCalendarLink({
       )}
 
       {message && (
-        <p className="mt-1 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+        <p className="mt-1 text-xs font-medium text-good">
           {message}
         </p>
       )}
       {error && (
-        <p className="mt-1 text-xs font-medium text-red-600 dark:text-red-400">
+        <p className="mt-1 text-xs font-medium text-bad">
           {error}
         </p>
       )}

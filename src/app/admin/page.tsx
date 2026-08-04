@@ -153,10 +153,10 @@ export default async function AdminHomePage() {
   return (
     <div className="flex flex-col gap-5">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
-          Hi {firstName(user.name, user.email ?? "")} 👋
+        <h1 className="text-2xl font-semibold tracking-tight text-ink">
+          Hi {firstName(user.name, user.email ?? "")}
         </h1>
-        <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+        <p className="mt-1 text-sm text-ink-soft">
           {setupDone
             ? `Here's where you are for the week of ${formatWeekLabel(weekStart)}.`
             : "Let's get you set up — a few one-off things first."}
@@ -164,12 +164,12 @@ export default async function AdminHomePage() {
       </div>
 
       {!setupDone && (
-        <section className="rounded-xl border border-sky-200 bg-sky-50 p-4 dark:border-sky-900 dark:bg-sky-950/50">
-          <h2 className="text-sm font-semibold text-sky-900 dark:text-sky-200">
+        <section className="rounded-xl border border-info/35 bg-info-soft p-4">
+          <h2 className="text-sm font-semibold text-info">
             Setting up ({setupSteps.filter((s) => s.done).length} of{" "}
             {setupSteps.length} done)
           </h2>
-          <p className="mb-3 text-xs text-sky-800/80 dark:text-sky-300/80">
+          <p className="mb-3 text-xs text-info /80">
             Do these once, in this order, before the weekly work below will
             make sense. This box disappears when they&rsquo;re all done.
           </p>
@@ -178,26 +178,25 @@ export default async function AdminHomePage() {
               <li key={step.href}>
                 <Link
                   href={step.href}
-                  className="flex items-center gap-3 rounded-lg bg-white px-3 py-2 transition-colors hover:bg-sky-100/60 dark:bg-zinc-900 dark:hover:bg-zinc-800"
+                  className="flex items-center gap-3 rounded-lg bg-surface px-3 py-2 transition-colors hover:bg-info-soft/60"
                 >
                   <span
-                    className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
-                      step.done
-                        ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
-                        : "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
+                    className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${ step.done
+                        ? "bg-good-soft text-good  "
+                        : "bg-surface-3 text-ink-soft bg-surface-3 "
                     }`}
                   >
-                    {step.done ? "✓" : i + 1}
+                    {step.done ? <CheckMark /> : i + 1}
                   </span>
                   <span className="flex flex-col">
-                    <span className="text-sm font-medium text-zinc-900 dark:text-zinc-50">
+                    <span className="text-sm font-medium text-ink">
                       {step.label}
                     </span>
-                    <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                    <span className="text-xs text-ink-soft">
                       {step.detail}
                     </span>
                   </span>
-                  <span className="ml-auto text-zinc-300 dark:text-zinc-600">
+                  <span className="ml-auto text-ink-soft">
                     →
                   </span>
                 </Link>
@@ -212,30 +211,49 @@ export default async function AdminHomePage() {
           <li key={`${step.href}-${i}`}>
             <Link
               href={step.href}
-              className="flex items-center gap-3 rounded-xl border border-zinc-200 bg-white px-4 py-3 transition-colors hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:bg-zinc-800"
+              className="flex items-center gap-3 rounded-xl border border-line bg-surface px-4 py-3 transition-colors hover:bg-surface-2"
             >
               <span
-                className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${
-                  step.done
-                    ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
-                    : "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
+                className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${ step.done
+                    ? "bg-good-soft text-good  "
+                    : "bg-surface-3 text-ink-soft bg-surface-3 "
                 }`}
               >
-                {step.done ? "✓" : i + 1}
+                {step.done ? <CheckMark /> : i + 1}
               </span>
               <span className="flex flex-col">
-                <span className="text-sm font-medium text-zinc-900 dark:text-zinc-50">
+                <span className="text-sm font-medium text-ink">
                   {step.label}
                 </span>
-                <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                <span className="text-xs text-ink-soft">
                   {step.detail}
                 </span>
               </span>
-              <span className="ml-auto text-zinc-300 dark:text-zinc-600">→</span>
+              <span className="ml-auto text-ink-soft">→</span>
             </Link>
           </li>
         ))}
       </ol>
     </div>
+  );
+}
+
+/** A drawn tick rather than a text character, so it renders identically
+ * everywhere and reads as an icon rather than as content. */
+function CheckMark() {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="3.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M20 6 9 17l-5-5" />
+    </svg>
   );
 }

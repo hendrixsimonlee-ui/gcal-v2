@@ -87,17 +87,17 @@ export function PushToggle() {
   if (state === "loading") return null;
 
   return (
-    <div className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm dark:border-zinc-800 dark:bg-zinc-900">
+    <div className="rounded-xl border border-line bg-surface px-4 py-3 text-sm">
       {state === "on" && (
         <div className="flex flex-wrap items-center gap-3">
-          <span className="text-zinc-700 dark:text-zinc-300">
-            🔔 Phone notifications are on — you&rsquo;ll get a nudge when
+          <span className="text-ink-soft">
+            Phone notifications are on — you&rsquo;ll get a nudge when
             practice starts.
           </span>
           <button
             onClick={disable}
             disabled={isPending}
-            className="ml-auto text-xs font-medium text-zinc-500 hover:underline"
+            className="ml-auto text-xs font-medium text-ink-soft hover:underline"
           >
             Turn off
           </button>
@@ -106,14 +106,14 @@ export function PushToggle() {
 
       {state === "off" && (
         <div className="flex flex-wrap items-center gap-3">
-          <span className="text-zinc-700 dark:text-zinc-300">
+          <span className="text-ink-soft">
             Get a nudge on your phone when practice starts, so you never forget
             to check in.
           </span>
           <button
             onClick={enable}
             disabled={isPending}
-            className="ml-auto rounded-lg bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:opacity-40 dark:bg-white dark:text-zinc-900"
+            className="ml-auto rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-on-accent transition-colors hover:bg-accent-hover disabled:opacity-45"
           >
             {isPending ? "…" : "Turn on notifications"}
           </button>
@@ -121,8 +121,8 @@ export function PushToggle() {
       )}
 
       {state === "needs-install" && (
-        <p className="text-zinc-600 dark:text-zinc-400">
-          📲 To get notifications on your iPhone, add this to your home screen
+        <p className="text-ink-soft">
+          To get notifications on your iPhone, add this to your home screen
           first: tap <strong>Share</strong>, then{" "}
           <strong>Add to Home Screen</strong>. Then open it from there and come
           back here.
@@ -130,14 +130,14 @@ export function PushToggle() {
       )}
 
       {state === "blocked" && (
-        <p className="text-zinc-600 dark:text-zinc-400">
+        <p className="text-ink-soft">
           Notifications are blocked for this site in your browser settings.
           You&rsquo;ll still see everything in the app.
         </p>
       )}
 
       {state === "unsupported" && (
-        <p className="text-zinc-600 dark:text-zinc-400">
+        <p className="text-ink-soft">
           This browser can&rsquo;t do phone notifications. You&rsquo;ll still
           get everything in the app and by email.
         </p>

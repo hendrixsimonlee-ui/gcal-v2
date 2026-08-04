@@ -15,6 +15,7 @@ import {
 } from "@/lib/actions/planned-arrivals";
 import { AttendanceBadge } from "@/components/status-badges";
 import type { AttendanceStatus } from "@/lib/attendance";
+import { APP_TIME_ZONE } from "@/lib/timezone";
 
 export interface PanelRow {
   userId: string;
@@ -42,6 +43,7 @@ export interface PanelNote {
 }
 
 const timeFormatter = new Intl.DateTimeFormat("en-US", {
+  timeZone: APP_TIME_ZONE,
   hour: "numeric",
   minute: "2-digit",
 });
@@ -108,24 +110,23 @@ export function PracticeAttendancePanel({
   return (
     <div className="flex flex-col gap-4">
       {error && (
-        <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">
+        <p className="rounded-lg bg-bad-soft px-3 py-2 text-sm text-bad">
           {error}
         </p>
       )}
 
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-zinc-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900">
-        <p className="text-sm text-zinc-600 dark:text-zinc-300">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-surface px-4 py-3">
+        <p className="text-sm text-ink-soft">
           {hasStarted ? (
             <>
-              <span className="font-medium text-zinc-900 dark:text-zinc-50">
+              <span className="font-medium text-ink">
                 {checkedIn} checked in
               </span>
-              {lateCount > 0 && ` · ${lateCount} late`}
-              {unexcused > 0 && ` · ${unexcused} unexcused`}
+              {lateCount > 0 && ` · ${lateCount} late`} {unexcused > 0 && ` · ${unexcused} unexcused`}
             </>
           ) : (
             <>
-              <span className="font-medium text-zinc-900 dark:text-zinc-50">
+              <span className="font-medium text-ink">
                 Hasn&rsquo;t happened yet
               </span>
               {" — "}
@@ -138,13 +139,13 @@ export function PracticeAttendancePanel({
           hasStarted &&
           (submittedAt ? (
             <div className="flex items-center gap-3 text-sm">
-              <span className="font-medium text-emerald-600 dark:text-emerald-400">
+              <span className="font-medium text-good">
                 Submitted
               </span>
               <button
                 onClick={() => run(() => unsubmitAttendance(practiceId))}
                 disabled={isPending}
-                className="text-xs font-medium text-zinc-500 hover:underline"
+                className="text-xs font-medium text-ink-soft hover:underline"
               >
                 Reopen to edit
               </button>
@@ -153,7 +154,7 @@ export function PracticeAttendancePanel({
             <button
               onClick={() => run(() => submitAttendance(practiceId))}
               disabled={isPending}
-              className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-700 disabled:opacity-40"
+              className="rounded-lg bg-good px-4 py-2 text-sm font-medium text-surface transition-colors hover:opacity-90 disabled:opacity-45"
             >
               {isPending ? "Submitting…" : "Submit attendance"}
             </button>
@@ -161,8 +162,8 @@ export function PracticeAttendancePanel({
       </div>
 
       {canManage && hasStarted && (
-        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm dark:border-zinc-800 dark:bg-zinc-900">
-          <label className="text-zinc-600 dark:text-zinc-300">
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-line bg-surface px-4 py-3 text-sm">
+          <label className="text-ink-soft">
             Did it start late?
           </label>
           <input
@@ -177,9 +178,9 @@ export function PracticeAttendancePanel({
               when.setHours(h, m, 0, 0);
               run(() => setActualStartTime(practiceId, when.toISOString()));
             }}
-            className="rounded-lg border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-800"
+            className="rounded-lg border border-line-strong px-2 py-1 bg-surface-3"
           />
-          <span className="text-xs text-zinc-500">
+          <span className="text-xs text-ink-soft">
             Everyone&rsquo;s lateness is measured from this — saves
             automatically.
           </span>
@@ -187,7 +188,7 @@ export function PracticeAttendancePanel({
             <button
               onClick={() => run(() => setActualStartTime(practiceId, null))}
               disabled={isPending}
-              className="text-xs font-medium text-zinc-500 hover:underline"
+              className="text-xs font-medium text-ink-soft hover:underline"
             >
               Started on time after all
             </button>
@@ -218,14 +219,14 @@ export function PracticeAttendancePanel({
       />
 
       {canManage && !hasStarted && expected.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm dark:border-zinc-800 dark:bg-zinc-900">
-          <span className="text-zinc-600 dark:text-zinc-300">
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-surface px-4 py-3 text-sm">
+          <span className="text-ink-soft">
             Somebody arriving late?
           </span>
           <select
             value={arrivalUser}
             onChange={(e) => setArrivalUser(e.target.value)}
-            className="rounded-lg border border-zinc-300 px-2 py-1.5 dark:border-zinc-700 dark:bg-zinc-800"
+            className="rounded-lg border border-line-strong px-2 py-1.5 bg-surface-3"
           >
             <option value="">Who…</option>
             {expected.map((r) => (
@@ -238,7 +239,7 @@ export function PracticeAttendancePanel({
             type="time"
             value={arrivalTime}
             onChange={(e) => setArrivalTime(e.target.value)}
-            className="rounded-lg border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-800"
+            className="rounded-lg border border-line-strong px-2 py-1 bg-surface-3"
           />
           <button
             onClick={() => {
@@ -252,11 +253,11 @@ export function PracticeAttendancePanel({
               run(() => setPlannedArrival(practiceId, who, when.toISOString()));
             }}
             disabled={isPending || !arrivalUser || !arrivalTime}
-            className="rounded-lg bg-zinc-900 px-3 py-1.5 font-medium text-white transition-colors hover:bg-zinc-700 disabled:opacity-40 dark:bg-white dark:text-zinc-900"
+            className="rounded-lg bg-accent px-3 py-1.5 font-medium text-on-accent transition-colors hover:bg-accent-hover disabled:opacity-45"
           >
             Save
           </button>
-          <span className="text-xs text-zinc-500">
+          <span className="text-xs text-ink-soft">
             Arriving by that time counts as on time.
           </span>
         </div>
@@ -270,30 +271,30 @@ export function PracticeAttendancePanel({
         onRun={run}
       />
 
-      <section className="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
-        <h2 className="mb-2 text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+      <section className="rounded-xl border border-line bg-surface p-4">
+        <h2 className="mb-2 text-sm font-semibold text-ink">
           Notes
         </h2>
         <ul className="mb-3 flex flex-col gap-1.5">
           {notes.length === 0 && (
-            <li className="text-sm text-zinc-500">Nothing written yet.</li>
+            <li className="text-sm text-ink-soft">Nothing written yet.</li>
           )}
           {notes.map((note) => (
             <li
               key={note.id}
-              className="flex flex-wrap items-start gap-x-2 rounded-lg bg-zinc-50 px-3 py-2 text-sm dark:bg-zinc-800/60"
+              className="flex flex-wrap items-start gap-x-2 rounded-lg bg-surface-2 px-3 py-2 text-sm bg-surface/60"
             >
               {note.subjectName && (
-                <span className="rounded-full bg-zinc-200 px-2 py-0.5 text-[11px] font-medium text-zinc-700 dark:bg-zinc-700 dark:text-zinc-200">
+                <span className="rounded-full bg-surface-3 px-2 py-0.5 text-[11px] font-medium text-ink-soft">
                   {note.subjectName}
                 </span>
               )}
-              <span className="text-zinc-800 dark:text-zinc-200">{note.body}</span>
-              <span className="text-xs text-zinc-400">— {note.authorName}</span>
+              <span className="text-ink">{note.body}</span>
+              <span className="text-xs text-ink-faint">— {note.authorName}</span>
               {note.canEdit && (
                 <button
                   onClick={() => run(() => deletePracticeNote(note.id))}
-                  className="ml-auto text-xs font-medium text-red-600 hover:underline"
+                  className="ml-auto text-xs font-medium text-ink-faint transition-colors hover:text-bad"
                 >
                   Delete
                 </button>
@@ -306,7 +307,7 @@ export function PracticeAttendancePanel({
           <select
             value={noteSubject}
             onChange={(e) => setNoteSubject(e.target.value)}
-            className="rounded-lg border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-800"
+            className="rounded-lg border border-line-strong px-2 py-1.5 text-sm bg-surface"
           >
             <option value="">About the practice</option>
             {/* Only a choreographer or admin may write about someone else,
@@ -327,7 +328,7 @@ export function PracticeAttendancePanel({
                 ? "Ran 20 minutes short, or: Leila is walking over from class"
                 : "I was walking over from a class that ran long"
             }
-            className="min-w-56 flex-1 rounded-lg border border-zinc-300 px-3 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-800"
+            className="min-w-56 flex-1 rounded-lg border border-line-strong px-3 py-1.5 text-sm bg-surface"
           />
           <button
             onClick={() => {
@@ -338,7 +339,7 @@ export function PracticeAttendancePanel({
               run(() => addPracticeNote(practiceId, subject, body));
             }}
             disabled={isPending}
-            className="rounded-lg bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:opacity-40 dark:bg-white dark:text-zinc-900"
+            className="rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-on-accent transition-colors hover:bg-accent-hover disabled:opacity-45"
           >
             Add note
           </button>
@@ -367,18 +368,18 @@ function Group({
 }) {
   if (rows.length === 0) return null;
   return (
-    <section className="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
-      <h2 className="mb-2 text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+    <section className="rounded-xl border border-line bg-surface p-4">
+      <h2 className="mb-2 text-sm font-semibold text-ink">
         {title}{" "}
-        <span className="font-normal text-zinc-400">({rows.length})</span>
+        <span className="font-normal text-ink-faint">({rows.length})</span>
       </h2>
       <ul className="flex flex-col gap-1.5">
         {rows.map((row) => (
           <li
             key={row.userId}
-            className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-zinc-50 px-3 py-2 text-sm dark:bg-zinc-800/60"
+            className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-surface-2 px-3 py-2 text-sm bg-surface/60"
           >
-            <span className="font-medium text-zinc-900 dark:text-zinc-50">
+            <span className="font-medium text-ink">
               {row.name}
             </span>
             {row.role === "CHOREOGRAPHER" && (
@@ -387,15 +388,15 @@ function Group({
               </span>
             )}
             {row.plannedArriveAt && (
-              <span className="text-xs text-zinc-500">
+              <span className="text-xs text-ink-soft">
                 due {timeFormatter.format(new Date(row.plannedArriveAt))}
               </span>
             )}
             {row.conflictTitle && !row.checkedInAt && (
-              <span className="text-xs text-zinc-500">{row.conflictTitle}</span>
+              <span className="text-xs text-ink-soft">{row.conflictTitle}</span>
             )}
             {row.checkedInAt && (
-              <span className="text-xs text-zinc-500">
+              <span className="text-xs text-ink-soft">
                 in at {timeFormatter.format(new Date(row.checkedInAt))}
               </span>
             )}
@@ -408,12 +409,12 @@ function Group({
                 />
               )}
               {row.isOverride && (
-                <span className="text-[10px] uppercase text-zinc-400">edited</span>
+                <span className="text-[10px] uppercase text-ink-faint">edited</span>
               )}
               {onClearArrival && (
                 <button
                   onClick={() => onClearArrival(row.userId)}
-                  className="text-xs font-medium text-zinc-500 hover:underline"
+                  className="text-xs font-medium text-ink-soft hover:underline"
                 >
                   Remove
                 </button>
@@ -430,7 +431,7 @@ function Group({
                       ),
                     )
                   }
-                  className="rounded-lg border border-zinc-300 px-1.5 py-0.5 text-xs dark:border-zinc-700 dark:bg-zinc-800"
+                  className="rounded-lg border border-line-strong px-1.5 py-0.5 text-xs bg-surface"
                 >
                   <option value="" disabled>
                     Change…

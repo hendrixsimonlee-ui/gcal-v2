@@ -12,8 +12,10 @@ import {
 } from "@/lib/attendance-data";
 import { AttendanceBadge } from "@/components/status-badges";
 import { formatWeekLabel } from "@/lib/dates";
+import { APP_TIME_ZONE } from "@/lib/timezone";
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", {
+  timeZone: APP_TIME_ZONE,
   weekday: "short",
   month: "short",
   day: "numeric",
@@ -54,10 +56,10 @@ export default async function AdminAttendancePage({
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">
+        <h1 className="text-xl font-semibold text-ink">
           Attendance Review
         </h1>
-        <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+        <p className="mt-1 text-sm text-ink-soft">
           Flags trip at {settings.chronicAbsenceThreshold}{" "}
           unexcused absences out of a dancer&rsquo;s last{" "}
           {settings.chronicAbsenceWindow} practices —{" "}
@@ -71,16 +73,16 @@ export default async function AdminAttendancePage({
       {/* Always rendered, even when empty — a dashboard that disappears when
           there's nothing to report just reads as a missing feature. */}
       <div className="grid gap-4 md:grid-cols-2">
-          <section className="rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-900 dark:bg-red-950">
-            <h2 className="text-sm font-semibold text-red-900 dark:text-red-200">
+          <section className="rounded-lg border border-bad/35 bg-bad-soft p-4">
+            <h2 className="text-sm font-semibold text-bad">
               Letting down a specific dance ({flags.length})
             </h2>
-            <p className="mb-2 text-xs text-red-700 dark:text-red-400">
+            <p className="mb-2 text-xs text-bad">
               Counted within one dance, so a choreographer can see who
               keeps missing <em>their</em> rehearsals.
             </p>
             {flags.length === 0 ? (
-              <p className="text-sm text-red-800 dark:text-red-300">
+              <p className="text-sm text-bad">
                 Nobody over the threshold.
               </p>
             ) : (
@@ -88,7 +90,7 @@ export default async function AdminAttendancePage({
                 {flags.map((flag) => (
                   <li
                     key={`${flag.userId}-${flag.danceId}`}
-                    className="flex flex-wrap items-center justify-between gap-2 text-sm text-red-800 dark:text-red-300"
+                    className="flex flex-wrap items-center justify-between gap-2 text-sm text-bad"
                   >
                     <span className="font-medium">{flag.name}</span>
                     <span>{flag.danceName}</span>
@@ -101,16 +103,16 @@ export default async function AdminAttendancePage({
             )}
           </section>
 
-          <section className="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-900 dark:bg-amber-950">
-            <h2 className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+          <section className="rounded-lg border border-warn/35 bg-warn-soft p-4">
+            <h2 className="text-sm font-semibold text-warn">
               Slipping overall ({overallFlags.length})
             </h2>
-            <p className="mb-2 text-xs text-amber-700 dark:text-amber-400">
+            <p className="mb-2 text-xs text-warn">
               Counted across everything they&rsquo;re in — catches someone
               missing one practice of each piece, which no single dance sees.
             </p>
             {overallFlags.length === 0 ? (
-              <p className="text-sm text-amber-800 dark:text-amber-300">
+              <p className="text-sm text-warn">
                 Nobody over the threshold.
               </p>
             ) : (
@@ -118,7 +120,7 @@ export default async function AdminAttendancePage({
                 {overallFlags.map((flag) => (
                   <li
                     key={flag.userId}
-                    className="flex flex-wrap items-center justify-between gap-2 text-sm text-amber-800 dark:text-amber-300"
+                    className="flex flex-wrap items-center justify-between gap-2 text-sm text-warn"
                   >
                     <span className="font-medium">{flag.name}</span>
                     <span className="text-xs">
@@ -134,15 +136,14 @@ export default async function AdminAttendancePage({
         </section>
       </div>
 
-      <nav className="flex flex-wrap gap-2 border-b border-zinc-200 pb-2 dark:border-zinc-800">
+      <nav className="flex flex-wrap gap-2 border-b border-line pb-2">
         {VIEWS.map((v) => (
           <Link
             key={v.key}
             href={`/admin/attendance?view=${v.key}`}
-            className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-              v.key === view
-                ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900"
-                : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-300 dark:hover:bg-zinc-800"
+            className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${ v.key === view
+                ? "bg-accent text-on-accent"
+                : "text-ink-soft hover:bg-surface-3  "
             }`}
           >
             {v.label}
@@ -174,7 +175,7 @@ async function LatenessView() {
 
   if (semesters.length === 0) {
     return (
-      <p className="rounded-xl border border-dashed border-zinc-300 px-4 py-8 text-center text-sm text-zinc-500 dark:border-zinc-700">
+      <p className="rounded-xl border border-dashed border-line-strong px-4 py-8 text-center text-sm text-ink-soft">
         Nobody has been late to a practice yet.
       </p>
     );
@@ -182,7 +183,7 @@ async function LatenessView() {
 
   return (
     <div className="flex flex-col gap-5">
-      <p className="text-sm text-zinc-500 dark:text-zinc-400">
+      <p className="text-sm text-ink-soft">
         Minutes late per person, broken out by dance and summed for each month
         and each semester. Late is anything past the threshold in Settings; an
         agreed late arrival never counts against anyone.
@@ -191,13 +192,13 @@ async function LatenessView() {
       {semesters.map((semester) => (
         <section
           key={semester.key}
-          className="rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900"
+          className="rounded-xl border border-line bg-surface"
         >
-          <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
-            <h2 className="font-semibold text-zinc-900 dark:text-zinc-50">
+          <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-line px-4 py-3">
+            <h2 className="font-semibold text-ink">
               {semester.label}
             </h2>
-            <span className="text-sm font-medium text-amber-700 dark:text-amber-400">
+            <span className="text-sm font-medium text-warn">
               {semester.total} min across the team
             </span>
           </div>
@@ -205,7 +206,7 @@ async function LatenessView() {
           <div className="overflow-x-auto">
             <table className="w-full min-w-max text-sm">
               <thead>
-                <tr className="text-left text-xs uppercase text-zinc-400">
+                <tr className="text-left text-xs uppercase text-ink-faint">
                   <th className="px-4 py-2 font-medium">Person / dance</th>
                   {semester.months.map((month) => (
                     <th
@@ -221,19 +222,19 @@ async function LatenessView() {
               <tbody>
                 {semester.people.map((person) => (
                   <Fragment key={person.userId}>
-                    <tr className="border-t border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-800/60">
-                      <td className="px-4 py-2 font-medium text-zinc-900 dark:text-zinc-50">
+                    <tr className="border-t border-line bg-surface-2 bg-surface-3/60">
+                      <td className="px-4 py-2 font-medium text-ink">
                         {person.name}
                       </td>
                       {semester.months.map((month) => (
                         <td
                           key={month.key}
-                          className="px-3 py-2 text-right font-medium text-zinc-700 dark:text-zinc-200"
+                          className="px-3 py-2 text-right font-medium text-ink-soft"
                         >
                           {minutesCell(person.byMonth.get(month.key))}
                         </td>
                       ))}
-                      <td className="px-4 py-2 text-right font-semibold text-amber-700 dark:text-amber-400">
+                      <td className="px-4 py-2 text-right font-semibold text-warn">
                         {person.total} min
                       </td>
                     </tr>
@@ -241,20 +242,20 @@ async function LatenessView() {
                     {person.dances.map((dance) => (
                       <tr
                         key={dance.danceId}
-                        className="border-t border-zinc-100 dark:border-zinc-800/60"
+                        className="border-t border-line/60"
                       >
-                        <td className="py-1.5 pl-8 pr-4 text-zinc-600 dark:text-zinc-400">
+                        <td className="py-1.5 pl-8 pr-4 text-ink-soft">
                           {dance.danceName}
                         </td>
                         {semester.months.map((month) => (
                           <td
                             key={month.key}
-                            className="px-3 py-1.5 text-right text-zinc-600 dark:text-zinc-400"
+                            className="px-3 py-1.5 text-right text-ink-soft"
                           >
                             {minutesCell(dance.byMonth.get(month.key))}
                           </td>
                         ))}
-                        <td className="px-4 py-1.5 text-right text-zinc-600 dark:text-zinc-400">
+                        <td className="px-4 py-1.5 text-right text-ink-soft">
                           {dance.total} min
                         </td>
                       </tr>
@@ -272,7 +273,7 @@ async function LatenessView() {
 
 function minutesCell(minutes: number | undefined) {
   if (!minutes) {
-    return <span className="text-zinc-300 dark:text-zinc-700">—</span>;
+    return <span className="text-ink-soft">—</span>;
   }
   return `${minutes} min`;
 }
@@ -292,7 +293,7 @@ async function ByPersonView({
 
   return (
     <div className="flex flex-col gap-2">
-      <p className="text-sm text-zinc-500 dark:text-zinc-400">
+      <p className="text-sm text-ink-soft">
         Everyone on the roster, worst attendance first. Expand a row to see the
         breakdown per dance. Lateness is reported here but never counts toward
         a flag.
@@ -300,26 +301,25 @@ async function ByPersonView({
       {people.map((person) => (
         <details
           key={person.userId}
-          className="rounded-lg border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900"
+          className="rounded-lg border border-line bg-surface p-3"
         >
           <summary className="grid cursor-pointer grid-cols-2 items-center gap-2 text-sm sm:grid-cols-6">
             <Link
-              href={`/admin/roster/${person.userId}`}
-              className="font-medium text-zinc-900 hover:underline dark:text-zinc-50"
+              href={`/admin/roster/${person.userId}`} className="font-medium text-ink underline decoration-line-strong decoration-1 underline-offset-2 transition-colors hover:text-accent hover:decoration-accent"
             >
               {person.name}
             </Link>
-            <span className="text-zinc-500">
+            <span className="text-ink-soft">
               {person.totalPresent}/{person.totalPractices} attended
             </span>
-            <span className="text-zinc-500">
+            <span className="text-ink-soft">
               {person.totalExcused} excused
             </span>
             <span
               className={
                 person.totalMinutesLate > 0
-                  ? "font-medium text-amber-700 dark:text-amber-400"
-                  : "text-zinc-500"
+                  ? "font-medium text-warn"
+                  : "text-ink-soft"
               }
             >
               {person.totalLate} late
@@ -328,19 +328,19 @@ async function ByPersonView({
             <span
               className={
                 person.totalUnexcused > 0
-                  ? "font-medium text-red-600 dark:text-red-400"
-                  : "text-zinc-500"
+                  ? "font-medium text-bad"
+                  : "text-ink-soft"
               }
             >
               {person.totalUnexcused} unexcused
             </span>
-            <span className="text-right font-medium text-zinc-700 dark:text-zinc-200">
+            <span className="text-right font-medium text-ink-soft">
               {person.attendanceRate}%
             </span>
           </summary>
 
-          <table className="mt-3 w-full border-t border-zinc-100 pt-2 text-sm dark:border-zinc-800">
-            <thead className="text-left text-xs uppercase text-zinc-400">
+          <table className="mt-3 w-full border-t border-line pt-2 text-sm">
+            <thead className="text-left text-xs uppercase text-ink-faint">
               <tr>
                 <th className="py-1">Dance</th>
                 <th className="py-1">Practices</th>
@@ -352,28 +352,27 @@ async function ByPersonView({
             <tbody>
               {person.perDance.map((cell) => (
                 <tr key={cell.danceId}>
-                  <td className="py-1 text-zinc-800 dark:text-zinc-200">
+                  <td className="py-1 text-ink">
                     {cell.danceName}
                     {cell.isFlagged && (
-                      <span className="ml-2 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-medium text-red-700 dark:bg-red-900 dark:text-red-300">
+                      <span className="ml-2 rounded-full bg-bad-soft px-2 py-0.5 text-[10px] font-medium text-bad">
                         Flagged
                       </span>
                     )}
                   </td>
-                  <td className="py-1 text-zinc-600 dark:text-zinc-400">
+                  <td className="py-1 text-ink-soft">
                     {cell.present}/{cell.practicesMarked}
                   </td>
-                  <td className="py-1 text-zinc-600 dark:text-zinc-400">
+                  <td className="py-1 text-ink-soft">
                     {cell.late > 0 ? `${cell.late} · ${cell.minutesLate} min` : "—"}
                   </td>
-                  <td className="py-1 text-zinc-600 dark:text-zinc-400">
+                  <td className="py-1 text-ink-soft">
                     {cell.excused}
                   </td>
                   <td
-                    className={`py-1 ${
-                      cell.unexcused > 0
-                        ? "font-medium text-red-600 dark:text-red-400"
-                        : "text-zinc-600 dark:text-zinc-400"
+                    className={`py-1 ${ cell.unexcused > 0
+                        ? "font-medium text-bad"
+                        : "text-ink-soft"
                     }`}
                   >
                     {cell.unexcused}
@@ -407,19 +406,19 @@ async function UnexcusedView() {
 
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-sm text-zinc-500 dark:text-zinc-400">
+      <p className="text-sm text-ink-soft">
         Only absences with no excused conflict logged — {rows.length} in total.
       </p>
       {grouped.map((personRows) => (
         <section
           key={personRows[0].userId}
-          className="rounded-lg border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900"
+          className="rounded-lg border border-line bg-surface p-3"
         >
           <div className="mb-2 flex items-center justify-between">
-            <span className="font-medium text-zinc-900 dark:text-zinc-50">
+            <span className="font-medium text-ink">
               {personRows[0].name}
             </span>
-            <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-red-900 dark:text-red-300">
+            <span className="rounded-full bg-bad-soft px-2 py-0.5 text-xs font-medium text-bad">
               {personRows.length} unexcused
             </span>
           </div>
@@ -427,12 +426,12 @@ async function UnexcusedView() {
             {personRows.map((row) => (
               <li
                 key={`${row.practiceId}-${row.userId}`}
-                className="flex items-center justify-between rounded-md bg-zinc-50 px-3 py-1.5 text-sm dark:bg-zinc-800"
+                className="flex items-center justify-between rounded-lg bg-surface-2 px-3 py-1.5 text-sm bg-surface"
               >
-                <span className="text-zinc-700 dark:text-zinc-300">
+                <span className="text-ink-soft">
                   {row.danceName}
                 </span>
-                <span className="text-zinc-500">
+                <span className="text-ink-soft">
                   {dateFormatter.format(row.startDateTime)}
                 </span>
                 <AttendanceBadge status="UNEXCUSED_ABSENT" />
@@ -454,20 +453,20 @@ async function WeeklyView() {
 
   return (
     <div className="flex flex-col gap-4">
-      <p className="text-sm text-zinc-500 dark:text-zinc-400">
+      <p className="text-sm text-ink-soft">
         Week by week, for each dance: how much of the cast was missing and who.
       </p>
       {dances.map((dance) => (
         <section
           key={dance.danceId}
-          className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900"
+          className="rounded-lg border border-line bg-surface p-4"
         >
-          <h2 className="mb-3 font-medium text-zinc-900 dark:text-zinc-50">
+          <h2 className="mb-3 font-medium text-ink">
             {dance.danceName}
           </h2>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="text-left text-xs uppercase text-zinc-400">
+              <thead className="text-left text-xs uppercase text-ink-faint">
                 <tr>
                   <th className="py-1 pr-3">Week</th>
                   <th className="py-1 pr-3">Practices</th>
@@ -475,37 +474,36 @@ async function WeeklyView() {
                   <th className="py-1">Who</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
+              <tbody className="divide-y divide-line">
                 {dance.weeks.map((week) => (
                   <tr key={week.weekOf.toISOString()}>
-                    <td className="py-2 pr-3 whitespace-nowrap text-zinc-700 dark:text-zinc-300">
+                    <td className="py-2 pr-3 whitespace-nowrap text-ink-soft">
                       {formatWeekLabel(week.weekOf)}
                     </td>
-                    <td className="py-2 pr-3 text-zinc-500">
+                    <td className="py-2 pr-3 text-ink-soft">
                       {week.practiceCount}
                     </td>
                     <td className="py-2 pr-3 whitespace-nowrap">
                       <span
-                        className={`font-medium ${
-                          week.absentPercent >= 30
-                            ? "text-red-600 dark:text-red-400"
-                            : "text-zinc-700 dark:text-zinc-200"
+                        className={`font-medium ${ week.absentPercent >= 30
+                            ? "text-bad"
+                            : "text-ink-soft "
                         }`}
                       >
                         {week.absentNames.length}/{week.castSize} (
                         {week.absentPercent}%)
                       </span>
                     </td>
-                    <td className="py-2 text-zinc-600 dark:text-zinc-400">
+                    <td className="py-2 text-ink-soft">
                       {week.absentNames.length === 0 ? (
-                        <span className="text-emerald-600 dark:text-emerald-400">
+                        <span className="text-good">
                           Full cast
                         </span>
                       ) : (
                         <span>
                           {week.absentNames.join(", ")}
                           {week.unexcusedNames.length > 0 && (
-                            <span className="ml-1 text-xs text-red-600 dark:text-red-400">
+                            <span className="ml-1 text-xs text-bad">
                               ({week.unexcusedNames.length} unexcused)
                             </span>
                           )}
@@ -536,22 +534,22 @@ async function EveryPracticeView() {
 
   return (
     <div className="flex flex-col gap-4">
-      <p className="text-sm text-zinc-500 dark:text-zinc-400">
+      <p className="text-sm text-ink-soft">
         Every practice that has happened. Choreographers mark their own
         dances — this is so you can see where that hasn&rsquo;t happened yet,
         and step in if you need to.
       </p>
 
       {unmarked.length > 0 && (
-        <section className="rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-900 dark:bg-amber-950">
-          <h2 className="mb-2 text-sm font-semibold text-amber-900 dark:text-amber-200">
+        <section className="rounded-lg border border-warn/35 bg-warn-soft p-4">
+          <h2 className="mb-2 text-sm font-semibold text-warn">
             Not submitted yet ({unmarked.length})
           </h2>
           <ul className="flex flex-col gap-1">
             {unmarked.map((p) => (
               <li
                 key={p.practiceId}
-                className="flex flex-wrap items-center justify-between gap-2 text-sm text-amber-800 dark:text-amber-300"
+                className="flex flex-wrap items-center justify-between gap-2 text-sm text-warn"
               >
                 <span className="font-medium">{p.danceName}</span>
                 <span>{dateFormatter.format(p.startDateTime)}</span>
@@ -571,50 +569,50 @@ async function EveryPracticeView() {
         {practices.map((practice) => (
           <details
             key={practice.practiceId}
-            className="rounded-lg border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900"
+            className="rounded-lg border border-line bg-surface p-3"
           >
             <summary className="flex cursor-pointer flex-wrap items-center justify-between gap-2 text-sm">
-              <span className="font-medium text-zinc-900 dark:text-zinc-50">
+              <span className="font-medium text-ink">
                 {practice.danceName}
               </span>
-              <span className="text-zinc-500">
+              <span className="text-ink-soft">
                 {dateFormatter.format(practice.startDateTime)}
               </span>
               {practice.isMarked ? (
-                <span className="text-xs text-zinc-600 dark:text-zinc-300">
+                <span className="text-xs text-ink-soft">
                   {practice.summary.presentCount}/{practice.summary.markedCount}{" "}
                   present · {practice.summary.absentPercent}% missing
                   {practice.summary.unexcusedCount > 0 && (
-                    <span className="ml-1 font-medium text-red-600 dark:text-red-400">
+                    <span className="ml-1 font-medium text-bad">
                       ({practice.summary.unexcusedCount} unexcused)
                     </span>
                   )}
                 </span>
               ) : (
-                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900 dark:text-amber-300">
+                <span className="rounded-full bg-warn-soft px-2 py-0.5 text-xs font-medium text-warn">
                   Nobody checked in
                 </span>
               )}
               {practice.summary.lateCount > 0 && (
-                <span className="text-xs text-amber-700 dark:text-amber-400">
+                <span className="text-xs text-warn">
                   {practice.summary.lateCount} late ·{" "}
                   {practice.summary.totalMinutesLate} min
                 </span>
               )}
               <Link
                 href={`/attendance/${practice.practiceId}`}
-                className="text-xs font-medium text-sky-600 hover:underline dark:text-sky-400"
+                className="text-xs font-medium text-accent hover:underline"
               >
                 Open →
               </Link>
             </summary>
-            <ul className="mt-3 flex flex-col gap-1 border-t border-zinc-100 pt-3 dark:border-zinc-800">
+            <ul className="mt-3 flex flex-col gap-1 border-t border-line pt-3">
               {practice.rows.map((row) => (
                 <li
                   key={row.userId}
                   className="flex items-center justify-between text-sm"
                 >
-                  <span className="text-zinc-700 dark:text-zinc-300">
+                  <span className="text-ink-soft">
                     {row.name}
                   </span>
                   <AttendanceBadge status={row.status} minutesLate={row.minutesLate} />
@@ -630,6 +628,6 @@ async function EveryPracticeView() {
 
 function Empty({ message }: { message: string }) {
   return (
-    <p className="text-sm text-zinc-500 dark:text-zinc-400">{message}</p>
+    <p className="text-sm text-ink-soft">{message}</p>
   );
 }

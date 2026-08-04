@@ -1,26 +1,189 @@
 @import "tailwindcss";
 
+/* Semantic tokens.
+ *
+ * Every colour in the app resolves through one of these rather than a raw
+ * palette step, so light and dark stay in step and screens can't drift apart.
+ * Status colours are deliberately separate from the accent: the accent means
+ * "this is the thing to press", status means "this is how it is", and
+ * conflating them makes a screen unreadable at a glance. */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+  color-scheme: light;
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --canvas: #f6f7f9;
+  --surface: #ffffff;
+  --surface-2: #f9fafb;
+  --surface-3: #f2f3f6;
+  --line: #e4e7ec;
+  --line-strong: #d3d8e0;
+
+  --ink: #14171d;
+  --ink-soft: #59606e;
+  --ink-faint: #8b93a1;
+
+  /* Violet: a performance troupe, lit rather than corporate — and far enough
+   * from every status hue below that an action never reads as a state. */
+  --accent: #6d4aff;
+  --accent-hover: #5b39e8;
+  --accent-soft: #efecff;
+  --on-accent: #ffffff;
+
+  --good: #047857;
+  --good-soft: #e7f6f0;
+  --warn: #b45309;
+  --warn-soft: #fdf3e3;
+  --bad: #be123c;
+  --bad-soft: #fdeaef;
+  --info: #0369a1;
+  --info-soft: #e6f2fb;
+
+  --shadow-card: 0 1px 2px rgba(20, 23, 29, 0.04), 0 1px 3px rgba(20, 23, 29, 0.06);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    color-scheme: dark;
+
+    --canvas: #0b0d11;
+    --surface: #14171d;
+    --surface-2: #1a1e26;
+    --surface-3: #21262f;
+    --line: #262b34;
+    --line-strong: #363d49;
+
+    --ink: #eceef2;
+    --ink-soft: #99a1b0;
+    --ink-faint: #6d7686;
+
+    --accent: #a48fff;
+    --accent-hover: #b6a5ff;
+    --accent-soft: #221c3d;
+    --on-accent: #14121f;
+
+    --good: #34d399;
+    --good-soft: #0d2a22;
+    --warn: #fbbf24;
+    --warn-soft: #2e2311;
+    --bad: #fb7185;
+    --bad-soft: #33141c;
+    --info: #38bdf8;
+    --info-soft: #0d2634;
+
+    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4);
   }
 }
 
+/* Exposed to Tailwind, so `bg-surface`, `text-ink-soft`, `border-line` and
+ * the rest exist as utilities. */
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-ink-faint: var(--ink-faint);
+
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-soft: var(--accent-soft);
+  --color-on-accent: var(--on-accent);
+
+  --color-good: var(--good);
+  --color-good-soft: var(--good-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-bad: var(--bad);
+  --color-bad-soft: var(--bad-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--canvas);
+  color: var(--ink);
+  /* Geist was loaded from the very first commit but never actually applied —
+   * the app has been rendering in Arial this whole time. */
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Digits that stack in a column have to line up: attendance counts, minutes
+ * late, times, dates. */
+.tnum,
+table,
+time {
+  font-variant-numeric: tabular-nums;
+}
+
+*:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* FullCalendar ships its own light-mode palette, which fights the tokens
+ * above in dark mode and reads as a pasted-in widget in both. */
+.fc {
+  --fc-border-color: var(--line);
+  --fc-page-bg-color: var(--surface);
+  --fc-neutral-bg-color: var(--surface-2);
+  --fc-today-bg-color: var(--accent-soft);
+  --fc-now-indicator-color: var(--bad);
+  --fc-business-hours-bg-color: color-mix(in srgb, var(--good) 10%, transparent);
+  font-size: 0.8125rem;
+}
+.fc .fc-toolbar-title {
+  font-size: 0.9375rem;
+  font-weight: 620;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+.fc .fc-col-header-cell-cushion,
+.fc .fc-daygrid-day-number {
+  color: var(--ink-soft);
+  font-weight: 500;
+  text-decoration: none;
+}
+.fc .fc-timegrid-slot-label-cushion {
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+}
+.fc .fc-button {
+  background: var(--surface-2);
+  border-color: var(--line);
+  color: var(--ink-soft);
+  font-size: 0.75rem;
+  font-weight: 550;
+  text-transform: none;
+  padding: 0.25rem 0.6rem;
+  box-shadow: none;
+}
+.fc .fc-button:hover {
+  background: var(--surface-3);
+  border-color: var(--line-strong);
+  color: var(--ink);
+}
+.fc .fc-button-primary:not(:disabled).fc-button-active,
+.fc .fc-button-primary:not(:disabled):active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+.fc .fc-button:disabled {
+  opacity: 0.45;
 }

@@ -195,8 +195,14 @@ model Space {
   googleCalendarId   String?
   googleCalendarName String?
 
+  /// The normalised form of `name`, used to match titles coming off the
+  /// shared spaces calendar. "EM SACHS", "em sachs" and "emsachs" all reduce
+  /// to the same key and land on this one room.
+  matchKey String? @unique
+
   availabilities SpaceAvailability[]
   practices      Practice[]
+  nameReviews    SpaceNameReview[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -436,7 +442,70 @@ model AppSettings {
   /// is on time.
   lateThresholdMinutes Int @default(5)
 
+  /// One calendar carrying every room's bookings, rather than one per space.
+  /// Syncing it is the first step of setting up a term: the events on it are
+  /// grouped by title into spaces, and each event becomes a window that room
+  /// is available. Per-space calendars still work for anyone already using
+  /// them; this is the flow the AD is pointed at first.
+  spacesCalendarId   String?
+  spacesCalendarName String?
+
   updatedAt DateTime @updatedAt
+}
+
+/// A named stretch of the year the AD defines once — "Fall 2026",
+/// "Spring 2027". Anywhere the app needs a date range (syncing a calendar,
+/// searching for slots, reporting attendance) it offers these rather than
+/// asking for raw dates or assuming a fixed number of weeks ahead.
+model Term {
+  id   String @id @default(cuid())
+  name String
+
+  /// Inclusive. Held as bare calendar dates: a term starts on a day, not at
+  /// an instant, and shouldn't shift with the clock.
+  startDate DateTime @db.Date
+  endDate   DateTime @db.Date
+
+  /// The term new work defaults to. Exactly one is current at a time; setting
+  /// another clears this one.
+  isCurrent Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([name])
+  @@index([startDate])
+}
+
+/// A space title seen on the shared spaces calendar that didn't match any
+/// known room. Held here rather than silently creating a space, so the AD
+/// decides whether "Platt B" is a new room or another spelling of one that
+/// already exists.
+model SpaceNameReview {
+  id String @id @default(cuid())
+
+  /// Exactly as it appeared on the calendar, for the AD to recognise.
+  rawTitle String
+  /// The normalised form used for matching — lowercased, punctuation and
+  /// spacing stripped. Two titles sharing this are the same room.
+  matchKey String @unique
+
+  /// How many events carried this title in the last sync, so the AD can tell
+  /// a real room from a one-off typo.
+  eventCount Int @default(0)
+
+  /// Set once the AD resolves it: either mapped onto an existing space or
+  /// turned into a new one. Resolved rows are kept so the same title isn't
+  /// queued again on the next sync.
+  resolvedSpaceId String?
+  resolvedSpace   Space?  @relation(fields: [resolvedSpaceId], references: [id], onDelete: SetNull)
+  /// Set when the AD explicitly says this title is not a room.
+  ignored Boolean @default(false)
+
+  firstSeenAt DateTime @default(now())
+  lastSeenAt  DateTime @updatedAt
+
+  @@index([ignored, resolvedSpaceId])
 }
 
 /// A browser/phone that has agreed to receive push notifications. One person

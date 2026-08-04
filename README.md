@@ -1,4 +1,4 @@
-# Dance Scheduler
+# PADT Calendar
 
 A shared web app for scheduling dance team practices around conflicts,
 rehearsal space availability, and choreographer requirements.
@@ -169,11 +169,15 @@ Beyond the local setup above you'll need:
   *optional.* Phone notifications when a practice starts and when it ends.
   Generate with `npx web-push generate-vapid-keys`. On iPhone these only
   arrive once the app is on the home screen.
-- **`CRON_SECRET`** — guards the scheduled endpoint that sends those
-  notifications (`vercel.json` runs it every five minutes).
+- **`CRON_SECRET`** — guards `/api/cron/practice-notifications`, the endpoint
+  that sends the "practice started, check in" and "submit attendance" pings.
+  Something outside the app has to call it every few minutes — see
+  [DEPLOYMENT.md](DEPLOYMENT.md#scheduled-notifications). Nothing else depends
+  on it: the Check in button appears on its own, and attendance can be
+  submitted at any time.
 
-Remember to set `NEXTAUTH_URL` to the real site URL and leave
-`ALLOW_DEV_LOGIN` unset.
+Leave `ALLOW_DEV_LOGIN` unset. `NEXTAUTH_URL` isn't needed — `trustHost` is
+on, so the site works out its own address.
 
 ## Navigation model
 

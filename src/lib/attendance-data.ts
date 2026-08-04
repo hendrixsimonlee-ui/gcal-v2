@@ -9,6 +9,12 @@ import {
   type AttendanceStatus,
   type PracticeAttendanceSummary,
 } from "@/lib/attendance";
+import {
+  APP_TIME_ZONE,
+  appDateKey,
+  zonedParts,
+  zonedTimeToInstant,
+} from "@/lib/timezone";
 
 /** One person's outcome at one practice, as stored. Attendance used to be
  * derived on every read from the person's conflicts; now the check-in decides
@@ -461,7 +467,7 @@ export async function getHistoricalAbsenceRates(
   const tally = new Map<string, Map<number, [number, number]>>();
 
   for (const practice of practices) {
-    const day = practice.startDateTime.getDay();
+    const day = zonedParts(practice.startDateTime).weekday;
     for (const row of practice.rows) {
       if (row.status === null || !relevant.has(row.userId)) continue;
       if (!tally.has(row.userId)) tally.set(row.userId, new Map());
@@ -623,10 +629,10 @@ export interface SemesterLateness {
   total: number;
 }
 
-const monthLabelFormatter = new Intl.DateTimeFormat("en-US", { month: "short" });
+const monthLabelFormatter = new Intl.DateTimeFormat("en-US", { timeZone: APP_TIME_ZONE, month: "short" });
 
 function monthKeyOf(date: Date): string {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+  return appDateKey(date).slice(0, 7);
 }
 
 /** Which semester a practice falls in.
@@ -635,8 +641,9 @@ function monthKeyOf(date: Date): string {
  * right even when a piece is labelled loosely or runs across the boundary.
  * Spring is Jan–May, Summer Jun–Jul, Fall Aug–Dec. */
 function semesterOf(date: Date): { key: string; label: string } {
-  const year = date.getFullYear();
-  const month = date.getMonth();
+  const parts = zonedParts(date);
+  const year = parts.year;
+  const month = parts.month - 1;
   const season = month <= 4 ? "spring" : month <= 6 ? "summer" : "fall";
   const order = season === "spring" ? "1" : season === "summer" ? "2" : "3";
   return {
@@ -657,10 +664,9 @@ function semesterOf(date: Date): { key: string; label: string } {
 export async function getLatenessBySemester(
   monthsBack = 18,
 ): Promise<SemesterLateness[]> {
-  const since = new Date();
-  since.setMonth(since.getMonth() - monthsBack);
-  since.setDate(1);
-  since.setHours(0, 0, 0, 0);
+  // First of the month, N months back, at Eastern midnight.
+  const now = zonedParts(new Date());
+  const since = zonedTimeToInstant(now.year, now.month - monthsBack, 1, 0, 0, 0);
 
   const records = await prisma.attendance.findMany({
     where: {

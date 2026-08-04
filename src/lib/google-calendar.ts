@@ -1,5 +1,11 @@
 import { google } from "googleapis";
 import { prisma } from "@/lib/prisma";
+import {
+  appDateKey,
+  appTimeKey,
+  endOfDayInApp,
+  isSameAppDay,
+} from "@/lib/timezone";
 
 /** Builds an authenticated Calendar client from the tokens stored on the
  * user's Google account (captured at sign-in, since we request the
@@ -114,7 +120,7 @@ export async function fetchCalendarBlocks(
     if (end <= start) continue;
 
     const sameDayEnd =
-      end.toDateString() === start.toDateString()
+      isSameAppDay(end, start)
         ? end
         : endOfLocalDay(start);
 
@@ -130,19 +136,19 @@ export async function fetchCalendarBlocks(
   return { blocks, skippedAllDay };
 }
 
+/** These three used to read the server's clock, which on Vercel is UTC — a
+ * 7pm rehearsal block imported as midnight the following day. They now
+ * resolve in the app's timezone, so what the calendar shows and what the app
+ * stores are the same wall-clock time. */
+
 function endOfLocalDay(date: Date): Date {
-  const d = new Date(date);
-  d.setHours(23, 59, 0, 0);
-  return d;
+  return endOfDayInApp(date);
 }
 
 function localDateKey(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
+  return appDateKey(date);
 }
 
 function localTime(date: Date): string {
-  return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+  return appTimeKey(date);
 }

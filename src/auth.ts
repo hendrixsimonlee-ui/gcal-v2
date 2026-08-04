@@ -48,6 +48,14 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   trustHost: true,
   providers: [
     Google({
+      // Auth.js only infers credentials from AUTH_GOOGLE_ID/AUTH_GOOGLE_SECRET
+      // (see @auth/core/lib/utils/env.js). Every doc here uses the
+      // GOOGLE_CLIENT_* names, so read those explicitly — otherwise the
+      // provider silently sends an empty client_id and Google answers
+      // "Error 401: invalid_client". Leaving these undefined still lets
+      // Auth.js fall back to its own AUTH_GOOGLE_* names.
+      clientId: process.env.GOOGLE_CLIENT_ID,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
       authorization: {
         params: {
           scope: GOOGLE_SCOPES,

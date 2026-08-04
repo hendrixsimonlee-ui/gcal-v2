@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { getGoogleCalendarClientForUser } from "@/lib/google-calendar";
+import { APP_TIME_ZONE } from "@/lib/timezone";
 
 /** Writing to the shared calendar always goes through whichever admin's
  * Google account can reach it — the calendar itself is owned by the club
@@ -49,11 +50,14 @@ export async function practiceNumber(practiceId: string): Promise<number> {
   return earlier + 1;
 }
 
+const timeFormatter = new Intl.DateTimeFormat("en-US", {
+  timeZone: APP_TIME_ZONE,
+  hour: "numeric",
+  minute: "2-digit",
+});
+
 function formatTime(date: Date): string {
-  return date.toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  return timeFormatter.format(date);
 }
 
 /** The event body: who's excused, who isn't, who's coming late, and anything
@@ -144,8 +148,17 @@ export async function syncPracticeToTeamCalendar(
     summary: `${practice.dance.name} ${number}`,
     location: practice.space?.location ?? practice.space?.name ?? undefined,
     description: await buildDescription(practiceId),
-    start: { dateTime: practice.startDateTime.toISOString() },
-    end: { dateTime: practice.endDateTime.toISOString() },
+    // The instant is unambiguous on its own, but naming the zone makes the
+    // event read as Eastern in Google's own UI rather than inheriting
+    // whichever zone the viewing calendar happens to be set to.
+    start: {
+      dateTime: practice.startDateTime.toISOString(),
+      timeZone: APP_TIME_ZONE,
+    },
+    end: {
+      dateTime: practice.endDateTime.toISOString(),
+      timeZone: APP_TIME_ZONE,
+    },
   };
 
   try {

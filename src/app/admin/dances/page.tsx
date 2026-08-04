@@ -7,8 +7,10 @@ import {
   setDanceArchived,
   setDanceDefaultDuration,
 } from "@/lib/actions/dances";
+import { APP_TIME_ZONE } from "@/lib/timezone";
 
 const archivedFormatter = new Intl.DateTimeFormat("en-US", {
+  timeZone: APP_TIME_ZONE,
   month: "short",
   day: "numeric",
   year: "numeric",
@@ -35,10 +37,10 @@ export default async function DancesPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">
+        <h1 className="text-xl font-semibold text-ink">
           Dances
         </h1>
-        <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+        <p className="mt-1 text-sm text-ink-soft">
           When a piece finishes its run, archive it. It disappears from the
           Schedule Builder and from everyone&rsquo;s personal screens, but all
           its practices and attendance stay in the system and come back if you
@@ -48,28 +50,28 @@ export default async function DancesPage() {
 
       <form
         action={addDance}
-        className="flex flex-wrap items-end gap-3 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900"
+        className="flex flex-wrap items-end gap-3 rounded-lg border border-line bg-surface p-4"
       >
         <div className="flex flex-col gap-1">
-          <label className="text-xs font-medium text-zinc-500">
+          <label className="text-xs font-medium text-ink-soft">
             Dance name
           </label>
           <input
             name="name"
             required
-            className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-800"
+            className="rounded-lg border border-line-strong px-3 py-1.5 text-sm bg-surface"
           />
         </div>
         <div className="flex flex-col gap-1">
-          <label className="text-xs font-medium text-zinc-500">Season</label>
+          <label className="text-xs font-medium text-ink-soft">Season</label>
           <input
             name="season"
-            className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-800"
+            className="rounded-lg border border-line-strong px-3 py-1.5 text-sm bg-surface"
           />
         </div>
         <button
           type="submit"
-          className="rounded-md bg-zinc-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-zinc-700 dark:bg-white dark:text-zinc-900"
+          className="rounded-lg bg-accent px-4 py-1.5 text-sm font-medium text-on-accent hover:bg-accent-hover"
         >
           Add dance
         </button>
@@ -79,15 +81,15 @@ export default async function DancesPage() {
         {dances.map((dance) => (
           <section
             key={dance.id}
-            className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900"
+            className="rounded-lg border border-line bg-surface p-4"
           >
             <div className="mb-3 flex items-center justify-between">
               <div>
-                <h2 className="font-medium text-zinc-900 dark:text-zinc-50">
+                <h2 className="font-medium text-ink">
                   {dance.name}
                 </h2>
                 {dance.season && (
-                  <p className="text-xs text-zinc-500">{dance.season}</p>
+                  <p className="text-xs text-ink-soft">{dance.season}</p>
                 )}
               </div>
               <div className="flex items-center gap-3">
@@ -95,7 +97,7 @@ export default async function DancesPage() {
                   action={setDanceDefaultDuration.bind(null, dance.id)}
                   className="flex items-center gap-1.5"
                 >
-                  <label className="text-xs text-zinc-500">
+                  <label className="text-xs text-ink-soft">
                     Usual practice length
                   </label>
                   <input
@@ -105,12 +107,12 @@ export default async function DancesPage() {
                     max={480}
                     step={15}
                     defaultValue={dance.defaultDurationMinutes}
-                    className="w-20 rounded-md border border-zinc-300 px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-800"
+                    className="w-20 rounded-lg border border-line-strong px-2 py-1 text-sm bg-surface"
                   />
-                  <span className="text-xs text-zinc-500">min</span>
+                  <span className="text-xs text-ink-soft">min</span>
                   <button
                     type="submit"
-                    className="text-xs font-medium text-sky-600 hover:underline dark:text-sky-400"
+                    className="text-xs font-medium text-accent hover:underline"
                   >
                     Save
                   </button>
@@ -118,7 +120,7 @@ export default async function DancesPage() {
                 <form action={setDanceArchived.bind(null, dance.id, true)}>
                   <button
                     type="submit"
-                    className="text-xs font-medium text-zinc-500 hover:underline"
+                    className="text-xs font-medium text-ink-soft hover:underline"
                   >
                     Archive
                   </button>
@@ -126,7 +128,7 @@ export default async function DancesPage() {
                 <form action={deleteDance.bind(null, dance.id)}>
                   <button
                     type="submit"
-                    className="text-xs font-medium text-red-600 hover:underline"
+                    className="text-xs font-medium text-ink-faint transition-colors hover:text-bad"
                   >
                     Delete dance
                   </button>
@@ -136,16 +138,16 @@ export default async function DancesPage() {
 
             <ul className="mb-3 flex flex-col gap-1">
               {dance.memberships.length === 0 && (
-                <li className="text-sm text-zinc-500">No members yet.</li>
+                <li className="text-sm text-ink-soft">No members yet.</li>
               )}
               {dance.memberships.map((membership) => (
                 <li
                   key={membership.id}
-                  className="flex items-center justify-between rounded-md bg-zinc-50 px-3 py-1.5 text-sm dark:bg-zinc-800"
+                  className="flex items-center justify-between rounded-lg bg-surface-2 px-3 py-1.5 text-sm bg-surface"
                 >
                   <span>
                     {membership.user.name || membership.user.email}{" "}
-                    <span className="rounded-full bg-zinc-200 px-2 py-0.5 text-xs font-medium text-zinc-600 dark:bg-zinc-700 dark:text-zinc-300">
+                    <span className="rounded-full bg-surface-3 px-2 py-0.5 text-xs font-medium text-ink-soft">
                       {membership.role === "CHOREOGRAPHER"
                         ? "Choreographer"
                         : "Dancer"}
@@ -154,7 +156,7 @@ export default async function DancesPage() {
                   <form action={removeMembership.bind(null, membership.id)}>
                     <button
                       type="submit"
-                      className="text-xs font-medium text-red-600 hover:underline"
+                      className="text-xs font-medium text-ink-faint transition-colors hover:text-bad"
                     >
                       Remove
                     </button>
@@ -170,7 +172,7 @@ export default async function DancesPage() {
               <select
                 name="userId"
                 required
-                className="rounded-md border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-800"
+                className="rounded-lg border border-line-strong px-2 py-1.5 text-sm bg-surface"
               >
                 <option value="">Select person…</option>
                 {users.map((user) => (
@@ -182,14 +184,14 @@ export default async function DancesPage() {
               <select
                 name="role"
                 required
-                className="rounded-md border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-800"
+                className="rounded-lg border border-line-strong px-2 py-1.5 text-sm bg-surface"
               >
                 <option value="DANCER">Dancer</option>
                 <option value="CHOREOGRAPHER">Choreographer</option>
               </select>
               <button
                 type="submit"
-                className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                className="rounded-lg border border-line-strong px-3 py-1.5 text-sm font-medium text-ink-soft hover:bg-surface-3"
               >
                 Add to dance
               </button>
@@ -197,32 +199,32 @@ export default async function DancesPage() {
           </section>
         ))}
         {dances.length === 0 && (
-          <p className="text-sm text-zinc-500">
+          <p className="text-sm text-ink-soft">
             No active dances. Add one above, or unarchive a past piece.
           </p>
         )}
       </div>
 
       {archived.length > 0 && (
-        <details className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
-          <summary className="cursor-pointer text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+        <details className="rounded-lg border border-line bg-surface p-4">
+          <summary className="cursor-pointer text-sm font-semibold text-ink">
             Archived dances ({archived.length})
           </summary>
           <ul className="mt-3 flex flex-col gap-1">
             {archived.map((dance) => (
               <li
                 key={dance.id}
-                className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-zinc-50 px-3 py-2 text-sm dark:bg-zinc-800"
+                className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-surface-2 px-3 py-2 text-sm bg-surface"
               >
-                <span className="text-zinc-800 dark:text-zinc-200">
+                <span className="text-ink">
                   {dance.name}
                   {dance.season && (
-                    <span className="ml-2 text-xs text-zinc-500">
+                    <span className="ml-2 text-xs text-ink-soft">
                       {dance.season}
                     </span>
                   )}
                 </span>
-                <span className="text-xs text-zinc-500">
+                <span className="text-xs text-ink-soft">
                   {dance._count.practices} practice
                   {dance._count.practices === 1 ? "" : "s"} kept · archived{" "}
                   {archivedFormatter.format(dance.archivedAt!)}
@@ -230,7 +232,7 @@ export default async function DancesPage() {
                 <form action={setDanceArchived.bind(null, dance.id, false)}>
                   <button
                     type="submit"
-                    className="text-xs font-medium text-sky-600 hover:underline dark:text-sky-400"
+                    className="text-xs font-medium text-accent hover:underline"
                   >
                     Unarchive
                   </button>

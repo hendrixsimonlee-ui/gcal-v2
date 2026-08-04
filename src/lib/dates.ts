@@ -1,18 +1,24 @@
-/** Monday-based week helpers used to key weekly conflict submissions. */
+/** Monday-based week helpers, resolved in the app's own timezone.
+ *
+ * These names and signatures are unchanged from when they read the server's
+ * local clock; only the implementations moved onto `timezone.ts`. That keeps
+ * every existing call site correct without touching it. See that module for
+ * why Eastern is pinned rather than inherited from the machine. */
+
+import {
+  APP_TIME_ZONE,
+  addDaysInApp,
+  appDateKey,
+  parseAppDateTime,
+  startOfWeekInApp,
+} from "./timezone";
 
 export function startOfWeek(date: Date): Date {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  const day = d.getDay(); // 0 = Sunday ... 6 = Saturday
-  const diff = day === 0 ? -6 : 1 - day; // shift back to Monday
-  d.setDate(d.getDate() + diff);
-  return d;
+  return startOfWeekInApp(date);
 }
 
 export function addDays(date: Date, days: number): Date {
-  const d = new Date(date);
-  d.setDate(d.getDate() + days);
-  return d;
+  return addDaysInApp(date, days);
 }
 
 export function addWeeks(date: Date, weeks: number): Date {
@@ -20,9 +26,10 @@ export function addWeeks(date: Date, weeks: number): Date {
 }
 
 /** Turns a "YYYY-MM-DD" into the value to store in a Prisma `@db.Date`
- * column. Anchored at UTC midnight on purpose: a local-midnight Date lands on
- * the previous day once Postgres reads it as UTC for anyone east of
- * Greenwich, silently shifting the date the AD typed. */
+ * column. Anchored at UTC midnight on purpose: `@db.Date` holds a bare
+ * calendar date with no time and no zone, so it only round-trips if it is
+ * written and read against the same anchor. Deliberately not Eastern — what
+ * matters is that it pairs with `calendarDateKey` below. */
 export function calendarDateFromInput(value: string): Date {
   return new Date(`${value}T00:00:00Z`);
 }
@@ -43,7 +50,7 @@ export function calendarWeekStartKey(date: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
-/** Formatter for `@db.Date` values. Pinned to UTC for the same reason. */
+/** Formatter for `@db.Date` values. Pinned to UTC to match their anchor. */
 export const calendarDateFormatter = new Intl.DateTimeFormat("en-US", {
   weekday: "short",
   month: "short",
@@ -51,13 +58,15 @@ export const calendarDateFormatter = new Intl.DateTimeFormat("en-US", {
   timeZone: "UTC",
 });
 
+/** An instant as the "YYYY-MM-DD" URL parameter for the day it falls on,
+ * read in Eastern so late-evening navigation doesn't jump a day. */
 export function toDateParam(date: Date): string {
-  return date.toISOString().slice(0, 10);
+  return appDateKey(date);
 }
 
 export function parseWeekParam(value: string | undefined): Date {
   if (value) {
-    const parsed = new Date(`${value}T00:00:00`);
+    const parsed = parseAppDateTime(value);
     if (!Number.isNaN(parsed.getTime())) {
       return startOfWeek(parsed);
     }
@@ -68,6 +77,7 @@ export function parseWeekParam(value: string | undefined): Date {
 const weekLabelFormatter = new Intl.DateTimeFormat("en-US", {
   month: "short",
   day: "numeric",
+  timeZone: APP_TIME_ZONE,
 });
 
 export function formatWeekLabel(weekStart: Date): string {

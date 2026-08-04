@@ -1,4 +1,10 @@
 import { addDays, addWeeks, startOfWeek } from "@/lib/dates";
+import {
+  addDaysInApp,
+  appDateKey,
+  minutesIntoAppDay,
+  zonedParts,
+} from "@/lib/timezone";
 
 export type CastRole = "DANCER" | "CHOREOGRAPHER";
 
@@ -126,7 +132,7 @@ function timeToMinutes(time: string): number {
 }
 
 function dateKey(date: Date): string {
-  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+  return appDateKey(date);
 }
 
 /** The same key for an override's date, which comes from a Prisma `@db.Date`
@@ -134,7 +140,10 @@ function dateKey(date: Date): string {
  * getters would move the closure to the day before for anyone west of
  * Greenwich — a closed gym would still be offered as bookable. */
 function overrideDateKey(date: Date): string {
-  return `${date.getUTCFullYear()}-${date.getUTCMonth()}-${date.getUTCDate()}`;
+  // Must produce the same "YYYY-MM-DD" shape as `dateKey` above, or a closure
+  // silently stops matching the day it closes. Read in UTC because that is
+  // how `@db.Date` values are anchored, not because the app runs there.
+  return date.toISOString().slice(0, 10);
 }
 
 /** Generates and ranks candidate practice slots for a dance across one or
@@ -171,10 +180,10 @@ export function generateCandidateSlots(input: SchedulingInput): CandidateSlot[] 
     // Walk the search range day by day and work out that day's real hours,
     // rather than walking the weekly pattern and patching it: a one-off
     // replaces the usual hours outright, so the two can't be layered.
-    const cursorDate = startOfWeek(searchStart);
+    let cursorDate = startOfWeek(searchStart);
     while (cursorDate < searchEnd) {
       const dayStart = new Date(cursorDate);
-      cursorDate.setDate(cursorDate.getDate() + 1);
+      cursorDate = addDaysInApp(cursorDate, 1);
       if (dayStart >= searchEnd) break;
 
       const override = overrideByDateKey.get(dateKey(dayStart));
@@ -186,7 +195,7 @@ export function generateCandidateSlots(input: SchedulingInput): CandidateSlot[] 
             : [];
       } else {
         windows = space.recurringWindows.filter(
-          (w) => w.dayOfWeek === dayStart.getDay(),
+          (w) => w.dayOfWeek === zonedParts(dayStart).weekday,
         );
       }
 
@@ -200,8 +209,7 @@ export function generateCandidateSlots(input: SchedulingInput): CandidateSlot[] 
           startMin + durationMinutes <= windowEndMin;
           startMin += slotIncrementMinutes
         ) {
-          const slotStart = new Date(dayStart);
-          slotStart.setHours(0, startMin, 0, 0);
+          const slotStart = minutesIntoAppDay(dayStart, startMin);
           const slotEnd = new Date(slotStart.getTime() + durationMinutes * 60000);
           if (slotStart < searchStart) continue;
 
@@ -300,7 +308,7 @@ export function generateCandidateSlots(input: SchedulingInput): CandidateSlot[] 
       // Historical nudge: this person tends not to turn up on this weekday.
       const rate = historicalAbsenceRates
         ?.get(member.userId)
-        ?.get(start.getDay());
+        ?.get(zonedParts(start).weekday);
       if (rate !== undefined && rate >= HISTORICAL_RATE_FLOOR) {
         const points = Math.round(rate * MAX_HISTORICAL_POINTS * 100) / 100;
         score += points;

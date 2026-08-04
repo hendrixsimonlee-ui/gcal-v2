@@ -8,8 +8,10 @@ import {
   suggestPlannedArrivals,
   type ArrivalSuggestion,
 } from "@/lib/actions/planned-arrivals";
+import { APP_TIME_ZONE } from "@/lib/timezone";
 
 const timeFormatter = new Intl.DateTimeFormat("en-US", {
+  timeZone: APP_TIME_ZONE,
   hour: "numeric",
   minute: "2-digit",
 });
@@ -65,13 +67,13 @@ export function LateArrivals({
   if (existing.length === 0 && suggestions.length === 0) return null;
 
   return (
-    <div className="mt-2 flex flex-col gap-1.5 border-t border-zinc-100 pt-2 text-xs dark:border-zinc-800">
+    <div className="mt-2 flex flex-col gap-1.5 border-t border-line pt-2 text-xs">
       {existing.map((arrival) => (
         <div
           key={arrival.userId}
-          className="flex items-center gap-2 rounded-lg bg-sky-50 px-2.5 py-1.5 dark:bg-sky-950/60"
+          className="flex items-center gap-2 rounded-lg bg-info-soft px-2.5 py-1.5"
         >
-          <span className="text-sky-900 dark:text-sky-200">
+          <span className="text-info">
             <span className="font-medium">{arrival.name}</span> arrives{" "}
             {timeFormatter.format(new Date(arrival.arriveAt))}
           </span>
@@ -83,7 +85,7 @@ export function LateArrivals({
               })
             }
             disabled={isPending}
-            className="ml-auto font-medium text-zinc-500 hover:underline"
+            className="ml-auto font-medium text-ink-soft hover:underline"
           >
             Remove
           </button>
@@ -93,9 +95,9 @@ export function LateArrivals({
       {suggestions.map((s) => (
         <div
           key={s.userId}
-          className="flex flex-wrap items-center gap-2 rounded-lg bg-amber-50 px-2.5 py-1.5 dark:bg-amber-950/60"
+          className="flex flex-wrap items-center gap-2 rounded-lg bg-warn-soft px-2.5 py-1.5"
         >
-          <span className="text-amber-900 dark:text-amber-200">
+          <span className="text-warn">
             <span className="font-medium">{s.name}</span>
             {s.conflictTitle ? ` — ${s.conflictTitle}` : ""} ends at{" "}
             {timeFormatter.format(new Date(s.conflictEndsAt))}
@@ -103,7 +105,7 @@ export function LateArrivals({
           <button
             onClick={() => accept(s)}
             disabled={isPending}
-            className="ml-auto rounded-md bg-amber-600 px-2 py-0.5 font-medium text-white transition-colors hover:bg-amber-700 disabled:opacity-40"
+            className="ml-auto rounded-lg bg-warn px-2 py-0.5 font-medium text-surface transition-colors hover:opacity-90 disabled:opacity-45"
           >
             Mark as arriving then
           </button>

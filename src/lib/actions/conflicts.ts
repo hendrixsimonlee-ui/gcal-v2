@@ -5,6 +5,8 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin, requireUser } from "@/lib/authz";
 import { startOfWeek, addDays } from "@/lib/dates";
+import { clampToSupportedRange } from "@/lib/timezone";
+import { activeRange } from "@/lib/terms";
 import {
   getGoogleCalendarClientForUser,
   listGoogleCalendarsForUser,
@@ -85,6 +87,7 @@ export async function updateConflictTime(
   });
   revalidatePath("/conflicts");
   revalidatePath("/admin/conflicts");
+  revalidatePath("/admin/roster");
 }
 
 export async function deleteConflict(conflictId: string) {
@@ -237,20 +240,38 @@ export interface ConflictSyncResult {
 export async function syncConflictCalendar(
   rangeStartIso: string,
   weeks: number,
+  options: { userId?: string; wholeTerm?: boolean } = {},
 ): Promise<ConflictSyncResult> {
-  const user = await requireUser();
+  // An AD can run this for somebody else so a dancer doesn't have to go and
+  // do it themselves when their calendar changes. Anyone else only ever acts
+  // on their own conflicts.
+  const actor = await requireUser();
+  const targetId = options.userId ?? actor.id;
+  if (targetId !== actor.id) await requireAdmin();
+
   const me = await prisma.user.findUniqueOrThrow({
-    where: { id: user.id },
+    where: { id: targetId },
     select: { conflictCalendarId: true, conflictCalendarName: true },
   });
 
   // Falling back to "primary" keeps the button working for anyone who hasn't
   // picked a calendar yet, which is how it behaved before this existed.
   const calendarId = me.conflictCalendarId ?? "primary";
-  const rangeStart = new Date(rangeStartIso);
-  const rangeEnd = addDays(rangeStart, weeks * 7);
 
-  const calendar = await getGoogleCalendarClientForUser(user.id);
+  // A term covers the season the AD actually defined, and reaches backwards
+  // as well as forwards — the week-count version could only ever look ahead.
+  let rangeStart: Date;
+  let rangeEnd: Date;
+  if (options.wholeTerm) {
+    const { range } = await activeRange();
+    rangeStart = range.start;
+    rangeEnd = range.end;
+  } else {
+    rangeStart = clampToSupportedRange(new Date(rangeStartIso));
+    rangeEnd = addDays(rangeStart, weeks * 7);
+  }
+
+  const calendar = await getGoogleCalendarClientForUser(targetId);
   const { data } = await calendar.events.list({
     calendarId,
     timeMin: rangeStart.toISOString(),
@@ -270,7 +291,7 @@ export async function syncConflictCalendar(
 
   const existing = await prisma.conflict.findMany({
     where: {
-      userId: user.id,
+      userId: targetId,
       sourceGoogleEventId: { not: null },
       startDateTime: { gte: rangeStart, lt: rangeEnd },
     },
@@ -318,7 +339,7 @@ export async function syncConflictCalendar(
     } else {
       await prisma.conflict.create({
         data: {
-          userId: user.id,
+          userId: targetId,
           weekOf: startOfWeek(start),
           startDateTime: start,
           endDateTime: end,

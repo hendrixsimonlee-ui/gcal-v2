@@ -3,8 +3,10 @@ import { googleCalendarAddUrl } from "@/lib/calendar-links";
 import { sendPushToUsers } from "@/lib/push";
 import { isExpectedToCheckIn } from "@/lib/attendance";
 import type { NotificationType } from "@/generated/prisma/enums";
+import { APP_TIME_ZONE } from "@/lib/timezone";
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", {
+  timeZone: APP_TIME_ZONE,
   weekday: "long",
   month: "long",
   day: "numeric",

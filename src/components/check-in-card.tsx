@@ -3,8 +3,10 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { checkIn, getOpenCheckIns, type CheckInWindow } from "@/lib/actions/attendance";
+import { APP_TIME_ZONE } from "@/lib/timezone";
 
 const timeFormatter = new Intl.DateTimeFormat("en-US", {
+  timeZone: APP_TIME_ZONE,
   hour: "numeric",
   minute: "2-digit",
 });
@@ -43,13 +45,13 @@ export function CheckInCard({ initial }: { initial: CheckInWindow[] }) {
   }
 
   return (
-    <section className="flex flex-col gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-900 dark:bg-emerald-950/50">
-      <h2 className="text-sm font-semibold text-emerald-900 dark:text-emerald-200">
+    <section className="flex flex-col gap-3 rounded-2xl border border-good/35 bg-good-soft p-4">
+      <h2 className="text-sm font-semibold text-good">
         Happening right now
       </h2>
 
       {error && (
-        <p className="text-sm font-medium text-red-600 dark:text-red-400">
+        <p className="text-sm font-medium text-bad">
           {error}
         </p>
       )}
@@ -57,25 +59,23 @@ export function CheckInCard({ initial }: { initial: CheckInWindow[] }) {
       {windows.map((w) => (
         <div
           key={w.practiceId}
-          className="flex flex-wrap items-center gap-3 rounded-xl bg-white px-4 py-3 dark:bg-zinc-900"
+          className="flex flex-wrap items-center gap-3 rounded-xl bg-surface px-4 py-3"
         >
           <div className="flex flex-col">
-            <span className="font-medium text-zinc-900 dark:text-zinc-50">
+            <span className="font-medium text-ink">
               {w.danceName}
             </span>
-            <span className="text-xs text-zinc-500">
+            <span className="text-xs text-ink-soft">
               {timeFormatter.format(new Date(w.startDateTime))}–
               {timeFormatter.format(new Date(w.endDateTime))}
-              {w.spaceName ? ` · ${w.spaceName}` : ""}
-              {w.plannedArriveAt &&
-                ` · you're due at ${timeFormatter.format(new Date(w.plannedArriveAt))}`}
-            </span>
+              {w.spaceName ? ` · ${w.spaceName}` : ""} {w.plannedArriveAt &&
+                ` · you're due at ${timeFormatter.format(new Date(w.plannedArriveAt))}`} </span>
           </div>
 
           <div className="ml-auto">
             {w.alreadyCheckedInAt ? (
-              <span className="text-sm font-medium text-emerald-700 dark:text-emerald-400">
-                ✓ Checked in at{" "}
+              <span className="text-sm font-medium text-good">
+                Checked in at{" "}
                 {timeFormatter.format(new Date(w.alreadyCheckedInAt))}
                 {w.minutesLate ? ` · ${w.minutesLate} min late` : ""}
               </span>
@@ -83,7 +83,7 @@ export function CheckInCard({ initial }: { initial: CheckInWindow[] }) {
               <button
                 onClick={() => tapIn(w.practiceId)}
                 disabled={isPending}
-                className="rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-700 disabled:opacity-40"
+                className="rounded-xl bg-good px-5 py-2.5 text-sm font-semibold text-surface transition-colors hover:opacity-90 disabled:opacity-45"
               >
                 {isPending ? "…" : "Check in"}
               </button>

@@ -14,43 +14,43 @@ export default async function RosterPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">
+      <h1 className="text-xl font-semibold text-ink">
         Roster
       </h1>
 
       <form
         action={addRosterMember}
-        className="flex flex-wrap items-end gap-3 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900"
+        className="flex flex-wrap items-end gap-3 rounded-lg border border-line bg-surface p-4"
       >
         <div className="flex flex-col gap-1">
-          <label className="text-xs font-medium text-zinc-500">Name</label>
+          <label className="text-xs font-medium text-ink-soft">Name</label>
           <input
             name="name"
-            className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-800"
+            className="rounded-lg border border-line-strong px-3 py-1.5 text-sm bg-surface"
           />
         </div>
         <div className="flex flex-col gap-1">
-          <label className="text-xs font-medium text-zinc-500">
+          <label className="text-xs font-medium text-ink-soft">
             Email (their Google account email)
           </label>
           <input
             name="email"
             type="email"
             required
-            className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-800"
+            className="rounded-lg border border-line-strong px-3 py-1.5 text-sm bg-surface"
           />
         </div>
         <button
           type="submit"
-          className="rounded-md bg-zinc-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-zinc-700 dark:bg-white dark:text-zinc-900"
+          className="rounded-lg bg-accent px-4 py-1.5 text-sm font-medium text-on-accent hover:bg-accent-hover"
         >
           Add to roster
         </button>
       </form>
 
-      <div className="overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-800">
+      <div className="overflow-hidden rounded-lg border border-line">
         <table className="w-full text-sm">
-          <thead className="bg-zinc-50 text-left text-xs font-medium uppercase text-zinc-500 dark:bg-zinc-900 dark:text-zinc-400">
+          <thead className="bg-surface-2 text-left text-xs font-medium uppercase text-ink-soft">
             <tr>
               <th className="px-4 py-2">Name</th>
               <th className="px-4 py-2">Email</th>
@@ -59,35 +59,34 @@ export default async function RosterPage() {
               <th className="px-4 py-2" />
             </tr>
           </thead>
-          <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
+          <tbody className="divide-y divide-line">
             {users.map((user) => (
               <tr key={user.id}>
                 <td className="px-4 py-2">
                   <Link
                     href={`/admin/roster/${user.id}`}
-                    className="font-medium text-zinc-900 hover:underline dark:text-zinc-50"
+                    className="font-medium text-ink underline decoration-line-strong decoration-1 underline-offset-2 transition-colors hover:text-accent hover:decoration-accent"
                   >
                     {user.name || (
-                      <span className="italic text-zinc-400">
+                      <span className="italic text-ink-faint">
                         Not signed in yet
                       </span>
                     )}
                   </Link>
                 </td>
-                <td className="px-4 py-2 text-zinc-600 dark:text-zinc-400">
+                <td className="px-4 py-2 text-ink-soft">
                   {user.email}
                 </td>
-                <td className="px-4 py-2 text-zinc-600 dark:text-zinc-400">
+                <td className="px-4 py-2 text-ink-soft">
                   {user._count.memberships}
                 </td>
                 <td className="px-4 py-2">
                   <form action={toggleAdmin.bind(null, user.id, !user.isAdmin)}>
                     <button
                       type="submit"
-                      className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                        user.isAdmin
-                          ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900"
-                          : "border border-zinc-300 text-zinc-500 dark:border-zinc-700"
+                      className={`rounded-full px-2 py-0.5 text-xs font-medium ${ user.isAdmin
+                          ? "bg-accent text-on-accent"
+                          : "border border-line-strong text-ink-soft "
                       }`}
                     >
                       {user.isAdmin ? "Admin" : "Make admin"}
@@ -98,7 +97,7 @@ export default async function RosterPage() {
                   <form action={removeRosterMember.bind(null, user.id)}>
                     <button
                       type="submit"
-                      className="text-xs font-medium text-red-600 hover:underline"
+                      className="text-xs font-medium text-ink-faint transition-colors hover:text-bad"
                     >
                       Remove
                     </button>

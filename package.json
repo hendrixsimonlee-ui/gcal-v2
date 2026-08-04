@@ -4,10 +4,10 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && next build",
+    "build": "prisma generate && prisma migrate deploy && next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "tsx src/lib/scheduling.test.ts && tsx src/lib/attendance.test.ts",
+    "test": "TZ=UTC tsx src/lib/timezone.test.ts && TZ=UTC tsx src/lib/space-matching.test.ts && TZ=UTC tsx src/lib/scheduling.test.ts && TZ=UTC tsx src/lib/attendance.test.ts && TZ=UTC tsx src/lib/optimizer.test.ts",
     "seed:demo": "tsx --env-file=.env prisma/seed-demo.ts",
     "postinstall": "prisma generate"
   },

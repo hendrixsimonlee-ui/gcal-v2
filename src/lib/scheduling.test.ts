@@ -1,5 +1,6 @@
 import { generateCandidateSlots, type SchedulingInput } from "./scheduling";
 import { startOfWeek, addDays } from "./dates";
+import { appDateKey, minutesIntoAppDay, zonedParts } from "./timezone";
 
 function assert(cond: boolean, msg: string) {
   if (!cond) {
@@ -11,14 +12,14 @@ function assert(cond: boolean, msg: string) {
 }
 
 const nextMonday = addDays(startOfWeek(new Date()), 7);
-const dayOfWeek = nextMonday.getDay();
+const dayOfWeek = zonedParts(nextMonday).weekday;
 
-/** Mirrors how a one-off override comes out of the database: a Prisma
- * `@db.Date` value, anchored at UTC midnight rather than local midnight. */
-function asStoredDate(local: Date): Date {
-  return new Date(
-    `${local.getFullYear()}-${String(local.getMonth() + 1).padStart(2, "0")}-${String(local.getDate()).padStart(2, "0")}T00:00:00Z`,
-  );
+/** How a one-off override's date is held in a `@db.Date` column: the Eastern
+ * calendar day it applies to, anchored at UTC midnight. Reading the instant
+ * with local getters instead would put a Monday closure on the Sunday for a
+ * server west of Eastern. */
+function asStoredDate(instant: Date): Date {
+  return new Date(`${appDateKey(instant)}T00:00:00Z`);
 }
 
 const base: SchedulingInput = {
@@ -74,10 +75,8 @@ function withSpace(opts: {
 
 // Test 2: choreographer conflict should hard-fail every slot that overlaps it.
 {
-  const conflictStart = new Date(nextMonday);
-  conflictStart.setHours(18, 0, 0, 0);
-  const conflictEnd = new Date(nextMonday);
-  conflictEnd.setHours(21, 0, 0, 0);
+  const conflictStart = minutesIntoAppDay(nextMonday, 1080);
+  const conflictEnd = minutesIntoAppDay(nextMonday, 1260);
   const input = {
     ...base,
     conflicts: [
@@ -92,7 +91,7 @@ function withSpace(opts: {
   };
   const result = generateCandidateSlots(input);
   const hasThatDay = result.some(
-    (c) => c.startDateTime.toDateString() === nextMonday.toDateString(),
+    (c) => appDateKey(c.startDateTime) === appDateKey(nextMonday),
   );
   assert(
     !hasThatDay,
@@ -102,10 +101,8 @@ function withSpace(opts: {
 
 // Test 3: choreographer weekly excuse lifts the hard-fail for that week only.
 {
-  const conflictStart = new Date(nextMonday);
-  conflictStart.setHours(18, 0, 0, 0);
-  const conflictEnd = new Date(nextMonday);
-  conflictEnd.setHours(21, 0, 0, 0);
+  const conflictStart = minutesIntoAppDay(nextMonday, 1080);
+  const conflictEnd = minutesIntoAppDay(nextMonday, 1260);
   const weekKey = startOfWeek(nextMonday).toISOString();
   const excusedByWeek = new Map([[weekKey, new Set(["choreo1"])]]);
   const input = {
@@ -123,7 +120,7 @@ function withSpace(opts: {
   };
   const result = generateCandidateSlots(input);
   const hasThatDay = result.some(
-    (c) => c.startDateTime.toDateString() === nextMonday.toDateString(),
+    (c) => appDateKey(c.startDateTime) === appDateKey(nextMonday),
   );
   assert(hasThatDay, "weekly excuse lifts the hard-fail for that specific week");
 }
@@ -132,10 +129,8 @@ function withSpace(opts: {
 // Uses a duration-exact window (one slot/week) so the conflicted candidate
 // can't be pushed out of the top-8 cap by unrelated zero-score slots.
 {
-  const conflictStart = new Date(nextMonday);
-  conflictStart.setHours(18, 0, 0, 0);
-  const conflictEnd = new Date(nextMonday);
-  conflictEnd.setHours(19, 30, 0, 0);
+  const conflictStart = minutesIntoAppDay(nextMonday, 1080);
+  const conflictEnd = minutesIntoAppDay(nextMonday, 1170);
   const input = {
     ...withSpace({ windows: [{ dayOfWeek, startTime: "18:00", endTime: "19:30" }] }),
     conflicts: [
@@ -157,10 +152,8 @@ function withSpace(opts: {
 
 // Test 5: ignoring a conflicted dancer removes their penalty from the score.
 {
-  const conflictStart = new Date(nextMonday);
-  conflictStart.setHours(18, 0, 0, 0);
-  const conflictEnd = new Date(nextMonday);
-  conflictEnd.setHours(19, 30, 0, 0);
+  const conflictStart = minutesIntoAppDay(nextMonday, 1080);
+  const conflictEnd = minutesIntoAppDay(nextMonday, 1170);
   const input = {
     ...base,
     conflicts: [
@@ -183,10 +176,8 @@ function withSpace(opts: {
 
 // Test 6: double-booking the same space hard-fails that slot.
 {
-  const bookedStart = new Date(nextMonday);
-  bookedStart.setHours(18, 0, 0, 0);
-  const bookedEnd = new Date(nextMonday);
-  bookedEnd.setHours(19, 30, 0, 0);
+  const bookedStart = minutesIntoAppDay(nextMonday, 1080);
+  const bookedEnd = minutesIntoAppDay(nextMonday, 1170);
   const input = withSpace({
     booked: [
       {
@@ -207,10 +198,8 @@ function withSpace(opts: {
 
 // Test 7: a shared dancer's CONFIRMED practice in another dance scores as a clash.
 {
-  const otherStart = new Date(nextMonday);
-  otherStart.setHours(18, 0, 0, 0);
-  const otherEnd = new Date(nextMonday);
-  otherEnd.setHours(19, 30, 0, 0);
+  const otherStart = minutesIntoAppDay(nextMonday, 1080);
+  const otherEnd = minutesIntoAppDay(nextMonday, 1170);
   const input = {
     ...withSpace({ windows: [{ dayOfWeek, startTime: "18:00", endTime: "19:30" }] }),
     existingPracticesForCast: [
@@ -245,7 +234,7 @@ function withSpace(opts: {
   });
   const result = generateCandidateSlots(input);
   const distinctDays = new Set(
-    result.map((c) => c.startDateTime.toDateString()),
+    result.map((c) => appDateKey(c.startDateTime)),
   );
   assert(
     distinctDays.size >= 4,
@@ -254,7 +243,7 @@ function withSpace(opts: {
 
   const perDay = new Map<string, number>();
   for (const c of result) {
-    const k = c.startDateTime.toDateString();
+    const k = appDateKey(c.startDateTime);
     perDay.set(k, (perDay.get(k) ?? 0) + 1);
   }
   assert(
@@ -314,10 +303,8 @@ function withSpace(opts: {
 // Test 11: a room already booked is skipped, but the same time in a
 // different free room is still offered.
 {
-  const clashStart = new Date(nextMonday);
-  clashStart.setHours(18, 0, 0, 0);
-  const clashEnd = new Date(nextMonday);
-  clashEnd.setHours(19, 30, 0, 0);
+  const clashStart = minutesIntoAppDay(nextMonday, 1080);
+  const clashEnd = minutesIntoAppDay(nextMonday, 1170);
 
   const input: SchedulingInput = {
     ...base,
@@ -359,8 +346,7 @@ function withSpace(opts: {
 // Test 12: historical weighting nudges the ranking but never outranks a
 // real logged conflict, and is fully off when no rates are supplied.
 {
-  const slotStart = new Date(nextMonday);
-  slotStart.setHours(18, 0, 0, 0);
+  const slotStart = minutesIntoAppDay(nextMonday, 1080);
 
   const oneSlotPerWeek = withSpace({
     windows: [{ dayOfWeek, startTime: "18:00", endTime: "19:30" }],
@@ -420,7 +406,7 @@ function withSpace(opts: {
   });
   assert(
     closed.every(
-      (c) => c.startDateTime.toDateString() !== nextMonday.toDateString(),
+      (c) => appDateKey(c.startDateTime) !== appDateKey(nextMonday),
     ),
     "a one-off closure removes every slot on that date",
   );
@@ -443,14 +429,15 @@ function withSpace(opts: {
     ],
   });
   const thatDay = moved.filter(
-    (c) => c.startDateTime.toDateString() === nextMonday.toDateString(),
+    (c) => appDateKey(c.startDateTime) === appDateKey(nextMonday),
   );
   assert(
-    thatDay.length > 0 && thatDay.every((c) => c.startDateTime.getHours() < 15),
+    thatDay.length > 0 &&
+      thatDay.every((c) => zonedParts(c.startDateTime).hour < 15),
     "changed hours open the new window",
   );
   assert(
-    thatDay.every((c) => c.startDateTime.getHours() >= 12),
+    thatDay.every((c) => zonedParts(c.startDateTime).hour >= 12),
     "changed hours replace the usual evening window instead of adding to it",
   );
 }

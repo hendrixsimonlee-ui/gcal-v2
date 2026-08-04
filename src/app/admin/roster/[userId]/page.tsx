@@ -3,13 +3,18 @@ import { notFound } from "next/navigation";
 import { getPersonDossier } from "@/lib/person-data";
 import { PersonAttendanceRow } from "@/components/person-attendance-row";
 import { ConflictStatusBadge } from "@/components/status-badges";
+import { APP_TIME_ZONE } from "@/lib/timezone";
+import { ConflictCalendarSync } from "@/components/conflict-calendar-sync";
+import { startOfWeek } from "@/lib/dates";
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", {
+  timeZone: APP_TIME_ZONE,
   weekday: "short",
   month: "short",
   day: "numeric",
 });
 const dayFormatter = new Intl.DateTimeFormat("en-US", {
+  timeZone: APP_TIME_ZONE,
   month: "short",
   day: "numeric",
   year: "numeric",
@@ -41,14 +46,14 @@ export default async function PersonPage({
       <div>
         <Link
           href="/admin/roster"
-          className="text-sm text-zinc-500 hover:underline dark:text-zinc-400"
+          className="text-sm text-ink-soft hover:underline"
         >
           ← Roster
         </Link>
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+        <h1 className="mt-2 text-2xl font-semibold tracking-tight text-ink">
           {person.name}
         </h1>
-        <p className="mt-1 flex flex-wrap items-center gap-x-2 text-sm text-zinc-500 dark:text-zinc-400">
+        <p className="mt-1 flex flex-wrap items-center gap-x-2 text-sm text-ink-soft">
           <span>{person.email}</span>
           {person.isAdmin && (
             <span className="rounded-full bg-purple-100 px-2 py-0.5 text-[11px] font-medium text-purple-700 dark:bg-purple-950 dark:text-purple-300">
@@ -80,24 +85,24 @@ export default async function PersonPage({
       </div>
 
       {person.dances.length > 0 && (
-        <section className="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
-          <h2 className="mb-2 text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+        <section className="rounded-xl border border-line bg-surface p-4">
+          <h2 className="mb-2 text-sm font-semibold text-ink">
             Dances
           </h2>
           <ul className="flex flex-wrap gap-2 text-sm">
             {person.dances.map((dance) => (
               <li
                 key={`${dance.danceId}-${dance.role}`}
-                className="flex items-center gap-1.5 rounded-lg bg-zinc-50 px-3 py-1.5 dark:bg-zinc-800/60"
+                className="flex items-center gap-1.5 rounded-lg bg-surface-2 px-3 py-1.5 bg-surface-3/60"
               >
-                <span className="text-zinc-800 dark:text-zinc-200">
+                <span className="text-ink">
                   {dance.danceName}
                 </span>
-                <span className="text-xs text-zinc-500">
+                <span className="text-xs text-ink-soft">
                   {dance.role === "CHOREOGRAPHER" ? "choreographer" : "dancer"}
                 </span>
                 {dance.archived && (
-                  <span className="text-[10px] uppercase text-zinc-400">
+                  <span className="text-[10px] uppercase text-ink-faint">
                     archived
                   </span>
                 )}
@@ -108,15 +113,15 @@ export default async function PersonPage({
       )}
 
       {person.lateByMonth.length > 0 && (
-        <section className="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
-          <h2 className="mb-2 text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+        <section className="rounded-xl border border-line bg-surface p-4">
+          <h2 className="mb-2 text-sm font-semibold text-ink">
             Minutes late, month by month
           </h2>
           <ul className="flex flex-wrap gap-2 text-sm">
             {person.lateByMonth.map((month) => (
               <li
                 key={month.label}
-                className="rounded-lg bg-amber-50 px-3 py-1.5 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300"
+                className="rounded-lg bg-warn-soft px-3 py-1.5 text-warn"
               >
                 <span className="font-medium">{month.minutes} min</span>{" "}
                 <span className="text-xs opacity-80">{month.label}</span>
@@ -126,16 +131,16 @@ export default async function PersonPage({
         </section>
       )}
 
-      <section className="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
-        <h2 className="mb-1 text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+      <section className="rounded-xl border border-line bg-surface p-4">
+        <h2 className="mb-1 text-sm font-semibold text-ink">
           Every practice
         </h2>
-        <p className="mb-3 text-xs text-zinc-500 dark:text-zinc-400">
+        <p className="mb-3 text-xs text-ink-soft">
           Newest first, including finished pieces. Change any answer right
           here — it saves straight away and shows as edited.
         </p>
         {person.practices.length === 0 ? (
-          <p className="text-sm text-zinc-500">Nothing recorded yet.</p>
+          <p className="text-sm text-ink-soft">Nothing recorded yet.</p>
         ) : (
           <ul className="flex flex-col gap-1.5">
             {person.practices.map((practice) => (
@@ -157,12 +162,25 @@ export default async function PersonPage({
         )}
       </section>
 
-      <section className="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
-        <h2 className="mb-2 text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+      <section className="rounded-xl border border-line bg-surface p-4">
+        <h2 className="mb-2 text-sm font-semibold text-ink">
           Conflicts
         </h2>
+
+        {/* Run the sync for them. Saves chasing a dancer to go and press a
+            button when their calendar has changed and the schedule depends
+            on it. */}
+        <div className="mb-3">
+          <ConflictCalendarSync
+            linkedCalendarName={person.conflictCalendarName}
+            weekStartIso={startOfWeek(new Date()).toISOString()}
+            onBehalfOfUserId={person.userId}
+            onBehalfOfName={person.name}
+          />
+        </div>
+
         {person.conflicts.length === 0 ? (
-          <p className="text-sm text-zinc-500">None logged.</p>
+          <p className="text-sm text-ink-soft">None logged.</p>
         ) : (
           <>
             <ConflictList title="Coming up" rows={upcomingConflicts} />
@@ -172,14 +190,14 @@ export default async function PersonPage({
 
         {person.away.length > 0 && (
           <>
-            <h3 className="mb-1 mt-4 text-xs font-medium uppercase text-zinc-400">
+            <h3 className="mb-1 mt-4 text-xs font-medium uppercase text-ink-faint">
               Out of town
             </h3>
             <ul className="flex flex-col gap-1 text-sm">
               {person.away.map((away) => (
                 <li
                   key={away.id}
-                  className="rounded-lg bg-sky-50 px-3 py-1.5 text-sky-900 dark:bg-sky-950/60 dark:text-sky-200"
+                  className="rounded-lg bg-info-soft px-3 py-1.5 text-info"
                 >
                   {dayFormatter.format(away.startDate)} –{" "}
                   {dayFormatter.format(away.endDate)}
@@ -194,26 +212,26 @@ export default async function PersonPage({
       </section>
 
       {person.notes.length > 0 && (
-        <section className="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
-          <h2 className="mb-2 text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+        <section className="rounded-xl border border-line bg-surface p-4">
+          <h2 className="mb-2 text-sm font-semibold text-ink">
             Notes about them
           </h2>
           <ul className="flex flex-col gap-1.5 text-sm">
             {person.notes.map((note) => (
               <li
                 key={note.id}
-                className="flex flex-wrap items-center gap-x-2 rounded-lg bg-zinc-50 px-3 py-2 dark:bg-zinc-800/60"
+                className="flex flex-wrap items-center gap-x-2 rounded-lg bg-surface-2 px-3 py-2 bg-surface-3/60"
               >
-                <span className="text-zinc-800 dark:text-zinc-200">
+                <span className="text-ink">
                   {note.body}
                 </span>
-                <span className="text-xs text-zinc-400">
+                <span className="text-xs text-ink-faint">
                   — {note.authorName}, {note.danceName}{" "}
                   {dateFormatter.format(note.startDateTime)}
                 </span>
                 <Link
                   href={`/attendance/${note.practiceId}`}
-                  className="ml-auto text-xs font-medium text-sky-600 hover:underline dark:text-sky-400"
+                  className="ml-auto text-xs font-medium text-accent hover:underline"
                 >
                   Open
                 </Link>
@@ -249,12 +267,12 @@ function ConflictList({
       {rows.map((row) => (
         <li
           key={row.id}
-          className="flex flex-wrap items-center gap-x-2 rounded-lg bg-zinc-50 px-3 py-1.5 dark:bg-zinc-800/60"
+          className="flex flex-wrap items-center gap-x-2 rounded-lg bg-surface-2 px-3 py-1.5 bg-surface-3/60"
         >
-          <span className="text-zinc-800 dark:text-zinc-200">
+          <span className="text-ink">
             {row.title || "Untitled"}
           </span>
-          <span className="text-xs text-zinc-500">
+          <span className="text-xs text-ink-soft">
             {dateFormatter.format(row.startDateTime)}
             {row.fromGoogle && " · from their calendar"}
           </span>
@@ -269,7 +287,7 @@ function ConflictList({
   if (collapsed) {
     return (
       <details className="mt-3">
-        <summary className="cursor-pointer text-xs font-medium uppercase text-zinc-400">
+        <summary className="cursor-pointer text-xs font-medium uppercase text-ink-faint">
           {title} ({rows.length})
         </summary>
         <div className="mt-1">{list}</div>
@@ -279,7 +297,7 @@ function ConflictList({
 
   return (
     <>
-      <h3 className="mb-1 text-xs font-medium uppercase text-zinc-400">
+      <h3 className="mb-1 text-xs font-medium uppercase text-ink-faint">
         {title}
       </h3>
       {list}
@@ -297,15 +315,14 @@ function Stat({
   tone?: "bad" | "warn";
 }) {
   return (
-    <div className="rounded-xl border border-zinc-200 bg-white px-3 py-2 dark:border-zinc-800 dark:bg-zinc-900">
-      <p className="text-xs text-zinc-500 dark:text-zinc-400">{label}</p>
+    <div className="rounded-xl border border-line bg-surface px-3 py-2">
+      <p className="text-xs text-ink-soft">{label}</p>
       <p
-        className={`text-lg font-semibold ${
-          tone === "bad"
-            ? "text-red-600 dark:text-red-400"
+        className={`text-lg font-semibold ${ tone === "bad"
+            ? "text-bad"
             : tone === "warn"
-              ? "text-amber-700 dark:text-amber-400"
-              : "text-zinc-900 dark:text-zinc-50"
+              ? "text-warn"
+              : "text-ink"
         }`}
       >
         {value}

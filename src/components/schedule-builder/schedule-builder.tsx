@@ -23,6 +23,7 @@ import {
 import { WeekTracker } from "@/components/schedule-builder/week-tracker";
 import { ConflictStatusBadge } from "@/components/status-badges";
 import { LateArrivals } from "@/components/schedule-builder/late-arrivals";
+import { APP_TIME_ZONE } from "@/lib/timezone";
 
 interface DanceOption {
   id: string;
@@ -39,10 +40,13 @@ interface SpaceOption {
     dayOfWeek: number | null;
     startTime: string | null;
     endTime: string | null;
+    date: string | null;
+    isAvailable: boolean;
   }[];
 }
 
 const timeFormatter = new Intl.DateTimeFormat("en-US", {
+  timeZone: APP_TIME_ZONE,
   weekday: "short",
   month: "short",
   day: "numeric",
@@ -184,19 +188,46 @@ export function ScheduleBuilder({
     });
   }
 
-  const businessHours = useMemo(() => {
-    const relevant =
-      spaceId === ANY_SPACE ? spaces : spaces.filter((s) => s.id === spaceId);
-    return relevant.flatMap((space) =>
-      space.availabilities
-        .filter((a) => a.dayOfWeek !== null && a.startTime && a.endTime)
-        .map((a) => ({
-          daysOfWeek: [a.dayOfWeek!],
-          startTime: a.startTime!,
-          endTime: a.endTime!,
-        })),
-    );
-  }, [spaces, spaceId]);
+  const relevantSpaces = useMemo(
+    () =>
+      spaceId === ANY_SPACE ? spaces : spaces.filter((s) => s.id === spaceId),
+    [spaces, spaceId],
+  );
+
+  const businessHours = useMemo(
+    () =>
+      relevantSpaces.flatMap((space) =>
+        space.availabilities
+          .filter((a) => a.dayOfWeek !== null && a.startTime && a.endTime)
+          .map((a) => ({
+            daysOfWeek: [a.dayOfWeek!],
+            startTime: a.startTime!,
+            endTime: a.endTime!,
+          })),
+      ),
+    [relevantSpaces],
+  );
+
+  /** Availability that lives on a specific date rather than a weekly pattern.
+   *
+   * FullCalendar's `businessHours` only understands recurring weekly windows,
+   * so without this the whole shared-spaces-calendar import — which produces
+   * dated windows, one per booking — would be invisible on the grid. The AD
+   * would sync a term and see an empty week. */
+  const datedAvailability = useMemo(
+    () =>
+      relevantSpaces.flatMap((space) =>
+        space.availabilities
+          .filter((a) => a.date && a.isAvailable && a.startTime && a.endTime)
+          .map((a) => ({
+            spaceName: space.name,
+            dateKey: a.date!.slice(0, 10),
+            startTime: a.startTime!,
+            endTime: a.endTime!,
+          })),
+      ),
+    [relevantSpaces],
+  );
 
   const draftPracticesForDance = initialPractices.filter(
     (p) => p.danceId === danceId && p.status === "PROPOSED",
@@ -224,17 +255,13 @@ export function ScheduleBuilder({
 
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">
-        Schedule Builder
-      </h1>
-
-      <div className="flex flex-wrap items-end gap-3 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
+      <div className="flex flex-wrap items-end gap-3 rounded-lg border border-line bg-surface p-4">
         <div className="flex flex-col gap-1">
-          <label className="text-xs font-medium text-zinc-500">Dance</label>
+          <label className="text-xs font-medium text-ink-soft">Dance</label>
           <select
             value={danceId}
             onChange={(e) => selectDance(e.target.value)}
-            className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-800"
+            className="rounded-lg border border-line-strong px-3 py-1.5 text-sm bg-surface"
           >
             {dances.map((d) => (
               <option key={d.id} value={d.id}>
@@ -244,11 +271,11 @@ export function ScheduleBuilder({
           </select>
         </div>
         <div className="flex flex-col gap-1">
-          <label className="text-xs font-medium text-zinc-500">Space</label>
+          <label className="text-xs font-medium text-ink-soft">Space</label>
           <select
             value={spaceId}
             onChange={(e) => setSpaceId(e.target.value)}
-            className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-800"
+            className="rounded-lg border border-line-strong px-3 py-1.5 text-sm bg-surface"
           >
             <option value={ANY_SPACE}>Any space</option>
             {spaces.map((s) => (
@@ -259,7 +286,7 @@ export function ScheduleBuilder({
           </select>
         </div>
         <div className="flex flex-col gap-1">
-          <label className="text-xs font-medium text-zinc-500">
+          <label className="text-xs font-medium text-ink-soft">
             Duration (minutes)
           </label>
           <input
@@ -268,36 +295,36 @@ export function ScheduleBuilder({
             step={15}
             value={durationMinutes}
             onChange={(e) => setDurationMinutes(Number(e.target.value) || 90)}
-            className="w-28 rounded-md border border-zinc-300 px-3 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-800"
+            className="w-28 rounded-lg border border-line-strong px-3 py-1.5 text-sm bg-surface"
           />
         </div>
         {isPending && (
-          <span className="pb-2 text-xs text-zinc-400">Saving…</span>
+          <span className="pb-2 text-xs text-ink-faint">Saving…</span>
         )}
       </div>
 
       {/* Publishing is a deliberate, separate step: the AD lays out the whole
           term as drafts, then tells everyone once. */}
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-zinc-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line bg-surface px-4 py-3">
         <div className="text-sm">
           {allDrafts.length === 0 ? (
-            <span className="text-zinc-500 dark:text-zinc-400">
+            <span className="text-ink-soft">
               No unpublished drafts. Nothing is waiting to be announced.
             </span>
           ) : (
             <>
-              <span className="font-medium text-zinc-900 dark:text-zinc-50">
+              <span className="font-medium text-ink">
                 {allDrafts.length} draft practice
                 {allDrafts.length === 1 ? "" : "s"} not yet published
               </span>
-              <span className="ml-2 text-zinc-500 dark:text-zinc-400">
+              <span className="ml-2 text-ink-soft">
                 — drafts hold their room but nobody has been told about them
                 yet.
               </span>
             </>
           )}
           {publishResult && (
-            <span className="ml-2 font-medium text-emerald-600 dark:text-emerald-400">
+            <span className="ml-2 font-medium text-good">
               {publishResult}
             </span>
           )}
@@ -305,7 +332,7 @@ export function ScheduleBuilder({
         <button
           onClick={publishAll}
           disabled={isPending || allDrafts.length === 0}
-          className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-emerald-700 disabled:opacity-40"
+          className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-on-accent transition-colors hover:bg-accent-hover disabled:opacity-45"
         >
           {isPending ? "Publishing…" : "Publish schedule"}
         </button>
@@ -319,12 +346,12 @@ export function ScheduleBuilder({
       />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[280px_1fr_280px]">
-        <section className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
-          <h2 className="mb-2 text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+        <section className="rounded-lg border border-line bg-surface p-4">
+          <h2 className="mb-2 text-sm font-semibold text-ink">
             Best candidates
           </h2>
           {candidates.length === 0 && (
-            <p className="text-xs text-zinc-500">
+            <p className="text-xs text-ink-soft">
               No open slots found in the next 4 weeks for this space/duration.
             </p>
           )}
@@ -332,22 +359,22 @@ export function ScheduleBuilder({
             {candidates.map((c, i) => (
               <li
                 key={c.startDateTime.toISOString()}
-                className="rounded-md border border-zinc-200 p-2 text-xs dark:border-zinc-700"
+                className="rounded-lg border border-line p-2 text-xs"
               >
-                <div className="font-medium text-zinc-800 dark:text-zinc-200">
+                <div className="font-medium text-ink">
                   #{i + 1} {timeFormatter.format(c.startDateTime)}
                 </div>
-                <div className="text-zinc-600 dark:text-zinc-300">
+                <div className="text-ink-soft">
                   {c.spaceName}
                 </div>
-                <div className="text-zinc-500">
+                <div className="text-ink-soft">
                   {c.conflictedCastMembers.length > 0
                     ? `${new Set(c.conflictedCastMembers.map((m) => m.userId)).size} affected`
                     : "Everyone free"}
                 </div>
                 <button
                   onClick={() => applyCandidate(c)}
-                  className="mt-1 rounded-md bg-zinc-900 px-2 py-1 text-xs font-medium text-white hover:bg-zinc-700 dark:bg-white dark:text-zinc-900"
+                  className="mt-1 rounded-lg border border-line-strong bg-surface px-2 py-1 text-xs font-medium text-ink transition-colors hover:border-accent hover:text-accent"
                 >
                   Use this slot
                 </button>
@@ -356,21 +383,23 @@ export function ScheduleBuilder({
           </ul>
         </section>
 
-        <section className="rounded-lg border border-zinc-200 bg-white p-2 dark:border-zinc-800 dark:bg-zinc-900">
+        <section className="rounded-lg border border-line bg-surface p-2">
           <ScheduleCalendar
             practices={initialPractices}
             candidates={candidates}
             businessHours={businessHours}
+            datedAvailability={datedAvailability}
+            legendSpaceCount={relevantSpaces.length}
             onSelectRange={handleSelectRange}
             onEventMove={handleEventMove}
             onDatesSet={(start, end) => setVisibleRange({ start, end })}
           />
           {draftPracticesForDance.length > 0 && (
-            <div className="mt-2 flex flex-wrap gap-2 border-t border-zinc-100 pt-2 dark:border-zinc-800">
+            <div className="mt-2 flex flex-wrap gap-2 border-t border-line pt-2">
               {draftPracticesForDance.map((p) => (
                 <div
                   key={p.id}
-                  className="flex w-full flex-col gap-1 rounded-md bg-amber-50 px-2 py-1 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-300"
+                  className="flex w-full flex-col gap-1 rounded-lg bg-warn-soft px-2 py-1 text-xs text-warn"
                 >
                   <div className="flex items-center gap-2">
                   {timeFormatter.format(new Date(p.startDateTime))}
@@ -382,7 +411,7 @@ export function ScheduleBuilder({
                         router.refresh();
                       })
                     }
-                    className="font-medium text-emerald-700 hover:underline dark:text-emerald-400"
+                    className="font-medium text-good hover:underline"
                   >
                     Confirm
                   </button>
@@ -394,7 +423,7 @@ export function ScheduleBuilder({
                         router.refresh();
                       })
                     }
-                    className="font-medium text-red-600 hover:underline"
+                    className="font-medium text-ink-faint transition-colors hover:text-bad"
                   >
                     Discard
                   </button>
@@ -409,8 +438,8 @@ export function ScheduleBuilder({
           )}
         </section>
 
-        <section className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
-          <h2 className="mb-2 text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+        <section className="rounded-lg border border-line bg-surface p-4">
+          <h2 className="mb-2 text-sm font-semibold text-ink">
             Cast &amp; conflicts this week
           </h2>
           <div className="flex flex-col gap-3">
@@ -419,13 +448,13 @@ export function ScheduleBuilder({
               .map((m) => (
                 <div key={m.userId} className="text-xs">
                   <div className="flex items-center justify-between">
-                    <span className="font-medium text-zinc-800 dark:text-zinc-200">
+                    <span className="font-medium text-ink">
                       {m.name}{" "}
                       <span className="rounded-full bg-purple-100 px-1.5 py-0.5 text-[10px] font-medium text-purple-700 dark:bg-purple-900 dark:text-purple-300">
                         Choreographer
                       </span>
                     </span>
-                    <label className="flex items-center gap-1 text-zinc-500">
+                    <label className="flex items-center gap-1 text-ink-soft">
                       <input
                         type="checkbox"
                         checked={m.excusedThisWeek}
@@ -450,10 +479,10 @@ export function ScheduleBuilder({
                       checked={ignoredUserIds.has(m.userId)}
                       onChange={() => toggleIgnored(m.userId)}
                     />
-                    <span className="font-medium text-zinc-800 dark:text-zinc-200">
+                    <span className="font-medium text-ink">
                       {m.name}
                     </span>
-                    <span className="text-zinc-400">ignore</span>
+                    <span className="text-ink-faint">ignore</span>
                   </label>
                   <ConflictList conflicts={m.conflicts} />
                 </div>
@@ -472,12 +501,12 @@ function ConflictList({
 }) {
   if (conflicts.length === 0) return null;
   return (
-    <ul className="mt-1 flex flex-col gap-0.5 pl-1 text-zinc-500">
+    <ul className="mt-1 flex flex-col gap-0.5 pl-1 text-ink-soft">
       {conflicts.map((c) => (
         <li key={c.id} className="flex flex-wrap items-center gap-1">
           <span>{timeFormatter.format(new Date(c.startDateTime))}</span>
           {c.title && (
-            <span className="text-zinc-600 dark:text-zinc-300">{c.title}</span>
+            <span className="text-ink-soft">{c.title}</span>
           )}
           <ConflictStatusBadge status={c.status} />
         </li>

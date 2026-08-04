@@ -17,16 +17,16 @@ export default async function HelpPage() {
   return (
     <div className="flex max-w-3xl flex-col gap-6">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+        <h1 className="text-2xl font-semibold tracking-tight text-ink">
           How this works
         </h1>
-        <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+        <p className="mt-1 text-sm text-ink-soft">
           The short version: tell us when you&rsquo;re busy, we build the
           schedule around it, you tap Check in at practice.
         </p>
       </div>
 
-      <Section title="📲 First, put it on your home screen">
+      <Section title="First, put it on your home screen">
         <p>
           On an iPhone: tap <B>Share</B>, then <B>Add to Home Screen</B>. On
           Android, Chrome offers <B>Install app</B>.
@@ -39,7 +39,7 @@ export default async function HelpPage() {
         </p>
       </Section>
 
-      <Section title="🗓 Telling us when you're busy">
+      <Section title="Telling us when you're busy">
         <p>
           You were given a <B>PADT conflict calendar</B> at the start of the
           year. Put your classes, work shifts and commitments on it, then open{" "}
@@ -62,7 +62,7 @@ export default async function HelpPage() {
         </p>
       </Section>
 
-      <Section title="✅ Checking in at practice">
+      <Section title="Checking in at practice">
         <p>
           When practice starts, a <B>Check in</B> button appears at the top of{" "}
           <Link href="/schedule" className="underline">
@@ -99,7 +99,7 @@ export default async function HelpPage() {
         </p>
       </Section>
 
-      <Section title="📋 Your own record">
+      <Section title="Your own record">
         <p>
           <Link href="/my-attendance" className="underline">
             My Attendance
@@ -113,7 +113,7 @@ export default async function HelpPage() {
       </Section>
 
       {choreographs && (
-        <Section title="🎭 If you choreograph a dance">
+        <Section title="If you choreograph a dance">
           <p>
             <Link href="/attendance" className="underline">
               Attendance
@@ -143,7 +143,7 @@ export default async function HelpPage() {
       )}
 
       {user.isAdmin && (
-        <Section title="⚙️ If you run the schedule">
+        <Section title="If you run the schedule">
           <p>
             Your week lives in{" "}
             <Link href="/admin" className="underline">
@@ -183,7 +183,7 @@ export default async function HelpPage() {
         </Section>
       )}
 
-      <p className="text-sm text-zinc-500 dark:text-zinc-400">
+      <p className="text-sm text-ink-soft">
         Something not behaving? Tell the AD — they can correct any record.
       </p>
     </div>
@@ -198,11 +198,11 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900">
-      <h2 className="mb-2 font-semibold text-zinc-900 dark:text-zinc-50">
+    <section className="rounded-xl border border-line bg-surface p-5">
+      <h2 className="mb-2 font-semibold text-ink">
         {title}
       </h2>
-      <div className="flex flex-col gap-2 text-sm leading-relaxed text-zinc-700 [&_li]:ml-4 [&_li]:list-disc [&_ol_li]:list-decimal [&_ol]:flex [&_ol]:flex-col [&_ol]:gap-1 [&_ul]:flex [&_ul]:flex-col [&_ul]:gap-1 dark:text-zinc-300">
+      <div className="flex flex-col gap-2 text-sm leading-relaxed text-ink-soft [&_li]:ml-4 [&_li]:list-disc [&_ol_li]:list-decimal [&_ol]:flex [&_ol]:flex-col [&_ol]:gap-1 [&_ul]:flex [&_ul]:flex-col [&_ul]:gap-1">
         {children}
       </div>
     </section>
@@ -211,7 +211,7 @@ function Section({
 
 function B({ children }: { children: React.ReactNode }) {
   return (
-    <strong className="font-semibold text-zinc-900 dark:text-zinc-50">
+    <strong className="font-semibold text-ink">
       {children}
     </strong>
   );

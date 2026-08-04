@@ -9,13 +9,17 @@ import {
 } from "@/lib/actions/spaces";
 import { SpaceAvailabilityCalendar } from "@/components/space-availability-calendar";
 import { SpaceCalendarLink } from "@/components/space-calendar-link";
+import { SpacesCalendarPanel } from "@/components/spaces-calendar-panel";
+import { listTerms } from "@/lib/terms";
 import {
   calendarDateFormatter,
   calendarWeekStartKey,
   formatCalendarWeekLabel,
 } from "@/lib/dates";
 
-const SPACE_COLORS = ["#0ea5e9", "#a855f7", "#22c55e", "#f97316", "#eab308"];
+/** Same reasoning as the dance colours: distinct from each other, and
+ * clear of the accent so a shaded room never looks clickable. */
+const SPACE_COLORS = ["#2563eb", "#c2410c", "#be185d", "#0891b2", "#92400e"];
 
 type OverrideRow = {
   id: string;
@@ -47,23 +51,44 @@ function groupByWeek(overrides: OverrideRow[]) {
 }
 
 export default async function SpacesPage() {
-  const spaces = await prisma.space.findMany({
+  const spacesQuery = prisma.space.findMany({
     orderBy: { name: "asc" },
     include: { availabilities: { orderBy: { dayOfWeek: "asc" } } },
   });
 
+  const [spaces, terms, settings, pendingReviews] = await Promise.all([
+    spacesQuery,
+    listTerms(),
+    prisma.appSettings.findUnique({
+      where: { id: "singleton" },
+      select: { spacesCalendarName: true },
+    }),
+    prisma.spaceNameReview.findMany({
+      where: { ignored: false, resolvedSpaceId: null },
+      orderBy: { eventCount: "desc" },
+      select: { id: true, rawTitle: true, eventCount: true },
+    }),
+  ]);
+
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">
+        <h1 className="text-xl font-semibold text-ink">
           Spaces
         </h1>
-        <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+        <p className="mt-1 text-sm text-ink-soft">
           Set the usual weekly hours once, then add one-off changes for the
           weeks that differ — a closure, or unusual hours. The calendar shows
           what the scheduler will actually treat as bookable.
         </p>
       </div>
+
+      <SpacesCalendarPanel
+        calendarName={settings?.spacesCalendarName ?? null}
+        terms={terms}
+        pendingReviews={pendingReviews}
+        spaces={spaces.map((s) => ({ id: s.id, name: s.name }))}
+      />
 
       {spaces.length > 0 && (
         <SpaceAvailabilityCalendar
@@ -93,30 +118,30 @@ export default async function SpacesPage() {
 
       <form
         action={addSpace}
-        className="flex flex-wrap items-end gap-3 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900"
+        className="flex flex-wrap items-end gap-3 rounded-lg border border-line bg-surface p-4"
       >
         <div className="flex flex-col gap-1">
-          <label className="text-xs font-medium text-zinc-500">
+          <label className="text-xs font-medium text-ink-soft">
             Space name
           </label>
           <input
             name="name"
             required
-            className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-800"
+            className="rounded-lg border border-line-strong px-3 py-1.5 text-sm bg-surface"
           />
         </div>
         <div className="flex flex-col gap-1">
-          <label className="text-xs font-medium text-zinc-500">
+          <label className="text-xs font-medium text-ink-soft">
             Location
           </label>
           <input
             name="location"
-            className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-800"
+            className="rounded-lg border border-line-strong px-3 py-1.5 text-sm bg-surface"
           />
         </div>
         <button
           type="submit"
-          className="rounded-md bg-zinc-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-zinc-700 dark:bg-white dark:text-zinc-900"
+          className="rounded-lg bg-accent px-4 py-1.5 text-sm font-medium text-on-accent hover:bg-accent-hover"
         >
           Add space
         </button>
@@ -126,21 +151,21 @@ export default async function SpacesPage() {
         {spaces.map((space) => (
           <section
             key={space.id}
-            className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900"
+            className="rounded-lg border border-line bg-surface p-4"
           >
             <div className="mb-3 flex items-center justify-between">
               <div>
-                <h2 className="font-medium text-zinc-900 dark:text-zinc-50">
+                <h2 className="font-medium text-ink">
                   {space.name}
                 </h2>
                 {space.location && (
-                  <p className="text-xs text-zinc-500">{space.location}</p>
+                  <p className="text-xs text-ink-soft">{space.location}</p>
                 )}
               </div>
               <form action={deleteSpace.bind(null, space.id)}>
                 <button
                   type="submit"
-                  className="text-xs font-medium text-red-600 hover:underline"
+                  className="text-xs font-medium text-ink-faint transition-colors hover:text-bad"
                 >
                   Delete space
                 </button>
@@ -152,13 +177,13 @@ export default async function SpacesPage() {
               linkedCalendarName={space.googleCalendarName}
             />
 
-            <p className="mb-1 text-xs font-medium uppercase text-zinc-400">
+            <p className="mb-1 text-xs font-medium uppercase text-ink-faint">
               Usual weekly hours
             </p>
             <ul className="mb-3 flex flex-col gap-1">
               {space.availabilities.filter((a) => a.dayOfWeek !== null).length ===
                 0 && (
-                <li className="text-sm text-zinc-500">
+                <li className="text-sm text-ink-soft">
                   No weekly hours set yet.
                 </li>
               )}
@@ -167,7 +192,7 @@ export default async function SpacesPage() {
                 .map((slot) => (
                   <li
                     key={slot.id}
-                    className="flex items-center justify-between rounded-md bg-zinc-50 px-3 py-1.5 text-sm dark:bg-zinc-800"
+                    className="flex items-center justify-between rounded-lg bg-surface-2 px-3 py-1.5 text-sm bg-surface"
                   >
                     <span>
                       {DAY_NAMES[slot.dayOfWeek!]} {slot.startTime}–{slot.endTime}
@@ -175,7 +200,7 @@ export default async function SpacesPage() {
                     <form action={deleteAvailability.bind(null, slot.id)}>
                       <button
                         type="submit"
-                        className="text-xs font-medium text-red-600 hover:underline"
+                        className="text-xs font-medium text-ink-faint transition-colors hover:text-bad"
                       >
                         Remove
                       </button>
@@ -184,11 +209,11 @@ export default async function SpacesPage() {
                 ))}
             </ul>
 
-            <p className="mb-1 text-xs font-medium uppercase text-zinc-400">
+            <p className="mb-1 text-xs font-medium uppercase text-ink-faint">
               One-off changes
             </p>
             {space.availabilities.filter((a) => a.date !== null).length === 0 ? (
-              <p className="mb-3 text-sm text-zinc-500">
+              <p className="mb-3 text-sm text-ink-soft">
                 None — every week follows the usual hours.
               </p>
             ) : (
@@ -197,17 +222,16 @@ export default async function SpacesPage() {
                   space.availabilities.filter((a) => a.date !== null),
                 ).map((week) => (
                   <div key={week.weekKey}>
-                    <p className="mb-1 text-xs font-medium text-zinc-500">
+                    <p className="mb-1 text-xs font-medium text-ink-soft">
                       Week of {week.label}
                     </p>
                     <ul className="flex flex-col gap-1">
                       {week.rows.map((slot) => (
                         <li
                           key={slot.id}
-                          className={`flex items-center justify-between rounded-md px-3 py-1.5 text-sm ${
-                            slot.isAvailable
-                              ? "bg-sky-50 dark:bg-sky-950"
-                              : "bg-red-50 dark:bg-red-950"
+                          className={`flex items-center justify-between rounded-lg px-3 py-1.5 text-sm ${ slot.isAvailable
+                              ? "bg-info-soft "
+                              : "bg-bad-soft"
                           }`}
                         >
                           <span>
@@ -216,7 +240,7 @@ export default async function SpacesPage() {
                               ? `open ${slot.startTime}–${slot.endTime}`
                               : "closed all day"}
                             {slot.sourceGoogleEventId && (
-                              <span className="ml-2 rounded-full bg-zinc-200 px-1.5 py-0.5 text-[10px] font-medium text-zinc-600 dark:bg-zinc-700 dark:text-zinc-300">
+                              <span className="ml-2 rounded-full bg-surface-3 px-1.5 py-0.5 text-[10px] font-medium text-ink-soft">
                                 from Google
                               </span>
                             )}
@@ -224,7 +248,7 @@ export default async function SpacesPage() {
                           <form action={deleteAvailability.bind(null, slot.id)}>
                             <button
                               type="submit"
-                              className="text-xs font-medium text-red-600 hover:underline"
+                              className="text-xs font-medium text-ink-faint transition-colors hover:text-bad"
                             >
                               Remove
                             </button>
@@ -244,7 +268,7 @@ export default async function SpacesPage() {
               <select
                 name="dayOfWeek"
                 required
-                className="rounded-md border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-800"
+                className="rounded-lg border border-line-strong px-2 py-1.5 text-sm bg-surface"
               >
                 {DAY_NAMES.map((day, index) => (
                   <option key={day} value={index}>
@@ -256,18 +280,18 @@ export default async function SpacesPage() {
                 type="time"
                 name="startTime"
                 required
-                className="rounded-md border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-800"
+                className="rounded-lg border border-line-strong px-2 py-1.5 text-sm bg-surface"
               />
-              <span className="text-sm text-zinc-500">to</span>
+              <span className="text-sm text-ink-soft">to</span>
               <input
                 type="time"
                 name="endTime"
                 required
-                className="rounded-md border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-800"
+                className="rounded-lg border border-line-strong px-2 py-1.5 text-sm bg-surface"
               />
               <button
                 type="submit"
-                className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                className="rounded-lg border border-line-strong px-3 py-1.5 text-sm font-medium text-ink-soft hover:bg-surface-3"
               >
                 Add weekly window
               </button>
@@ -275,20 +299,20 @@ export default async function SpacesPage() {
 
             <form
               action={addDateOverride.bind(null, space.id)}
-              className="mt-2 flex flex-wrap items-end gap-2 border-t border-zinc-100 pt-2 dark:border-zinc-800"
+              className="mt-2 flex flex-wrap items-end gap-2 border-t border-line pt-2"
             >
               <div className="flex flex-col gap-1">
-                <label className="text-xs font-medium text-zinc-500">
+                <label className="text-xs font-medium text-ink-soft">
                   One-off date
                 </label>
                 <input
                   type="date"
                   name="date"
                   required
-                  className="rounded-md border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-800"
+                  className="rounded-lg border border-line-strong px-2 py-1.5 text-sm bg-surface"
                 />
               </div>
-              <label className="flex items-center gap-2 pb-2 text-sm text-zinc-700 dark:text-zinc-300">
+              <label className="flex items-center gap-2 pb-2 text-sm text-ink-soft">
                 <input type="checkbox" name="closed" />
                 Closed all day
               </label>
@@ -296,18 +320,18 @@ export default async function SpacesPage() {
                 type="time"
                 name="startTime"
                 aria-label="Replacement start time"
-                className="rounded-md border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-800"
+                className="rounded-lg border border-line-strong px-2 py-1.5 text-sm bg-surface"
               />
-              <span className="text-sm text-zinc-500">to</span>
+              <span className="text-sm text-ink-soft">to</span>
               <input
                 type="time"
                 name="endTime"
                 aria-label="Replacement end time"
-                className="rounded-md border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-800"
+                className="rounded-lg border border-line-strong px-2 py-1.5 text-sm bg-surface"
               />
               <button
                 type="submit"
-                className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                className="rounded-lg border border-line-strong px-3 py-1.5 text-sm font-medium text-ink-soft hover:bg-surface-3"
               >
                 Add one-off change
               </button>

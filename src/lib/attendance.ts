@@ -1,3 +1,4 @@
+import { endOfDayInApp } from "@/lib/timezone";
 /** Attendance classification and rollups.
  *
  * Attendance is self-reported: a dancer taps Check in during the practice and
@@ -32,9 +33,7 @@ function overlaps(aStart: Date, aEnd: Date, bStart: Date, bEnd: Date): boolean {
 }
 
 function endOfDay(date: Date): Date {
-  const d = new Date(date);
-  d.setHours(23, 59, 59, 999);
-  return d;
+  return endOfDayInApp(date);
 }
 
 /** When the practice really began. The choreographer can record a later
