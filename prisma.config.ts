@@ -9,6 +9,19 @@ export default defineConfig({
     path: "prisma/migrations",
   },
   datasource: {
-    url: process.env["DATABASE_URL"],
+    // Migrations must NOT go through a connection pooler.
+    //
+    // `prisma migrate deploy` takes a Postgres advisory lock so two deploys
+    // can't apply the same migration at once. A transaction pooler hands
+    // each statement to whichever backend is free, so the lock is taken on
+    // one connection and the next statement lands on another — the lock is
+    // never seen again and the command dies with "P1002: Timed out trying to
+    // acquire a postgres advisory lock" after exactly 10 seconds.
+    //
+    // DIRECT_URL is Neon's unpooled host: the same connection string with
+    // "-pooler" removed. Only the CLI reads this. The running app keeps
+    // using the pooled DATABASE_URL through its own adapter
+    // (see src/lib/prisma.ts), which is what a serverless app wants.
+    url: process.env["DIRECT_URL"] ?? process.env["DATABASE_URL"],
   },
 });
