@@ -102,6 +102,29 @@ export function ScheduleBuilder({
     },
   );
 
+  /** The week the grid is showing, taken from the middle of its range.
+   *
+   * FullCalendar reports its visible range as local-midnight boundaries. On a
+   * device east of Eastern — a phone set to UTC, someone abroad — local
+   * midnight on Monday is still Sunday evening here, so taking the week from
+   * `start` landed a whole week early: the tracker said "Jul 27" under a grid
+   * showing "Aug 3", and every count and publish button under it was for the
+   * wrong week. The midpoint is Thursday-ish and can't be dragged out of the
+   * week by a few hours in either direction. */
+  const weekStart = useMemo(
+    () =>
+      startOfWeek(
+        new Date(
+          (visibleRange.start.getTime() + visibleRange.end.getTime()) / 2,
+        ),
+      ),
+    [visibleRange.start, visibleRange.end],
+  );
+  const weekEnd = useMemo(
+    () => new Date(weekStart.getTime() + 7 * 24 * 60 * 60 * 1000),
+    [weekStart],
+  );
+
   const ignoredKey = useMemo(
     () => Array.from(ignoredUserIds).sort().join(","),
     [ignoredUserIds],
@@ -124,7 +147,7 @@ export function ScheduleBuilder({
   useEffect(() => {
     if (!danceId) return;
     let cancelled = false;
-    const weekOf = startOfWeek(visibleRange.start).toISOString();
+    const weekOf = weekStart.toISOString();
     getSchedulingSidebarData(
       danceId,
       weekOf,
@@ -136,7 +159,7 @@ export function ScheduleBuilder({
     return () => {
       cancelled = true;
     };
-  }, [danceId, visibleRange]);
+  }, [danceId, visibleRange, weekStart]);
 
   /** Switching dances also pulls in that piece's usual practice length, so
    * the AD isn't retyping the duration for every dance in the tracker. */
@@ -156,7 +179,7 @@ export function ScheduleBuilder({
   }
 
   function toggleChoreographerExcuse(userId: string, currentlyExcused: boolean) {
-    const weekOf = startOfWeek(visibleRange.start).toISOString();
+    const weekOf = weekStart.toISOString();
     startTransition(async () => {
       await setChoreographerWeeklyExcuse(danceId, userId, weekOf, !currentlyExcused);
       const result = await getSchedulingSidebarData(
@@ -253,15 +276,10 @@ export function ScheduleBuilder({
       initialPractices
         .filter((p) => {
           const start = new Date(p.startDateTime);
-          return start >= startOfWeek(visibleRange.start) &&
-            start <
-              new Date(
-                startOfWeek(visibleRange.start).getTime() +
-                  7 * 24 * 60 * 60 * 1000,
-              );
+          return start >= weekStart && start < weekEnd;
         })
         .sort((a, b) => a.startDateTime.localeCompare(b.startDateTime)),
-    [initialPractices, visibleRange.start],
+    [initialPractices, weekStart, weekEnd],
   );
 
   /** Candidates, cut down to the week the AD is looking at.
@@ -271,14 +289,6 @@ export function ScheduleBuilder({
    * ranked list whose top suggestion was eleven days away read as "there is
    * nothing this week" when there usually was. Anything further out is kept
    * behind a count, not thrown away. */
-  const weekStart = useMemo(
-    () => startOfWeek(visibleRange.start),
-    [visibleRange.start],
-  );
-  const weekEnd = useMemo(
-    () => new Date(weekStart.getTime() + 7 * 24 * 60 * 60 * 1000),
-    [weekStart],
-  );
   const candidatesThisWeek = useMemo(
     () =>
       candidates.filter(
@@ -469,7 +479,7 @@ export function ScheduleBuilder({
       />
 
       {hint && (
-        <p className="rounded-lg bg-accent-soft px-3 py-2 text-sm text-accent">
+        <p className="rounded-lg bg-accent-soft px-3 py-2 text-sm text-accent-ink">
           {hint}
         </p>
       )}
@@ -518,7 +528,7 @@ export function ScheduleBuilder({
                   </div>
                   <button
                     onClick={() => applyCandidate(c)}
-                    className="mt-1 rounded-lg border border-line-strong bg-surface px-2 py-1 text-xs font-medium text-ink transition-colors hover:border-accent hover:text-accent"
+                    className="mt-1 rounded-lg border border-line-strong bg-surface px-2 py-1 text-xs font-medium text-ink transition-colors hover:border-accent hover:text-accent-ink"
                   >
                     Use this slot
                   </button>
@@ -575,7 +585,7 @@ export function ScheduleBuilder({
                       setHint(null);
                       setEditingId(p.id);
                     }}
-                    className="ml-auto font-medium text-accent hover:underline"
+                    className="ml-auto font-medium text-accent-ink hover:underline"
                   >
                     Edit
                   </button>

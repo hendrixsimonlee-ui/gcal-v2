@@ -20,6 +20,8 @@ export default auth((req) => {
 
 export const config = {
   matcher: [
-    "/((?!api/auth|api/dev-login|_next/static|_next/image|favicon.ico|manifest.webmanifest|sw.js|icon-.*\\.png|apple-touch-icon\\.png|icon-source\\.svg).*)",
+    // The logo has to stay reachable signed-out — it's on the sign-in page,
+    // and a phone fetches it for the home-screen icon without a session.
+    "/((?!api/auth|api/dev-login|_next/static|_next/image|favicon.ico|manifest.webmanifest|sw.js|icon\\.png).*)",
   ],
 };

@@ -44,7 +44,7 @@ const ATTENDANCE_STYLES: Record<
   },
   EXCUSED_ABSENT: {
     label: "Excused",
-    className: "bg-info-soft text-accent  ",
+    className: "bg-info-soft text-accent-ink  ",
   },
   UNEXCUSED_ABSENT: {
     label: "Unexcused",

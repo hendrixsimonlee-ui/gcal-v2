@@ -147,7 +147,7 @@ export function SubmissionTracker({
                   })
                 }
                 disabled={isPending}
-                className="ml-auto text-xs font-medium text-accent hover:underline disabled:opacity-45"
+                className="ml-auto text-xs font-medium text-accent-ink hover:underline disabled:opacity-45"
               >
                 Sync their calendar
               </button>

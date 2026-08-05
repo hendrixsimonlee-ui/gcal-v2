@@ -112,7 +112,7 @@ export default async function DancesPage() {
                   <span className="text-xs text-ink-soft">min</span>
                   <button
                     type="submit"
-                    className="text-xs font-medium text-accent hover:underline"
+                    className="text-xs font-medium text-accent-ink hover:underline"
                   >
                     Save
                   </button>
@@ -232,7 +232,7 @@ export default async function DancesPage() {
                 <form action={setDanceArchived.bind(null, dance.id, false)}>
                   <button
                     type="submit"
-                    className="text-xs font-medium text-accent hover:underline"
+                    className="text-xs font-medium text-accent-ink hover:underline"
                   >
                     Unarchive
                   </button>

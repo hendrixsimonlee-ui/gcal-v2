@@ -17,9 +17,9 @@ import {
   formatCalendarWeekLabel,
 } from "@/lib/dates";
 
-/** Same reasoning as the dance colours: distinct from each other, and
- * clear of the accent so a shaded room never looks clickable. */
-const SPACE_COLORS = ["#2563eb", "#c2410c", "#be185d", "#0891b2", "#92400e"];
+/** Same reasoning as the dance colours: distinct from each other, and clear
+ * of the gold accent so a shaded room never looks clickable. */
+const SPACE_COLORS = ["#2563eb", "#be185d", "#0891b2", "#6d28d9", "#0f766e"];
 
 type OverrideRow = {
   id: string;

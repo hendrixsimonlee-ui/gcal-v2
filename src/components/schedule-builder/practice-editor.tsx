@@ -251,7 +251,7 @@ export function PracticeEditor({
         {detail.hasEnded && (
           <Link
             href={`/attendance/${practiceId}`}
-            className="text-sm font-medium text-accent hover:underline"
+            className="text-sm font-medium text-accent-ink hover:underline"
           >
             {detail.attendanceSubmitted
               ? "Attendance (submitted)"

@@ -173,7 +173,7 @@ const BUTTON_VARIANTS: Record<ButtonVariant, string> = {
   ghost: "text-ink-soft hover:bg-surface-3 hover:text-ink",
   danger: "border border-bad/40 bg-transparent text-bad hover:bg-bad-soft",
   // For inline text actions inside a row, where a full button would shout.
-  quiet: "text-accent underline-offset-2 hover:underline",
+  quiet: "text-accent-ink underline-offset-2 hover:underline",
 };
 
 const BUTTON_SIZES: Record<ButtonSize, string> = {
@@ -236,7 +236,7 @@ const BADGE_TONES: Record<Tone, string> = {
   warn: "bg-warn-soft text-warn",
   bad: "bg-bad-soft text-bad",
   info: "bg-info-soft text-info",
-  accent: "bg-accent-soft text-accent",
+  accent: "bg-accent-soft text-accent-ink",
 };
 
 export function Badge({
@@ -300,7 +300,7 @@ export function Stat({
     warn: "text-warn",
     bad: "text-bad",
     info: "text-info",
-    accent: "text-accent",
+    accent: "text-accent-ink",
   };
   return (
     <div className="flex flex-col gap-0.5">

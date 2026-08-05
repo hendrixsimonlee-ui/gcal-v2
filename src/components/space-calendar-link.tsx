@@ -139,7 +139,7 @@ export function SpaceCalendarLink({
           <button
             onClick={loadCalendars}
             disabled={isPending}
-            className="text-xs font-medium text-accent hover:underline disabled:opacity-45"
+            className="text-xs font-medium text-accent-ink hover:underline disabled:opacity-45"
           >
             {isPending ? "Loading…" : "Link a calendar"}
           </button>

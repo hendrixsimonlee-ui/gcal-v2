@@ -105,7 +105,7 @@ export default async function MySchedulePage() {
           <span className="text-ink-soft">
             Add this week ({formatWeekLabel(weekStart)}) to your calendar
           </span>
-          <span className="font-medium text-accent">
+          <span className="font-medium text-accent-ink">
             Download →
           </span>
         </a>
@@ -144,7 +144,7 @@ export default async function MySchedulePage() {
                     {practice.space?.name ?? "Space TBD"}
                   </span>
                   {practice.plannedArrivals[0] && (
-                    <span className="rounded-full bg-info-soft px-2 py-0.5 text-[11px] font-medium text-accent">
+                    <span className="rounded-full bg-info-soft px-2 py-0.5 text-[11px] font-medium text-accent-ink">
                       you&rsquo;re due at{" "}
                       {timeFormatter.format(practice.plannedArrivals[0].arriveAt)}
                     </span>
@@ -157,7 +157,7 @@ export default async function MySchedulePage() {
                   {practice.status === "CONFIRMED" && (
                     <Link
                       href={`/attendance/${practice.id}`}
-                      className="ml-auto text-xs font-medium text-accent underline-offset-2 hover:underline"
+                      className="ml-auto text-xs font-medium text-accent-ink underline-offset-2 hover:underline"
                     >
                       Who&rsquo;s coming
                     </Link>
@@ -174,7 +174,7 @@ export default async function MySchedulePage() {
                       })}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-xs font-medium text-accent hover:underline"
+                      className="text-xs font-medium text-accent-ink hover:underline"
                     >
                       Add to calendar
                     </a>

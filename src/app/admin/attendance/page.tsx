@@ -312,7 +312,7 @@ async function ByPersonView({
         >
           <summary className="grid cursor-pointer grid-cols-2 items-center gap-2 text-sm sm:grid-cols-6">
             <Link
-              href={`/admin/roster/${person.userId}`} className="font-medium text-ink underline decoration-line-strong decoration-1 underline-offset-2 transition-colors hover:text-accent hover:decoration-accent"
+              href={`/admin/roster/${person.userId}`} className="font-medium text-ink underline decoration-line-strong decoration-1 underline-offset-2 transition-colors hover:text-accent-ink hover:decoration-accent"
             >
               {person.name}
             </Link>
@@ -608,7 +608,7 @@ async function EveryPracticeView() {
               )}
               <Link
                 href={`/attendance/${practice.practiceId}`}
-                className="text-xs font-medium text-accent hover:underline"
+                className="text-xs font-medium text-accent-ink hover:underline"
               >
                 Open →
               </Link>

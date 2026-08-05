@@ -32,15 +32,17 @@ export interface PracticeEvent {
  * apart in hue, because adjacent dances often land in adjacent slots. */
 /** Categorical colours for dances on the grid.
  *
- * No green and no violet in here, deliberately. Green already means "this
- * room is free" on this very grid, and violet means "this is a control" —
- * a dance block in either would be read as something it isn't. */
+ * No green, no gold and no orange in here, deliberately. Green already means
+ * "this room is free" on this very grid, gold means "this is a control", and
+ * orange means "careful" — a dance block in any of them would be read as
+ * something it isn't. What's left is the cool half of the wheel, which also
+ * happens to sit well against the warm ground. */
 const DANCE_COLORS = [
   "#2563eb", // blue
-  "#c2410c", // burnt orange
   "#be185d", // plum
   "#0891b2", // cyan
-  "#92400e", // brown
+  "#6d28d9", // violet
+  "#0f766e", // deep teal
   "#475569", // slate
 ];
 

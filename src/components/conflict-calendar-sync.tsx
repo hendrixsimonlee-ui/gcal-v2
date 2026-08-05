@@ -128,7 +128,7 @@ export function ConflictCalendarSync({
           <button
             onClick={() => sync(1, "This week")}
             disabled={isPending}
-            className="text-sm font-medium text-accent hover:underline disabled:opacity-45"
+            className="text-sm font-medium text-accent-ink hover:underline disabled:opacity-45"
           >
             Just this week
           </button>

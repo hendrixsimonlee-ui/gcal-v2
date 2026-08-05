@@ -10,66 +10,90 @@
 :root {
   color-scheme: light;
 
-  --canvas: #f6f7f9;
+  /* Warm neutrals, not grey ones.
+   *
+   * The greys used to be blue-biased, which fought a gold accent and made it
+   * look like a mistake rather than a choice. These carry a trace of the same
+   * hue as the accent — barely nameable on their own, but it's what makes the
+   * yellow read as the team's colour instead of a highlighter. */
+  --canvas: #faf7f0;
   --surface: #ffffff;
-  --surface-2: #f9fafb;
-  --surface-3: #f2f3f6;
-  --line: #e4e7ec;
-  --line-strong: #d3d8e0;
+  --surface-2: #faf8f3;
+  --surface-3: #f3efe6;
+  --line: #e8e2d6;
+  --line-strong: #d6cebd;
 
-  --ink: #14171d;
-  --ink-soft: #59606e;
-  --ink-faint: #8b93a1;
+  --ink: #1c1913;
+  --ink-soft: #5f584a;
+  --ink-faint: #8d8574;
 
-  /* Violet: a performance troupe, lit rather than corporate — and far enough
-   * from every status hue below that an action never reads as a state. */
-  --accent: #6d4aff;
-  --accent-hover: #5b39e8;
-  --accent-soft: #efecff;
-  --on-accent: #ffffff;
+  /* Yellow needs two tokens, not one.
+   *
+   * A single yellow can't both look yellow and carry white text — pushed dark
+   * enough for white to read on it, it stops being yellow and turns brown.
+   * So the fill is a real warm gold with near-black text on it (8:1), and
+   * text and links use a deeper gold that clears 5.4:1 on white. Same colour
+   * family, each doing the job it can actually do.
+   *
+   * `--accent` is for filled surfaces only. Anything that is itself text on a
+   * light background wants `--accent-ink`. */
+  --accent: #e0a52b;
+  --accent-hover: #c98f1e;
+  --accent-ink: #8a6408;
+  --accent-soft: #fdf2d5;
+  --on-accent: #231a03;
 
-  --good: #047857;
-  --good-soft: #e7f6f0;
-  --warn: #b45309;
-  --warn-soft: #fdf3e3;
-  --bad: #be123c;
+  --good: #12735a;
+  --good-soft: #e4f4ee;
+  /* Pushed well into burnt orange, away from the gold accent. Amber would now
+   * read as "press this" rather than "look at this". */
+  --warn: #b0480b;
+  --warn-soft: #fdeee2;
+  --bad: #bb1b3c;
   --bad-soft: #fdeaef;
-  --info: #0369a1;
+  --info: #0f6ba8;
   --info-soft: #e6f2fb;
 
-  --shadow-card: 0 1px 2px rgba(20, 23, 29, 0.04), 0 1px 3px rgba(20, 23, 29, 0.06);
+  --shadow-card: 0 1px 2px rgba(28, 25, 19, 0.04), 0 1px 3px rgba(28, 25, 19, 0.06);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
     color-scheme: dark;
 
-    --canvas: #0b0d11;
-    --surface: #14171d;
-    --surface-2: #1a1e26;
-    --surface-3: #21262f;
-    --line: #262b34;
-    --line-strong: #363d49;
+    /* Warm charcoals rather than blue-blacks, for the same reason as above —
+     * a gold accent on a cold ground looks like it landed there by accident. */
+    --canvas: #100e0a;
+    --surface: #1a1712;
+    --surface-2: #211d17;
+    --surface-3: #2a251d;
+    --line: #2e2921;
+    --line-strong: #40392e;
 
-    --ink: #eceef2;
-    --ink-soft: #99a1b0;
-    --ink-faint: #6d7686;
+    --ink: #f0ece3;
+    --ink-soft: #a49b8a;
+    --ink-faint: #7a7263;
 
-    --accent: #a48fff;
-    --accent-hover: #b6a5ff;
-    --accent-soft: #221c3d;
-    --on-accent: #14121f;
+    /* On a dark ground the split matters less — a light warm gold is legible
+     * as both a fill and as text — but the two tokens stay so components
+     * don't have to know which mode they're in. */
+    --accent: #e9c26a;
+    --accent-hover: #f2d189;
+    --accent-ink: #eccc7e;
+    --accent-soft: #2e2413;
+    --on-accent: #1c1607;
 
-    --good: #34d399;
+    --good: #3ddba4;
     --good-soft: #0d2a22;
-    --warn: #fbbf24;
-    --warn-soft: #2e2311;
+    /* Orange, not amber. Amber against this accent is the same colour twice. */
+    --warn: #f79a4b;
+    --warn-soft: #331e10;
     --bad: #fb7185;
     --bad-soft: #33141c;
-    --info: #38bdf8;
+    --info: #4cc4f7;
     --info-soft: #0d2634;
 
-    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.45);
   }
 }
 
@@ -89,6 +113,7 @@
 
   --color-accent: var(--accent);
   --color-accent-hover: var(--accent-hover);
+  --color-accent-ink: var(--accent-ink);
   --color-accent-soft: var(--accent-soft);
   --color-on-accent: var(--on-accent);
 
@@ -121,8 +146,10 @@ time {
   font-variant-numeric: tabular-nums;
 }
 
+/* The ink gold, not the fill: a focus ring has to be visible against a white
+ * card, and the fill gold is too light there to read as a ring. */
 *:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--accent-ink);
   outline-offset: 2px;
   border-radius: 4px;
 }

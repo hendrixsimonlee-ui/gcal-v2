@@ -56,7 +56,7 @@ export default async function PersonPage({
         <p className="mt-1 flex flex-wrap items-center gap-x-2 text-sm text-ink-soft">
           <span>{person.email}</span>
           {person.isAdmin && (
-            <span className="rounded-full bg-purple-100 px-2 py-0.5 text-[11px] font-medium text-purple-700 dark:bg-purple-950 dark:text-purple-300">
+            <span className="rounded-full bg-accent-soft px-2 py-0.5 text-[11px] font-medium text-accent-ink">
               Admin
             </span>
           )}
@@ -231,7 +231,7 @@ export default async function PersonPage({
                 </span>
                 <Link
                   href={`/attendance/${note.practiceId}`}
-                  className="ml-auto text-xs font-medium text-accent hover:underline"
+                  className="ml-auto text-xs font-medium text-accent-ink hover:underline"
                 >
                   Open
                 </Link>

@@ -1,5 +1,5 @@
 const CACHE_NAME = "dance-scheduler-v1";
-const APP_SHELL = ["/manifest.webmanifest", "/icon-192.png", "/icon-512.png"];
+const APP_SHELL = ["/manifest.webmanifest", "/icon.png"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -47,8 +47,8 @@ self.addEventListener("push", (event) => {
   event.waitUntil(
     self.registration.showNotification(payload.title, {
       body: payload.body,
-      icon: "/icon-192.png",
-      badge: "/icon-192.png",
+      icon: "/icon.png",
+      badge: "/icon.png",
       data: { href: payload.href ?? "/" },
     }),
   );

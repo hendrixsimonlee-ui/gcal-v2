@@ -210,7 +210,7 @@ export function DancerCalendars({
                         })
                       }
                       disabled={isPending}
-                      className="text-xs font-medium text-accent hover:underline disabled:opacity-45"
+                      className="text-xs font-medium text-accent-ink hover:underline disabled:opacity-45"
                     >
                       Sync
                     </button>

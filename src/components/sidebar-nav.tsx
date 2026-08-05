@@ -46,7 +46,7 @@ export function SidebarNav({
               href={item.href}
               aria-current={isActive(item.href) ? "page" : undefined}
               className={`flex flex-1 flex-col items-center gap-0.5 px-1 py-2.5 text-[11px] font-medium transition-colors ${ isActive(item.href)
-                  ? "text-accent"
+                  ? "text-accent-ink"
                   : "text-ink-faint hover:text-ink"
               }`}
             >
@@ -113,7 +113,7 @@ export function SidebarNav({
                 href={item.href}
                 aria-current={isActive(item.href) ? "page" : undefined}
                 className={`block rounded-lg px-3 py-2 text-sm font-medium transition-colors ${ isActive(item.href)
-                    ? "bg-accent-soft text-accent"
+                    ? "bg-accent-soft text-accent-ink"
                     : "text-ink-soft hover:bg-surface-3 hover:text-ink"
                 }`}
               >

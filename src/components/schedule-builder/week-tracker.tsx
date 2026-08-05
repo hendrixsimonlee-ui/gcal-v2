@@ -241,7 +241,7 @@ export function WeekTracker({
                   <button
                     onClick={() => publishOne(row)}
                     disabled={isPending}
-                    className="text-xs font-medium text-accent hover:underline disabled:opacity-45"
+                    className="text-xs font-medium text-accent-ink hover:underline disabled:opacity-45"
                   >
                     {row.status === "DRAFT" ? "Publish this dance" : "Publish changes"}
                   </button>

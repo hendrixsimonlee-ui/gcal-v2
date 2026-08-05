@@ -87,7 +87,7 @@ export function TermsManager({ terms }: { terms: TermRange[] }) {
                       type="button"
                       disabled={isPending}
                       onClick={() => run(() => setCurrentTerm(term.id))}
-                      className="font-medium text-accent hover:underline disabled:opacity-45"
+                      className="font-medium text-accent-ink hover:underline disabled:opacity-45"
                     >
                       Make current
                     </button>

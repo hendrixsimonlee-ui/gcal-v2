@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { signIn } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { devLoginEnabled } from "@/lib/dev-login";
@@ -15,6 +16,15 @@ export default async function SignInPage() {
   return (
     <div className="flex flex-1 items-center justify-center bg-surface-2 px-4 py-10">
       <div className="w-full max-w-sm rounded-xl border border-line bg-surface p-8 text-center shadow-sm">
+        <Image
+          src="/icon.png"
+          alt=""
+          aria-hidden="true"
+          width={88}
+          height={88}
+          className="mx-auto mb-4 rounded-2xl"
+          priority
+        />
         <h1 className="text-xl font-semibold text-ink">
           PADT Calendar
         </h1>

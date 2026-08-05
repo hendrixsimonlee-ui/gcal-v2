@@ -103,7 +103,7 @@ export function PersonAttendanceRow({
         </select>
         <Link
           href={`/attendance/${practiceId}`}
-          className="text-xs font-medium text-accent hover:underline"
+          className="text-xs font-medium text-accent-ink hover:underline"
         >
           Open
         </Link>

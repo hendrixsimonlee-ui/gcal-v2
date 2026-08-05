@@ -20,12 +20,18 @@ export function Header({
         href="/schedule"
         className="flex items-center gap-2 text-[15px] font-semibold tracking-[-0.01em] text-ink"
       >
-        <span
+        {/* The real logo, not a letter in a box. Same file the home-screen
+            icon uses, so there is one image to change and never two that
+            drift apart. */}
+        <Image
+          src="/icon.png"
+          alt=""
           aria-hidden="true"
-          className="grid h-6 w-6 place-content-center rounded-lg bg-accent text-[11px] font-bold text-on-accent"
-        >
-          P
-        </span>
+          width={26}
+          height={26}
+          className="rounded-lg"
+          priority
+        />
         PADT
       </Link>
 

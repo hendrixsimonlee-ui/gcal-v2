@@ -99,7 +99,7 @@ export function RosterRow({ person }: { person: RosterPerson }) {
       <td className="px-4 py-2">
         <Link
           href={`/admin/roster/${person.id}`}
-          className="font-medium text-ink underline decoration-line-strong decoration-1 underline-offset-2 transition-colors hover:text-accent hover:decoration-accent"
+          className="font-medium text-ink underline decoration-line-strong decoration-1 underline-offset-2 transition-colors hover:text-accent-ink hover:decoration-accent"
         >
           {person.name || (
             <span className="italic text-ink-faint">Not signed in yet</span>
@@ -135,7 +135,7 @@ export function RosterRow({ person }: { person: RosterPerson }) {
       <td className="px-4 py-2 text-right">
         <button
           onClick={() => setEditing(true)}
-          className="mr-3 text-xs font-medium text-accent hover:underline"
+          className="mr-3 text-xs font-medium text-accent-ink hover:underline"
         >
           Edit
         </button>

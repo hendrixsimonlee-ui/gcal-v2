@@ -383,7 +383,7 @@ function Group({
               {row.name}
             </span>
             {row.role === "CHOREOGRAPHER" && (
-              <span className="rounded-full bg-purple-100 px-2 py-0.5 text-[10px] font-medium text-purple-700 dark:bg-purple-950 dark:text-purple-300">
+              <span className="rounded-full bg-accent-soft px-2 py-0.5 text-[10px] font-medium text-accent-ink">
                 Choreographer
               </span>
             )}

@@ -23,19 +23,27 @@ export const metadata: Metadata = {
     statusBarStyle: "default",
     title: "PADT Cal",
   },
+  // One source image, declared at every size the platforms ask for.
+  //
+  // There used to be four separate PNGs, which meant changing the logo needed
+  // image tooling nobody running this app has. Browsers scale a single large
+  // square perfectly well, so `public/icon.png` is now the only file to
+  // replace — drop a new one in and every icon in the app follows.
   icons: {
     icon: [
-      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
-      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
+      { url: "/icon.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon.png", sizes: "512x512", type: "image/png" },
     ],
-    apple: "/apple-touch-icon.png",
+    apple: "/icon.png",
   },
 };
 
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  themeColor: "#18181b",
+  // Tints the phone's status bar and the browser's address bar. Matched to
+  // the logo's ground so the app doesn't start with a seam across the top.
+  themeColor: "#8a6408",
 };
 
 export default function RootLayout({
