@@ -36,8 +36,18 @@ export type SpacesCalendarSyncResult = {
   /** Rooms this sync met for the first time. Nothing to action — it's a
    * receipt, so a typo in a title is visible as a room nobody recognises. */
   newSpaces: string[];
-  /** All-day entries, which read as notes rather than bookings. */
+  /** Everything the sync saw and why anything was left out. Without this,
+   * "0 added" is indistinguishable from "your bookings are all-day events",
+   * "the term doesn't cover those dates" and "wrong calendar" — three very
+   * different problems with the same blank result. */
+  eventsSeen: number;
   skippedAllDay: number;
+  skippedCancelled: number;
+  skippedZeroLength: number;
+  skippedNoTitle: number;
+  /** The window it actually searched, as plain dates. */
+  rangeStartKey: string;
+  rangeEndKey: string;
   termName: string | null;
 };
 
@@ -109,12 +119,14 @@ export async function syncSpacesCalendar(
   const calendarId = await requireSpacesCalendarId();
   const { range, term } = await activeRange(termId);
 
-  const { blocks, skippedAllDay } = await fetchCalendarBlocks(
-    admin.id,
-    calendarId,
-    range.start,
-    range.end,
-  );
+  const {
+    blocks,
+    eventsSeen,
+    skippedAllDay,
+    skippedCancelled,
+    skippedZeroLength,
+  } = await fetchCalendarBlocks(admin.id, calendarId, range.start, range.end);
+  let skippedNoTitle = 0;
 
   const spaces = await prisma.space.findMany({
     select: { id: true, name: true },
@@ -142,12 +154,20 @@ export async function syncSpacesCalendar(
 
   for (const block of blocks) {
     const name = block.title.trim();
-    if (!name) continue;
+    if (!name) {
+      skippedNoTitle++;
+      continue;
+    }
 
     let spaceId = spaceIdByName.get(name);
     if (!spaceId) {
-      const space = await prisma.space.create({
-        data: { name, location: block.location || null },
+      // upsert, not create: the name is unique, and a second sync click or a
+      // room that already exists under this exact title would otherwise abort
+      // the whole run on a unique violation partway through.
+      const space = await prisma.space.upsert({
+        where: { name },
+        update: {},
+        create: { name, location: block.location || null },
       });
       spaceId = space.id;
       spaceIdByName.set(name, spaceId);
@@ -198,15 +218,27 @@ export async function syncSpacesCalendar(
     where: { bookings: { none: {} }, practices: { none: {} } },
   });
 
-  revalidatePath("/admin/spaces");
-  revalidatePath("/admin/schedule-builder");
-
+  // Deliberately no revalidatePath here.
+  //
+  // revalidatePath makes Next re-render those routes as part of this action's
+  // response. If that render throws — for any reason, anywhere on the page —
+  // the browser gets "An error occurred in the Server Components render" and
+  // the caller's try/catch never sees it, so a sync that actually worked
+  // looks like a total failure with no message. The client refetches the
+  // summary and calls router.refresh() itself, which does the same job with
+  // the error surfacing somewhere it can be read.
   return {
     added,
     updated,
     removed: staleIds.length,
     newSpaces,
+    eventsSeen,
     skippedAllDay,
+    skippedCancelled,
+    skippedZeroLength,
+    skippedNoTitle,
+    rangeStartKey: appDateKey(range.start),
+    rangeEndKey: appDateKey(new Date(range.end.getTime() - 1)),
     termName: term?.name ?? null,
   };
 }

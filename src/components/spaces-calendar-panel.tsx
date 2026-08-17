@@ -243,21 +243,72 @@ export function SpacesCalendarPanel({
               <p className="font-medium text-ink">
                 {result.termName ? `${result.termName}: ` : ""}
                 {result.added + result.updated + result.removed === 0
-                  ? "Already up to date."
+                  ? "Nothing changed."
                   : `${result.added} added · ${result.updated} updated · ${result.removed} removed`}
               </p>
+
+              {/* Always say what it looked at. "0 added" on its own can't tell
+                  an empty calendar from the wrong date range from bookings
+                  saved as all-day events — three different problems. */}
+              <p className="mt-1 text-xs text-ink-soft">
+                Looked at {result.rangeStartKey} to {result.rangeEndKey} and
+                found{" "}
+                <span className="font-medium tabular-nums text-ink">
+                  {result.eventsSeen}
+                </span>{" "}
+                {result.eventsSeen === 1 ? "event" : "events"} on that calendar.
+              </p>
+
               {result.newSpaces.length > 0 && (
                 <p className="mt-1 text-xs text-ink-soft">
                   New {result.newSpaces.length === 1 ? "room" : "rooms"}:{" "}
-                  {result.newSpaces.join(", ")}. If one of those looks like a
-                  typo, fix the event title in Google and sync again.
+                  {result.newSpaces.join(", ")}. If one looks like a typo, fix
+                  the event title in Google and sync again.
                 </p>
               )}
-              {result.skippedAllDay > 0 && (
+
+              {result.eventsSeen === 0 && (
+                <p className="mt-2 rounded-lg bg-warn-soft px-2.5 py-2 text-xs text-warn">
+                  That calendar has no events in this window. Either the
+                  bookings are outside {result.rangeStartKey}–
+                  {result.rangeEndKey} — check the term&rsquo;s dates in
+                  Settings — or this isn&rsquo;t the calendar they&rsquo;re on.
+                </p>
+              )}
+
+              {result.eventsSeen > 0 && result.added + result.updated === 0 && (
+                <p className="mt-2 rounded-lg bg-warn-soft px-2.5 py-2 text-xs text-warn">
+                  Found events but imported none of them.
+                  {result.skippedAllDay > 0 && (
+                    <>
+                      {" "}
+                      <span className="font-medium">
+                        {result.skippedAllDay} are all-day entries.
+                      </span>{" "}
+                      A room booking has to have a start and end time — an
+                      all-day event doesn&rsquo;t say when the room is
+                      actually yours, so it&rsquo;s read as a note. Give them
+                      real times and sync again.
+                    </>
+                  )}
+                  {result.skippedNoTitle > 0 &&
+                    ` ${result.skippedNoTitle} have no title, and the title is the room name.`}
+                  {result.skippedZeroLength > 0 &&
+                    ` ${result.skippedZeroLength} start and end at the same moment.`}
+                </p>
+              )}
+
+              {result.added + result.updated > 0 && result.skippedAllDay > 0 && (
                 <p className="mt-1 text-xs text-ink-soft">
                   Skipped {result.skippedAllDay} all-day{" "}
                   {result.skippedAllDay === 1 ? "entry" : "entries"} — those read
                   as notes rather than bookings.
+                </p>
+              )}
+              {result.skippedCancelled > 0 && (
+                <p className="mt-1 text-xs text-ink-soft">
+                  Ignored {result.skippedCancelled} cancelled{" "}
+                  {result.skippedCancelled === 1 ? "event" : "events"}.
                 </p>
               )}
             </div>

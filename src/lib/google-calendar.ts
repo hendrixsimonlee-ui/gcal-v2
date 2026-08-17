@@ -134,16 +134,30 @@ export async function fetchCalendarBlocks(
   calendarId: string,
   rangeStart: Date,
   rangeEnd: Date,
-): Promise<{ blocks: GoogleCalendarBlock[]; skippedAllDay: number }> {
+): Promise<{
+  blocks: GoogleCalendarBlock[];
+  /** Everything the calendar returned in range, before any filtering. When a
+   * sync imports nothing, the first question is whether it saw nothing or
+   * threw everything away — these counts answer it. */
+  eventsSeen: number;
+  skippedAllDay: number;
+  skippedCancelled: number;
+  skippedZeroLength: number;
+}> {
   const calendar = await getGoogleCalendarClientForUser(userId);
   const events = await listAllEvents(calendar, calendarId, rangeStart, rangeEnd);
 
   const blocks: GoogleCalendarBlock[] = [];
   let skippedAllDay = 0;
+  let skippedCancelled = 0;
+  let skippedZeroLength = 0;
 
   for (const event of events) {
     if (!event.id) continue;
-    if (event.status === "cancelled") continue;
+    if (event.status === "cancelled") {
+      skippedCancelled++;
+      continue;
+    }
     if (!event.start?.dateTime || !event.end?.dateTime) {
       skippedAllDay++;
       continue;
@@ -151,7 +165,10 @@ export async function fetchCalendarBlocks(
 
     const start = new Date(event.start.dateTime);
     const end = new Date(event.end.dateTime);
-    if (end <= start) continue;
+    if (end <= start) {
+      skippedZeroLength++;
+      continue;
+    }
 
     const sameDayEnd =
       isSameAppDay(end, start)
@@ -168,7 +185,13 @@ export async function fetchCalendarBlocks(
     });
   }
 
-  return { blocks, skippedAllDay };
+  return {
+    blocks,
+    eventsSeen: events.length,
+    skippedAllDay,
+    skippedCancelled,
+    skippedZeroLength,
+  };
 }
 
 /** These three used to read the server's clock, which on Vercel is UTC — a
