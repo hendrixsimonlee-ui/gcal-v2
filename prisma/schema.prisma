@@ -113,7 +113,7 @@ model User {
   memberships         DanceMembership[]
   conflicts           Conflict[]
   unavailabilities    Unavailability[]
-  weeklyExcuses       ChoreographerWeeklyExcuse[]
+  weeklyExclusions    WeeklyExclusion[]
   attendanceRecords   Attendance[]                @relation("AttendanceSubject")
   attendanceMarkedBy  Attendance[]                @relation("AttendanceMarker")
   attendanceSubmitted Practice[]                  @relation("AttendanceSubmitter")
@@ -124,6 +124,7 @@ model User {
   pushSubscriptions   PushSubscription[]
   notifications       Notification[]
   conflictSubmissions ConflictSubmission[]
+  exclusionsAuthored  WeeklyExclusion[]           @relation("ExclusionAuthor")
   weeksReviewed       AttendanceWeekReview[]      @relation("WeekReviewer")
 
   createdAt DateTime @default(now())
@@ -148,7 +149,7 @@ model Dance {
 
   memberships   DanceMembership[]
   practices     Practice[]
-  weeklyExcuses ChoreographerWeeklyExcuse[]
+  exclusions    WeeklyExclusion[]
   weeksOff      DanceWeekOff[]
 
   createdAt DateTime @default(now())
@@ -163,6 +164,15 @@ model DanceWeekOff {
   danceId String
   weekOf  DateTime
   note    String?
+
+  /// Set when marking the week off cleared practices the cast had already been
+  /// told about. Nothing is sent automatically — the tracker shows "cancelled,
+  /// nobody told" until the AD decides, because a cancellation is exactly the
+  /// kind of message that should be a choice rather than a side effect.
+  pendingCancellationNotice Boolean @default(false)
+  /// How many published practices were cleared, so the prompt can say what it
+  /// is asking about.
+  cancelledPracticeCount Int @default(0)
 
   dance Dance @relation(fields: [danceId], references: [id], onDelete: Cascade)
 
@@ -188,54 +198,54 @@ model DanceMembership {
   @@index([userId])
 }
 
+/// A room, derived entirely from the shared spaces calendar.
+///
+/// The name is an event title, copied exactly. There is no fuzzy matching any
+/// more: "EM SACHS" and "Em Sachs Theater" are two rooms, because they are two
+/// titles. That's the trade for the app never guessing — keeping the titles
+/// consistent is a job for whoever writes the calendar, and it's a job they
+/// can actually see themselves doing.
+///
+/// Nothing in the app creates a space. Sync does, or it doesn't exist.
 model Space {
   id       String  @id @default(cuid())
-  name     String
+  name     String  @unique
+  /// Straight off the event's own location field.
   location String?
 
-  /// The Google Calendar this room's bookings live on, if the AD has linked
-  /// one. Each event on it is a block the space is open to the team.
-  googleCalendarId   String?
-  googleCalendarName String?
-
-  /// The normalised form of `name`, used to match titles coming off the
-  /// shared spaces calendar. "EM SACHS", "em sachs" and "emsachs" all reduce
-  /// to the same key and land on this one room.
-  matchKey String? @unique
-
-  availabilities SpaceAvailability[]
-  practices      Practice[]
-  nameReviews    SpaceNameReview[]
+  bookings  Booking[]
+  practices Practice[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
-/// A recurring weekly window (dayOfWeek + start/end time) or a one-off date
-/// override for when a space is actually bookable.
-model SpaceAvailability {
+/// One event on the spaces calendar: this room is ours, this date, these
+/// hours.
+///
+/// Every column is required and every row has a source event, because the
+/// calendar is now the only way a booking can exist. The old model carried
+/// recurring weekly hours and hand-typed closures as well; both are gone —
+/// an opening the calendar doesn't know about is a room nobody reserved, and
+/// a closure is deleting the event.
+model Booking {
   id      String @id @default(cuid())
   spaceId String
   space   Space  @relation(fields: [spaceId], references: [id], onDelete: Cascade)
 
-  // Recurring weekly window
-  dayOfWeek Int? // 0 = Sunday ... 6 = Saturday
-  startTime String? // "HH:mm"
-  endTime   String? // "HH:mm"
+  date      DateTime @db.Date
+  startTime String // "HH:mm", Eastern
+  endTime   String // "HH:mm", Eastern
 
-  // One-off override (a specific date, e.g. holiday closure or extra opening)
-  date        DateTime? @db.Date
-  isAvailable Boolean   @default(true)
-
-  /// Set when this window came from the space's Google Calendar. Re-importing
-  /// updates the matching row instead of piling up duplicates, and hand-made
-  /// windows (no source id) are never touched by an import.
-  sourceGoogleEventId String?
+  /// The event this row mirrors. Unique, so a sync updates in place rather
+  /// than piling up duplicates, and so an edit here knows what to patch.
+  sourceGoogleEventId String @unique
 
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  @@index([spaceId])
-  @@index([sourceGoogleEventId])
+  @@index([spaceId, date])
+  @@index([date])
 }
 
 /// A dancer/choreographer's logged conflict for a given week. May originate
@@ -346,9 +356,17 @@ model Practice {
   @@index([spaceId])
 }
 
-/// The AD deselecting a choreographer as a mandatory attendee for one
-/// specific week (that dance's weekly excuse), rather than every week.
-model ChoreographerWeeklyExcuse {
+/// The AD taking one person out of one dance's scheduling for one week.
+///
+/// Covers both roles. It replaces the old choreographer-only excuse table and
+/// the dancer "ignore" checkbox, which was session-only client state that
+/// vanished on refresh and left no trace at all.
+///
+/// Leaving a record is the point. Someone left out of a week's scheduling who
+/// then doesn't turn up must not be marked unexcused for it — the app is the
+/// reason they weren't there. `reason` is filled from the conflicts that
+/// prompted it and can be overwritten by hand.
+model WeeklyExclusion {
   id      String   @id @default(cuid())
   danceId String
   dance   Dance    @relation(fields: [danceId], references: [id], onDelete: Cascade)
@@ -356,9 +374,15 @@ model ChoreographerWeeklyExcuse {
   user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   weekOf  DateTime @db.Date
 
+  reason String?
+
+  createdById String?
+  createdBy   User?   @relation("ExclusionAuthor", fields: [createdById], references: [id])
+
   createdAt DateTime @default(now())
 
   @@unique([danceId, userId, weekOf])
+  @@index([userId, weekOf])
 }
 
 model Attendance {
@@ -463,11 +487,9 @@ model AppSettings {
   /// is on time.
   lateThresholdMinutes Int @default(5)
 
-  /// One calendar carrying every room's bookings, rather than one per space.
-  /// Syncing it is the first step of setting up a term: the events on it are
-  /// grouped by title into spaces, and each event becomes a window that room
-  /// is available. Per-space calendars still work for anyone already using
-  /// them; this is the flow the AD is pointed at first.
+  /// The one calendar every room's bookings live on. It is the only source of
+  /// spaces: an event's title is the room, its location is the location, and
+  /// its times are when that room is ours. Nothing else creates a space.
   spacesCalendarId   String?
   spacesCalendarName String?
 
@@ -496,43 +518,6 @@ model Term {
 
   @@unique([name])
   @@index([startDate])
-}
-
-/// A space title seen on the shared spaces calendar that didn't match any
-/// known room. Held here rather than silently creating a space, so the AD
-/// decides whether "Platt B" is a new room or another spelling of one that
-/// already exists.
-model SpaceNameReview {
-  id String @id @default(cuid())
-
-  /// Exactly as it appeared on the calendar, for the AD to recognise.
-  rawTitle String
-  /// The normalised form used for matching — lowercased, punctuation and
-  /// spacing stripped. Two titles sharing this are the same room.
-  matchKey String @unique
-
-  /// How many events carried this title in the last sync, so the AD can tell
-  /// a real room from a one-off typo.
-  eventCount Int @default(0)
-
-  /// Set once the AD resolves it: either mapped onto an existing space or
-  /// turned into a new one. Resolved rows are kept so the same title isn't
-  /// queued again on the next sync.
-  resolvedSpaceId String?
-  resolvedSpace   Space?  @relation(fields: [resolvedSpaceId], references: [id], onDelete: SetNull)
-  /// Set when the AD explicitly says this title is not a room.
-  ignored Boolean @default(false)
-
-  /// True when the sync made the room itself rather than waiting to be told
-  /// to. The bookings are already imported; this only marks the row as
-  /// "worth a glance" so the AD can rename or merge it. It clears the first
-  /// time they act on it.
-  autoCreated Boolean @default(false)
-
-  firstSeenAt DateTime @default(now())
-  lastSeenAt  DateTime @updatedAt
-
-  @@index([ignored, resolvedSpaceId])
 }
 
 /// A dancer saying "my conflicts for this week are in".

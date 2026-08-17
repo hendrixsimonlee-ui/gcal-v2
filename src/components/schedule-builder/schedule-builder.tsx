@@ -8,7 +8,7 @@ import {
   createDraftPractice,
   getCandidateSlots,
   getSchedulingSidebarData,
-  setChoreographerWeeklyExcuse,
+  setWeeklyExclusion,
   updatePracticeTime,
   type SidebarCastMember,
 } from "@/lib/actions/schedule";
@@ -33,14 +33,10 @@ interface DanceOption {
 interface SpaceOption {
   id: string;
   name: string;
-  availabilities: {
-    id: string;
-    dayOfWeek: number | null;
-    startTime: string | null;
-    endTime: string | null;
-    date: string | null;
-    isAvailable: boolean;
-  }[];
+  /** Every block this room is ours, straight off the spaces calendar. There
+   * is no weekly pattern any more — a room is bookable only when somebody
+   * actually booked it. */
+  bookings: { id: string; dateKey: string; startTime: string; endTime: string }[];
 }
 
 const timeFormatter = new Intl.DateTimeFormat("en-US", {
@@ -70,10 +66,14 @@ export function ScheduleBuilder({
   dances,
   spaces,
   initialPractices,
+  buildWeek,
 }: {
   dances: DanceOption[];
   spaces: SpaceOption[];
   initialPractices: PracticeEvent[];
+  /** The whole-week solver, rendered inside this screen's toolbar rather than
+   * as its own card above it. */
+  buildWeek?: React.ReactNode;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -84,7 +84,6 @@ export function ScheduleBuilder({
   const [durationMinutes, setDurationMinutes] = useState(
     dances[0]?.defaultDurationMinutes ?? 90,
   );
-  const [ignoredUserIds, setIgnoredUserIds] = useState<Set<string>>(new Set());
   const [candidates, setCandidates] = useState<CandidateSlot[]>([]);
   const [sidebar, setSidebar] = useState<SidebarCastMember[]>([]);
   const [publishResult, setPublishResult] = useState<string | null>(null);
@@ -125,15 +124,10 @@ export function ScheduleBuilder({
     [weekStart],
   );
 
-  const ignoredKey = useMemo(
-    () => Array.from(ignoredUserIds).sort().join(","),
-    [ignoredUserIds],
-  );
-
   useEffect(() => {
     if (!danceId || !spaceId) return;
     let cancelled = false;
-    getCandidateSlots(danceId, spaceId, durationMinutes, Array.from(ignoredUserIds)).then(
+    getCandidateSlots(danceId, spaceId, durationMinutes, []).then(
       (result) => {
         if (!cancelled) setCandidates(result);
       },
@@ -141,8 +135,7 @@ export function ScheduleBuilder({
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [danceId, spaceId, durationMinutes, ignoredKey, refreshKey]);
+  }, [danceId, spaceId, durationMinutes, refreshKey]);
 
   useEffect(() => {
     if (!danceId) return;
@@ -169,19 +162,13 @@ export function ScheduleBuilder({
     if (dance) setDurationMinutes(dance.defaultDurationMinutes);
   }
 
-  function toggleIgnored(userId: string) {
-    setIgnoredUserIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(userId)) next.delete(userId);
-      else next.add(userId);
-      return next;
-    });
-  }
-
-  function toggleChoreographerExcuse(userId: string, currentlyExcused: boolean) {
+  /** Ticking anyone — dancer or choreographer — writes a real exclusion with
+   * a reason, rather than the old browser-only tick that vanished on refresh
+   * and left no trace of who was left out or why. */
+  function toggleExclusion(userId: string, currentlyExcluded: boolean) {
     const weekOf = weekStart.toISOString();
     startTransition(async () => {
-      await setChoreographerWeeklyExcuse(danceId, userId, weekOf, !currentlyExcused);
+      await setWeeklyExclusion(danceId, userId, weekOf, !currentlyExcluded);
       const result = await getSchedulingSidebarData(
         danceId,
         weekOf,
@@ -235,37 +222,21 @@ export function ScheduleBuilder({
     [spaces, spaceId],
   );
 
-  const businessHours = useMemo(
-    () =>
-      relevantSpaces.flatMap((space) =>
-        space.availabilities
-          .filter((a) => a.dayOfWeek !== null && a.startTime && a.endTime)
-          .map((a) => ({
-            daysOfWeek: [a.dayOfWeek!],
-            startTime: a.startTime!,
-            endTime: a.endTime!,
-          })),
-      ),
-    [relevantSpaces],
-  );
-
-  /** Availability that lives on a specific date rather than a weekly pattern.
+  /** Every bookable block in view, as the grid wants it.
    *
    * FullCalendar's `businessHours` only understands recurring weekly windows,
-   * so without this the whole shared-spaces-calendar import — which produces
-   * dated windows, one per booking — would be invisible on the grid. The AD
-   * would sync a term and see an empty week. */
+   * which is why it used to be here at all. With rooms coming purely from
+   * dated calendar events there is no weekly pattern left to express, so
+   * these background bands are the whole availability picture. */
   const datedAvailability = useMemo(
     () =>
       relevantSpaces.flatMap((space) =>
-        space.availabilities
-          .filter((a) => a.date && a.isAvailable && a.startTime && a.endTime)
-          .map((a) => ({
-            spaceName: space.name,
-            dateKey: a.date!.slice(0, 10),
-            startTime: a.startTime!,
-            endTime: a.endTime!,
-          })),
+        space.bookings.map((b) => ({
+          spaceName: space.name,
+          dateKey: b.dateKey,
+          startTime: b.startTime,
+          endTime: b.endTime,
+        })),
       ),
     [relevantSpaces],
   );
@@ -317,23 +288,8 @@ export function ScheduleBuilder({
         end: day.getTime() + toMinutes(a.endTime) * 60000,
       });
     }
-    for (
-      let day = new Date(weekStart);
-      day < weekEnd;
-      day = new Date(day.getTime() + 24 * 60 * 60 * 1000)
-    ) {
-      for (const b of businessHours) {
-        if (!b.daysOfWeek.includes(day.getDay())) continue;
-        const midnight = new Date(day);
-        midnight.setHours(0, 0, 0, 0);
-        windows.push({
-          start: midnight.getTime() + toMinutes(b.startTime) * 60000,
-          end: midnight.getTime() + toMinutes(b.endTime) * 60000,
-        });
-      }
-    }
     return windows;
-  }, [datedAvailability, businessHours, weekStart, weekEnd]);
+  }, [datedAvailability]);
 
   const choreographers = useMemo(
     () => sidebar.filter((m) => m.role === "CHOREOGRAPHER"),
@@ -382,87 +338,83 @@ export function ScheduleBuilder({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-end gap-3 rounded-lg border border-line bg-surface p-4">
-        <div className="flex flex-col gap-1">
-          <label className="text-xs font-medium text-ink-soft">Dance</label>
-          <select
-            value={danceId}
-            onChange={(e) => selectDance(e.target.value)}
-            className="rounded-lg border border-line-strong px-3 py-1.5 text-sm bg-surface"
-          >
-            {dances.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.name}
-              </option>
-            ))}
-          </select>
+      {/* One toolbar, not three stacked cards.
+          Dance / Space / Duration, the draft count and Publish used to be
+          three separate bordered blocks running down the page, which pushed
+          the calendar — the thing this screen is for — below the fold. */}
+      <div className="flex flex-col gap-2 rounded-lg border border-line bg-surface p-3">
+        {/* Dances as chips rather than a dropdown. Switching between pieces is
+            the single most repeated action here; it shouldn't cost two clicks
+            and a menu, and which dance is loaded should be visible without
+            opening anything. */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          {dances.map((d) => (
+            <button
+              key={d.id}
+              onClick={() => {
+                selectDance(d.id);
+                setEditingId(null);
+                setHint(null);
+              }}
+              aria-pressed={d.id === danceId}
+              className={`rounded-full px-3 py-1 text-sm font-medium transition-colors ${ d.id === danceId
+                  ? "bg-accent text-on-accent"
+                  : "border border-line-strong text-ink-soft hover:bg-surface-2 hover:text-ink"
+              }`}
+            >
+              {d.name}
+            </button>
+          ))}
         </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-xs font-medium text-ink-soft">Space</label>
-          <select
-            value={spaceId}
-            onChange={(e) => setSpaceId(e.target.value)}
-            className="rounded-lg border border-line-strong px-3 py-1.5 text-sm bg-surface"
-          >
-            <option value={ANY_SPACE}>Any space</option>
-            {spaces.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-xs font-medium text-ink-soft">
-            Duration (minutes)
-          </label>
-          <input
-            type="number"
-            min={15}
-            step={15}
-            value={durationMinutes}
-            onChange={(e) => setDurationMinutes(Number(e.target.value) || 90)}
-            className="w-28 rounded-lg border border-line-strong px-3 py-1.5 text-sm bg-surface"
-          />
-        </div>
-        {isPending && (
-          <span className="pb-2 text-xs text-ink-faint">Saving…</span>
-        )}
-      </div>
 
-      {/* Publishing is a deliberate, separate step: the AD lays out the whole
-          term as drafts, then tells everyone once. */}
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line bg-surface px-4 py-3">
-        <div className="text-sm">
-          {allDrafts.length === 0 ? (
-            <span className="text-ink-soft">
-              No unpublished drafts. Nothing is waiting to be announced.
-            </span>
-          ) : (
-            <>
-              <span className="font-medium text-ink">
-                {allDrafts.length} draft practice
-                {allDrafts.length === 1 ? "" : "s"} not yet published
-              </span>
-              <span className="ml-2 text-ink-soft">
-                — drafts hold their room but nobody has been told about them
-                yet.
-              </span>
-            </>
-          )}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-line pt-2">
+          <label className="flex items-center gap-1.5 text-xs text-ink-soft">
+            Room
+            <select
+              value={spaceId}
+              onChange={(e) => setSpaceId(e.target.value)}
+              className="rounded-lg border border-line-strong bg-surface px-2 py-1 text-sm"
+            >
+              <option value={ANY_SPACE}>Any room</option>
+              {spaces.map((sp) => (
+                <option key={sp.id} value={sp.id}>
+                  {sp.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex items-center gap-1.5 text-xs text-ink-soft">
+            Minutes
+            <input
+              type="number"
+              min={15}
+              step={15}
+              value={durationMinutes}
+              onChange={(e) => setDurationMinutes(Number(e.target.value) || 90)}
+              className="w-20 rounded-lg border border-line-strong bg-surface px-2 py-1 text-sm tabular-nums"
+            />
+          </label>
+
+          <span className="text-xs text-ink-soft">
+            {allDrafts.length === 0
+              ? "Nothing waiting to be announced."
+              : `${allDrafts.length} draft${allDrafts.length === 1 ? "" : "s"} across all weeks — nobody has been told.`}
+          </span>
           {publishResult && (
-            <span className="ml-2 font-medium text-good">
-              {publishResult}
-            </span>
+            <span className="text-xs font-medium text-good">{publishResult}</span>
           )}
+          {isPending && <span className="text-xs text-ink-faint">Saving…</span>}
+
+          <button
+            onClick={publishAll}
+            disabled={isPending || allDrafts.length === 0}
+            className="ml-auto rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-on-accent transition-colors hover:bg-accent-hover disabled:opacity-40"
+          >
+            Publish everything
+          </button>
         </div>
-        <button
-          onClick={publishAll}
-          disabled={isPending || allDrafts.length === 0}
-          className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-on-accent transition-colors hover:bg-accent-hover disabled:opacity-45"
-        >
-          {isPending ? "Publishing…" : "Publish schedule"}
-        </button>
+
+        {buildWeek && <div className="border-t border-line pt-2">{buildWeek}</div>}
       </div>
 
       <WeekTracker
@@ -492,7 +444,61 @@ export function ScheduleBuilder({
         />
       )}
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[280px_1fr_300px]">
+      <div className="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_260px]">
+        <section className="rounded-lg border border-line bg-surface p-2">
+          <ScheduleCalendar
+            practices={initialPractices}
+            candidates={candidatesThisWeek}
+            datedAvailability={datedAvailability}
+            legendSpaceCount={relevantSpaces.length}
+            onSelectRange={handleSelectRange}
+            onEventMove={handleEventMove}
+            onEventClick={(id) => {
+              setHint(null);
+              setEditingId(id);
+            }}
+            onDatesSet={(start, end) => setVisibleRange({ start, end })}
+          />
+          {practicesThisWeek.length > 0 && (
+            <ul className="mt-2 flex flex-col gap-1 border-t border-line pt-2">
+              {practicesThisWeek.map((p) => (
+                <li
+                  key={p.id}
+                  className="flex flex-wrap items-center gap-2 rounded-lg bg-surface-2 px-2 py-1.5 text-xs"
+                >
+                  <span className="font-medium text-ink">{p.danceName}</span>
+                  <span className="tabular-nums text-ink-soft">
+                    {slotRange(new Date(p.startDateTime), new Date(p.endDateTime))}
+                  </span>
+                  <span className="text-ink-soft">
+                    {p.spaceName ?? "no room yet"}
+                  </span>
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${ p.status === "PROPOSED"
+                        ? "bg-info-soft text-info"
+                        : "bg-good-soft text-good"
+                    }`}
+                  >
+                    {p.status === "PROPOSED" ? "Draft" : "Published"}
+                  </span>
+                  <button
+                    onClick={() => {
+                      setHint(null);
+                      setEditingId(p.id);
+                    }}
+                    className="ml-auto font-medium text-accent-ink hover:underline"
+                  >
+                    Edit
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        {/* Right rail: everything that supports the grid, stacked and
+            narrow so the calendar keeps the width. */}
+        <div className="flex min-w-0 flex-col gap-3">
         <section className="rounded-lg border border-line bg-surface p-4">
           <h2 className="text-sm font-semibold text-ink">Best times this week</h2>
           <p className="mb-2 mt-0.5 text-xs text-ink-soft">
@@ -543,58 +549,6 @@ export function ScheduleBuilder({
           )}
         </section>
 
-        <section className="rounded-lg border border-line bg-surface p-2">
-          <ScheduleCalendar
-            practices={initialPractices}
-            candidates={candidatesThisWeek}
-            businessHours={businessHours}
-            datedAvailability={datedAvailability}
-            legendSpaceCount={relevantSpaces.length}
-            onSelectRange={handleSelectRange}
-            onEventMove={handleEventMove}
-            onEventClick={(id) => {
-              setHint(null);
-              setEditingId(id);
-            }}
-            onDatesSet={(start, end) => setVisibleRange({ start, end })}
-          />
-          {practicesThisWeek.length > 0 && (
-            <ul className="mt-2 flex flex-col gap-1 border-t border-line pt-2">
-              {practicesThisWeek.map((p) => (
-                <li
-                  key={p.id}
-                  className="flex flex-wrap items-center gap-2 rounded-lg bg-surface-2 px-2 py-1.5 text-xs"
-                >
-                  <span className="font-medium text-ink">{p.danceName}</span>
-                  <span className="tabular-nums text-ink-soft">
-                    {slotRange(new Date(p.startDateTime), new Date(p.endDateTime))}
-                  </span>
-                  <span className="text-ink-soft">
-                    {p.spaceName ?? "no room yet"}
-                  </span>
-                  <span
-                    className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${ p.status === "PROPOSED"
-                        ? "bg-info-soft text-info"
-                        : "bg-good-soft text-good"
-                    }`}
-                  >
-                    {p.status === "PROPOSED" ? "Draft" : "Published"}
-                  </span>
-                  <button
-                    onClick={() => {
-                      setHint(null);
-                      setEditingId(p.id);
-                    }}
-                    className="ml-auto font-medium text-accent-ink hover:underline"
-                  >
-                    Edit
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-
         <section className="flex flex-col gap-4 rounded-lg border border-line bg-surface p-4">
           <div>
             <h2 className="text-sm font-semibold text-ink">
@@ -617,18 +571,18 @@ export function ScheduleBuilder({
                     <label className="flex items-start gap-2">
                       <input
                         type="checkbox"
-                        checked={m.excusedThisWeek}
+                        checked={m.excludedThisWeek}
                         onChange={() =>
-                          toggleChoreographerExcuse(m.userId, m.excusedThisWeek)
+                          toggleExclusion(m.userId, m.excludedThisWeek)
                         }
                         className="mt-0.5"
                       />
                       <span>
                         <span className="font-medium text-ink">{m.name}</span>
                         <span className="block text-ink-faint">
-                          {m.excusedThisWeek
-                            ? "Excused this week — the app will schedule without them"
-                            : "Tick to excuse them this week only"}
+                          {m.excludedThisWeek
+                            ? m.exclusionReason ?? "Left out of this week"
+                            : "Tick to leave them out of this week only"}
                         </span>
                       </span>
                     </label>
@@ -648,9 +602,11 @@ export function ScheduleBuilder({
                 Dancers
               </p>
               <p className="mb-1.5 text-xs text-ink-soft">
-                Ticking someone leaves them out of this week&rsquo;s
-                scheduling: their conflicts stop counting against every slot.
-                It changes nothing in their record.
+                Ticking someone takes them out of this week&rsquo;s scheduling
+                entirely — their conflicts stop counting against every slot.
+                It <span className="font-medium">is</span> recorded: the reason
+                shows on their attendance, and if a practice goes ahead anyway
+                they&rsquo;re marked excused, never unexcused.
               </p>
               <div className="flex flex-col gap-2.5">
                 {dancers.map((m) => {
@@ -660,18 +616,27 @@ export function ScheduleBuilder({
                       <label className="flex items-start gap-2">
                         <input
                           type="checkbox"
-                          checked={ignoredUserIds.has(m.userId)}
-                          onChange={() => toggleIgnored(m.userId)}
+                          checked={m.excludedThisWeek}
+                          onChange={() =>
+                            toggleExclusion(m.userId, m.excludedThisWeek)
+                          }
                           className="mt-0.5"
                         />
-                        <span
-                          className={
-                            ignoredUserIds.has(m.userId)
-                              ? "font-medium text-ink-faint line-through"
-                              : "font-medium text-ink"
-                          }
-                        >
-                          {m.name}
+                        <span className="min-w-0">
+                          <span
+                            className={
+                              m.excludedThisWeek
+                                ? "font-medium text-ink-faint line-through"
+                                : "font-medium text-ink"
+                            }
+                          >
+                            {m.name}
+                          </span>
+                          {m.excludedThisWeek && m.exclusionReason && (
+                            <span className="block truncate text-ink-faint">
+                              {m.exclusionReason}
+                            </span>
+                          )}
                         </span>
                         {shown.length > 0 && (
                           <span className="ml-auto text-warn">
@@ -697,6 +662,7 @@ export function ScheduleBuilder({
             </p>
           )}
         </section>
+        </div>
       </div>
     </div>
   );

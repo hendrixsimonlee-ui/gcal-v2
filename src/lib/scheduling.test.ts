@@ -22,6 +22,25 @@ function asStoredDate(instant: Date): Date {
   return new Date(`${appDateKey(instant)}T00:00:00Z`);
 }
 
+/** The old model had a weekly pattern; bookings are dated, so a test that
+ * wants "every Monday evening" has to spell out the Mondays. Four weeks
+ * matches the search window. */
+function weeklyBookings(
+  weekday: number,
+  startTime: string,
+  endTime: string,
+): { date: Date; startTime: string; endTime: string }[] {
+  const out: { date: Date; startTime: string; endTime: string }[] = [];
+  const cursor = new Date(nextMonday);
+  for (let i = 0; i < 40; i++) {
+    const day = new Date(cursor.getTime() + i * 24 * 60 * 60 * 1000);
+    if (zonedParts(day).weekday === weekday) {
+      out.push({ date: asStoredDate(day), startTime, endTime });
+    }
+  }
+  return out;
+}
+
 const base: SchedulingInput = {
   castMembers: [
     { userId: "choreo1", name: "Choreo One", role: "CHOREOGRAPHER" },
@@ -35,8 +54,7 @@ const base: SchedulingInput = {
     {
       spaceId: "space1",
       spaceName: "Studio A",
-      recurringWindows: [{ dayOfWeek, startTime: "18:00", endTime: "21:00" }],
-      dateOverrides: [],
+      bookings: weeklyBookings(dayOfWeek, "18:00", "21:00"),
       existingPractices: [],
     },
   ],
@@ -59,7 +77,11 @@ function withSpace(opts: {
     spaces: [
       {
         ...base.spaces[0],
-        recurringWindows: opts.windows ?? base.spaces[0].recurringWindows,
+        bookings: opts.windows
+          ? opts.windows.flatMap((w) =>
+              weeklyBookings(w.dayOfWeek, w.startTime, w.endTime),
+            )
+          : base.spaces[0].bookings,
         existingPractices: opts.booked ?? [],
       },
     ],
@@ -276,17 +298,13 @@ function withSpace(opts: {
       {
         spaceId: "space1",
         spaceName: "Studio A",
-        recurringWindows: [{ dayOfWeek, startTime: "18:00", endTime: "19:30" }],
-        dateOverrides: [],
+        bookings: weeklyBookings(dayOfWeek, "18:00", "19:30"),
         existingPractices: [],
       },
       {
         spaceId: "space2",
         spaceName: "Black Box",
-        recurringWindows: [
-          { dayOfWeek: otherDay, startTime: "13:00", endTime: "14:30" },
-        ],
-        dateOverrides: [],
+        bookings: weeklyBookings(otherDay, "13:00", "14:30"),
         existingPractices: [],
       },
     ],
@@ -312,8 +330,7 @@ function withSpace(opts: {
       {
         spaceId: "space1",
         spaceName: "Studio A",
-        recurringWindows: [{ dayOfWeek, startTime: "18:00", endTime: "19:30" }],
-        dateOverrides: [],
+        bookings: weeklyBookings(dayOfWeek, "18:00", "19:30"),
         existingPractices: [
           {
             id: "p1",
@@ -327,8 +344,7 @@ function withSpace(opts: {
       {
         spaceId: "space2",
         spaceName: "Black Box",
-        recurringWindows: [{ dayOfWeek, startTime: "18:00", endTime: "19:30" }],
-        dateOverrides: [],
+        bookings: weeklyBookings(dayOfWeek, "18:00", "19:30"),
         existingPractices: [],
       },
     ],
@@ -392,53 +408,47 @@ function withSpace(opts: {
   );
 }
 
-// One-off space changes: a closure removes that date, and changed hours
-// replace the usual ones rather than stacking on top of them.
+// Bookings are dated, so "the room isn't ours that day" is simply the absence
+// of a booking — there is no closure record to apply on top of a pattern.
 {
-  const closed = generateCandidateSlots({
+  const withoutMonday = generateCandidateSlots({
     ...base,
     spaces: [
       {
         ...base.spaces[0],
-        dateOverrides: [{ date: asStoredDate(nextMonday), isAvailable: false }],
+        bookings: base.spaces[0].bookings.filter(
+          (b) => b.date.toISOString().slice(0, 10) !== appDateKey(nextMonday),
+        ),
       },
     ],
   });
   assert(
-    closed.every(
+    withoutMonday.every(
       (c) => appDateKey(c.startDateTime) !== appDateKey(nextMonday),
     ),
-    "a one-off closure removes every slot on that date",
+    "no booking on a date means no slots on that date",
   );
-  assert(closed.length > 0, "a closure only affects its own date");
+  assert(withoutMonday.length > 0, "other dates are unaffected");
 
-  const moved = generateCandidateSlots({
+  const middayOnly = generateCandidateSlots({
     ...base,
     spaces: [
       {
         ...base.spaces[0],
-        dateOverrides: [
-          {
-            date: asStoredDate(nextMonday),
-            isAvailable: true,
-            startTime: "12:00",
-            endTime: "15:00",
-          },
+        bookings: [
+          { date: asStoredDate(nextMonday), startTime: "12:00", endTime: "15:00" },
         ],
       },
     ],
   });
-  const thatDay = moved.filter(
-    (c) => appDateKey(c.startDateTime) === appDateKey(nextMonday),
-  );
   assert(
-    thatDay.length > 0 &&
-      thatDay.every((c) => zonedParts(c.startDateTime).hour < 15),
-    "changed hours open the new window",
-  );
-  assert(
-    thatDay.every((c) => zonedParts(c.startDateTime).hour >= 12),
-    "changed hours replace the usual evening window instead of adding to it",
+    middayOnly.length > 0 &&
+      middayOnly.every(
+        (c) =>
+          zonedParts(c.startDateTime).hour >= 12 &&
+          zonedParts(c.startDateTime).hour < 15,
+      ),
+    "slots come only from the hours actually booked",
   );
 }
 

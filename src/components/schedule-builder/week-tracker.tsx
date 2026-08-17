@@ -3,6 +3,8 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
+  announceWeekCancelled,
+  dismissWeekCancellationNotice,
   getWeekTracker,
   publishDance,
   publishWeek,
@@ -71,6 +73,9 @@ export function WeekTracker({
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [confirmMissing, setConfirmMissing] = useState<string[] | null>(null);
+  // Collapsed by default once there's nothing outstanding: a finished
+  // checklist is a reference, and it was pushing the calendar off the screen.
+  const [open, setOpen] = useState(true);
   const weekOfIso = weekOf.toISOString();
 
   useEffect(() => {
@@ -113,7 +118,9 @@ export function WeekTracker({
             } notified.`;
       }
       if (next === "NOT_PRACTISING") {
-        return `${row.danceName} marked as sitting this week out.`;
+        return result.cancelledPublished
+          ? `${row.danceName} is off this week and its ${result.cancelledPublished} published ${result.cancelledPublished === 1 ? "practice" : "practices"} are gone. Nobody has been told — use "Tell the cast" when you're ready.`
+          : `${row.danceName} marked as sitting this week out.`;
       }
       return `${row.danceName} is back to draft. Nobody outside this screen sees it now.`;
     });
@@ -177,14 +184,24 @@ export function WeekTracker({
               ? `All ${rows.length} dances sorted for this week.`
               : `${done} of ${rows.length} sorted · ${outstanding} still to do`}
         </p>
+        <button
+          onClick={() => setOpen((o) => !o)}
+          className="text-xs font-medium text-accent-ink hover:underline"
+          aria-expanded={open}
+        >
+          {open ? "Hide" : "Show"} the checklist
+        </button>
       </div>
 
+      {open && (
+      <>
+
       <p className="mb-3 text-xs text-ink-soft">
-        Nothing here reaches the team until you publish. Drafts are yours to
-        move around freely; a published practice you edit waits as{" "}
-        <span className="font-medium text-warn">changed</span> until you send
-        the change, so shifting a rehearsal three times still only ever costs
-        one message.
+        Nothing here reaches the team until you say so. Drafts are yours to
+        move freely; a published practice you edit waits as{" "}
+        <span className="font-medium text-warn">changed</span>, and taking one
+        back to draft says nothing at all. Cancelling a week is the only thing
+        that offers to message anyone — and it asks first.
       </p>
 
       <ul className="flex flex-col gap-1.5">
@@ -205,6 +222,11 @@ export function WeekTracker({
               >
                 {style.label}
               </span>
+              {row.pendingCancellation > 0 && (
+                <span className="rounded-full bg-bad-soft px-2 py-0.5 text-[11px] font-medium text-bad">
+                  Cancelled — cast not told
+                </span>
+              )}
               {row.pendingChanges > 0 && (
                 <span className="rounded-full bg-warn-soft px-2 py-0.5 text-[11px] font-medium text-warn">
                   {row.pendingChanges} changed, not announced
@@ -236,6 +258,41 @@ export function WeekTracker({
                 >
                   {row.practices.length === 0 ? "Schedule it" : "Open"}
                 </button>
+
+                {row.pendingCancellation > 0 && (
+                  <>
+                    <button
+                      onClick={() =>
+                        run(async () => {
+                          const r = await announceWeekCancelled(
+                            row.danceId,
+                            weekOfIso,
+                          );
+                          return `Told ${r.notified} ${r.notified === 1 ? "person" : "people"} ${row.danceName} isn't practising this week.`;
+                        })
+                      }
+                      disabled={isPending}
+                      className="text-xs font-medium text-bad hover:underline disabled:opacity-45"
+                    >
+                      Tell the cast
+                    </button>
+                    <button
+                      onClick={() =>
+                        run(async () => {
+                          await dismissWeekCancellationNotice(
+                            row.danceId,
+                            weekOfIso,
+                          );
+                          return null;
+                        })
+                      }
+                      disabled={isPending}
+                      className="text-xs font-medium text-ink-faint hover:underline disabled:opacity-45"
+                    >
+                      They know
+                    </button>
+                  </>
+                )}
 
                 {(row.status === "DRAFT" || row.pendingChanges > 0) && (
                   <button
@@ -319,6 +376,9 @@ export function WeekTracker({
             </button>
           </div>
         </div>
+      )}
+
+      </>
       )}
 
       {message && (

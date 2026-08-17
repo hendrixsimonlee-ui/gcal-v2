@@ -56,24 +56,27 @@ export function BuildWeek({ weekOfIso }: { weekOfIso: string }) {
   const totalCast = proposal?.placements.reduce((s, p) => s + p.castSize, 0) ?? 0;
 
   return (
-    <section className="rounded-xl border border-line bg-surface p-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="text-sm font-semibold text-ink">
-            Build the week
-          </h2>
-          <p className="mt-1 text-sm text-ink-soft">
-            Places every dance that still needs a slot, all at once, to get as
-            many people into as many practices as possible.
-          </p>
-        </div>
+    // One row, not a card. This was three lines of explanation and a button
+    // sitting above the calendar; the explanation is the button's name.
+    <section
+      className={
+        proposal || applied !== null || error
+          ? "rounded-lg border border-line bg-surface p-3"
+          : "contents"
+      }
+    >
+      <div className="flex flex-wrap items-center gap-3">
         <button
           onClick={propose}
           disabled={isPending}
-          className="rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-on-accent transition-colors hover:bg-accent-hover disabled:opacity-45"
+          className="rounded-lg border border-accent/50 bg-accent-soft px-3 py-1.5 text-sm font-medium text-accent-ink transition-colors hover:bg-accent hover:text-on-accent disabled:opacity-45"
         >
-          {isPending ? "Working…" : proposal ? "Try again" : "Build the week"}
+          {isPending ? "Working…" : proposal ? "Try again" : "Build the week for me"}
         </button>
+        <span className="text-xs text-ink-soft">
+          Places every dance that still needs a slot at once, fitting as many
+          people into as many practices as it can.
+        </span>
       </div>
 
       {applied !== null && (

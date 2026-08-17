@@ -48,7 +48,9 @@ async function main() {
     "Account",
     "Conflict",
     "Unavailability",
-    "ChoreographerWeeklyExcuse",
+    "WeeklyExclusion",
+    "ConflictSubmission",
+    "AttendanceWeekReview",
     "PracticeNote",
     "PlannedArrival",
     "PushSubscription",
@@ -59,7 +61,7 @@ async function main() {
     await prisma.$executeRawUnsafe(`DELETE FROM "${table}"`);
   }
   await prisma.dance.deleteMany();
-  await prisma.spaceAvailability.deleteMany();
+  await prisma.booking.deleteMany();
   await prisma.space.deleteMany();
   await prisma.user.deleteMany();
   await prisma.appSettings.deleteMany();
@@ -92,15 +94,34 @@ async function main() {
   const blackBox = await prisma.space.create({
     data: { name: "Black Box Theater", location: "Arts Building" },
   });
-  for (const dayOfWeek of [1, 2, 3, 4]) {
-    await prisma.spaceAvailability.create({
-      data: { spaceId: studioA.id, dayOfWeek, startTime: "18:00", endTime: "22:00" },
+  // Rooms come from the spaces calendar in the real app, so the seed fakes
+  // what a sync would have produced: one dated booking per event, each with
+  // the source id a real event would carry.
+  let fakeEventId = 0;
+  async function seedBooking(
+    spaceId: string,
+    dayOffset: number,
+    startTime: string,
+    endTime: string,
+  ) {
+    await prisma.booking.create({
+      data: {
+        spaceId,
+        date: onDay(dayOffset),
+        startTime,
+        endTime,
+        sourceGoogleEventId: `seed-booking-${fakeEventId++}`,
+      },
     });
   }
-  for (const dayOfWeek of [0, 6]) {
-    await prisma.spaceAvailability.create({
-      data: { spaceId: blackBox.id, dayOfWeek, startTime: "12:00", endTime: "18:00" },
-    });
+
+  for (let week = 0; week < 4; week++) {
+    for (const weekday of [1, 2, 3, 4]) {
+      await seedBooking(studioA.id, week * 7 + weekday, "18:00", "22:00");
+    }
+    for (const weekday of [0, 6]) {
+      await seedBooking(blackBox.id, week * 7 + weekday, "12:00", "18:00");
+    }
   }
 
   console.log("Creating dances and casts…");
@@ -176,20 +197,6 @@ async function main() {
       },
     });
   }
-
-  // One-off space changes: the gym closes for an event, and opens late once.
-  await prisma.spaceAvailability.create({
-    data: { spaceId: studioA.id, date: onDay(9), isAvailable: false },
-  });
-  await prisma.spaceAvailability.create({
-    data: {
-      spaceId: blackBox.id,
-      date: onDay(6),
-      isAvailable: true,
-      startTime: "15:00",
-      endTime: "20:00",
-    },
-  });
 
   console.log("Logging conflicts…");
   // Titles, not categories — that's all a dancer supplies now. Some are

@@ -55,7 +55,6 @@ function colorForDance(danceId: string): string {
 export function ScheduleCalendar({
   practices,
   candidates,
-  businessHours,
   datedAvailability,
   legendSpaceCount,
   onSelectRange,
@@ -65,9 +64,9 @@ export function ScheduleCalendar({
 }: {
   practices: PracticeEvent[];
   candidates: CandidateSlot[];
-  businessHours: { daysOfWeek: number[]; startTime: string; endTime: string }[];
-  /** One-off bookable windows, which is what importing a spaces calendar
-   * produces. `businessHours` can't express these. */
+  /** Every block a room is ours. Rooms come only from the spaces calendar
+   * now, so there is no weekly pattern left for FullCalendar's
+   * `businessHours` to express — these bands are the whole picture. */
   datedAvailability: {
     spaceName: string;
     dateKey: string;
@@ -132,16 +131,13 @@ export function ScheduleCalendar({
     title: a.spaceName,
   }));
 
-  // Show only the hours a room is actually bookable, with a little padding —
-  // a full 24-hour grid squeezes the useful evening hours into a sliver.
-  const { slotMinTime, slotMaxTime } = visibleTimeRange([
-    ...businessHours,
-    ...datedAvailability.map((a) => ({
-      daysOfWeek: [],
-      startTime: a.startTime,
-      endTime: a.endTime,
-    })),
-  ]);
+  // The grid runs the whole useful day and scrolls, rather than being clipped
+  // to whatever hours happen to be booked. Clipping meant an empty week had
+  // almost no grid to drag on at all, and any slot outside the current
+  // bookings was simply unreachable. `scrollTime` opens it at the first hour
+  // anything is happening, so the scroll costs nothing in the common case.
+  const { slotMinTime, slotMaxTime, scrollTime } =
+    visibleTimeRange(datedAvailability);
 
   return (
     <>
@@ -172,15 +168,20 @@ export function ScheduleCalendar({
       // week those features act on would be a day out of step.
       firstDay={1}
       headerToolbar={{ left: "prev,next today", center: "title", right: "timeGridWeek,dayGridMonth" }}
-      height="auto"
       slotMinTime={slotMinTime}
       slotMaxTime={slotMaxTime}
+      scrollTime={scrollTime}
+      // Fills the viewport and scrolls inside itself, instead of growing the
+      // page. The grid is the screen's whole job; it should get the screen.
+      height="calc(100vh - 15rem)"
+      expandRows
+      slotDuration="00:30:00"
+      snapDuration="00:15:00"
       allDaySlot={false}
       nowIndicator
       selectable
       selectMirror
       editable
-      businessHours={businessHours}
       events={[...availabilityEvents, ...practiceEvents, ...candidateEvents]}
       eventContent={renderEventContent}
       select={(info: DateSelectArg) => {
@@ -207,25 +208,34 @@ export function ScheduleCalendar({
 
 /** Narrows the visible grid to the space's opening hours (padded by an hour
  * each side), falling back to a sane evening-inclusive default. */
+/** A generous fixed window, plus where to open the scroll.
+ *
+ * This used to narrow the grid to exactly the booked hours. That read well
+ * when a week was full and badly the rest of the time: an unsynced week had
+ * a three-hour grid, and nothing outside the current bookings could be
+ * dragged at all. Now the day is always 6am to midnight and scrolls, and
+ * only the starting scroll position follows the data. */
 function visibleTimeRange(
-  businessHours: { daysOfWeek: number[]; startTime: string; endTime: string }[],
+  windows: { startTime: string; endTime: string }[],
 ) {
-  if (businessHours.length === 0) {
-    return { slotMinTime: "08:00:00", slotMaxTime: "23:00:00" };
+  const slotMinTime = "06:00:00";
+  const slotMaxTime = "24:00:00";
+  if (windows.length === 0) {
+    return { slotMinTime, slotMaxTime, scrollTime: "08:00:00" };
   }
   const toMinutes = (t: string) => {
     const [h, m] = t.split(":").map(Number);
     return h * 60 + m;
   };
-  const earliest = Math.min(...businessHours.map((b) => toMinutes(b.startTime)));
-  const latest = Math.max(...businessHours.map((b) => toMinutes(b.endTime)));
-  const pad = (mins: number) => {
-    const clamped = Math.max(0, Math.min(24 * 60, mins));
-    const h = Math.floor(clamped / 60);
-    const m = clamped % 60;
-    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:00`;
+  const earliest = Math.min(...windows.map((w) => toMinutes(w.startTime)));
+  const opening = Math.max(0, earliest - 60);
+  const h = Math.floor(opening / 60);
+  const m = opening % 60;
+  return {
+    slotMinTime,
+    slotMaxTime,
+    scrollTime: `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:00`,
   };
-  return { slotMinTime: pad(earliest - 60), slotMaxTime: pad(latest + 60) };
 }
 
 const blockTimeFormatter = new Intl.DateTimeFormat("en-US", {

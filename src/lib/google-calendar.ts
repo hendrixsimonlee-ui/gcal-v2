@@ -117,6 +117,8 @@ export interface GoogleCalendarBlock {
   startTime: string;
   endTime: string;
   title: string;
+  /** The event's own location field, which the app takes as the room's. */
+  location: string | null;
 }
 
 /** Timed events on a calendar over a date range, flattened into date +
@@ -162,6 +164,7 @@ export async function fetchCalendarBlocks(
       startTime: localTime(start),
       endTime: localTime(sameDayEnd),
       title: event.summary ?? "Booked",
+      location: event.location ?? null,
     });
   }
 

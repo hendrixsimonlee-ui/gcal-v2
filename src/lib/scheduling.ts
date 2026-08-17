@@ -36,21 +36,15 @@ export interface ExistingPractice {
   castUserIds: string[];
 }
 
-export interface RecurringWindow {
-  dayOfWeek: number; // 0 = Sunday ... 6 = Saturday
+/** One block a room is ours: a date and the hours on it.
+ *
+ * There is no weekly pattern any more. Every block is a real event on the
+ * shared spaces calendar, so a room is only bookable when somebody actually
+ * booked it — the app can no longer promise time nobody reserved. */
+export interface Booking {
+  date: Date;
   startTime: string; // "HH:mm"
   endTime: string; // "HH:mm"
-}
-
-/** A one-off change to a space's hours on a single date. It *replaces* the
- * usual weekly hours for that date rather than adding to them: `isAvailable:
- * false` closes the space, and a start/end opens it for exactly those hours
- * instead. */
-export interface DateOverride {
-  date: Date;
-  isAvailable: boolean;
-  startTime?: string | null;
-  endTime?: string | null;
 }
 
 /** One bookable room and everything needed to test slots against it. Passing
@@ -59,8 +53,7 @@ export interface DateOverride {
 export interface SpaceOption {
   spaceId: string;
   spaceName: string;
-  recurringWindows: RecurringWindow[];
-  dateOverrides: DateOverride[];
+  bookings: Booking[];
   /** Confirmed practices already booked into THIS space. */
   existingPractices: ExistingPractice[];
 }
@@ -139,10 +132,11 @@ function dateKey(date: Date): string {
  * column and is therefore anchored at UTC midnight. Reading it with local
  * getters would move the closure to the day before for anyone west of
  * Greenwich — a closed gym would still be offered as bookable. */
-function overrideDateKey(date: Date): string {
-  // Must produce the same "YYYY-MM-DD" shape as `dateKey` above, or a closure
-  // silently stops matching the day it closes. Read in UTC because that is
-  // how `@db.Date` values are anchored, not because the app runs there.
+/** The "YYYY-MM-DD" of a `@db.Date` value. Must produce the same shape as
+ * `dateKey` above, or a booking silently stops matching the day it covers.
+ * Read in UTC because that is how `@db.Date` values are anchored, not because
+ * the app runs there. */
+function storedDateKey(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
@@ -173,33 +167,29 @@ export function generateCandidateSlots(input: SchedulingInput): CandidateSlot[] 
   const candidates: (CandidateSlot | null)[] = [];
 
   for (const space of spaces) {
-    const overrideByDateKey = new Map(
-      space.dateOverrides.map((o) => [overrideDateKey(o.date), o]),
-    );
+    // Bookings are already dated, so there is nothing to expand — walk the
+    // ones inside the search range directly. The old version walked every day
+    // of the range working out that day's hours from a weekly pattern plus
+    // overrides; with the pattern gone, so is all of that.
+    // Keyed with the @db.Date reading, not the Eastern one: a booking's date
+    // is a bare calendar day anchored at UTC midnight, and reading that in
+    // Eastern lands on the evening before. The day cursor below is Eastern,
+    // so the two have to be normalised to the same shape.
+    const byDate = new Map<string, { startTime: string; endTime: string }[]>();
+    for (const booking of space.bookings) {
+      const key = storedDateKey(booking.date);
+      const list = byDate.get(key) ?? [];
+      list.push({ startTime: booking.startTime, endTime: booking.endTime });
+      byDate.set(key, list);
+    }
 
-    // Walk the search range day by day and work out that day's real hours,
-    // rather than walking the weekly pattern and patching it: a one-off
-    // replaces the usual hours outright, so the two can't be layered.
     let cursorDate = startOfWeek(searchStart);
     while (cursorDate < searchEnd) {
       const dayStart = new Date(cursorDate);
       cursorDate = addDaysInApp(cursorDate, 1);
       if (dayStart >= searchEnd) break;
 
-      const override = overrideByDateKey.get(dateKey(dayStart));
-      let windows: { startTime: string; endTime: string }[];
-      if (override) {
-        windows =
-          override.isAvailable && override.startTime && override.endTime
-            ? [{ startTime: override.startTime, endTime: override.endTime }]
-            : [];
-      } else {
-        windows = space.recurringWindows.filter(
-          (w) => w.dayOfWeek === zonedParts(dayStart).weekday,
-        );
-      }
-
-      for (const window of windows) {
+      for (const window of byDate.get(dateKey(dayStart)) ?? []) {
         const windowStartMin = timeToMinutes(window.startTime);
         const windowEndMin = timeToMinutes(window.endTime);
         if (windowEndMin - windowStartMin < durationMinutes) continue;

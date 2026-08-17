@@ -2,11 +2,8 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import {
-  getLinkableCalendars,
-  resyncTeamCalendar,
-  setTeamCalendar,
-} from "@/lib/actions/spaces";
+import { resyncTeamCalendar, setTeamCalendar } from "@/lib/actions/spaces";
+import { listCalendarsForAdmin as getLinkableCalendars } from "@/lib/actions/spaces-calendar";
 import type { GoogleCalendarSummary } from "@/lib/google-calendar";
 
 /** Points the app at the shared PADT calendar. Everything published lands

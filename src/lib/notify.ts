@@ -290,6 +290,40 @@ export async function notifyConflictsDue(
   return users.length;
 }
 
+/** "Bhangra isn't practising the week of Aug 3." Sent only when the AD asks
+ * for it, never as a side effect of marking the week off. */
+export async function notifyWeekCancelled(
+  danceId: string,
+  weekOf: Date,
+): Promise<number> {
+  const dance = await prisma.dance.findUnique({
+    where: { id: danceId },
+    include: { memberships: { include: { user: true } } },
+  });
+  if (!dance || dance.memberships.length === 0) return 0;
+
+  const label = weekLabelFormatter.format(weekOf);
+  const message = `${dance.name} isn't practising the week of ${label}`;
+
+  await notify(
+    dance.memberships.map((m) => m.user),
+    "PRACTICE_CHANGED",
+    message,
+    {
+      href: "/schedule",
+      emailSubject: `${dance.name} — no practice this week`,
+      emailHtml: `<p>${escapeHtml(message)}. Anything that was on the schedule for that week has been taken off.</p>`,
+    },
+  );
+  return dance.memberships.length;
+}
+
+const weekLabelFormatter = new Intl.DateTimeFormat("en-US", {
+  timeZone: APP_TIME_ZONE,
+  month: "long",
+  day: "numeric",
+});
+
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, "&amp;")

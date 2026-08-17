@@ -219,27 +219,43 @@ export async function settleAttendance(practiceId: string): Promise<number> {
     },
   });
 
+
   const castUserIds = practice.dance.memberships.map((m) => m.userId);
   const recorded = new Set(practice.attendance.map((a) => a.userId));
   const missing = castUserIds.filter((id) => !recorded.has(id));
   if (missing.length === 0) return 0;
 
-  const [conflicts, unavailabilities] = await Promise.all([
+  const [conflicts, unavailabilities, exclusions] = await Promise.all([
     prisma.conflict.findMany({ where: { userId: { in: missing } } }),
     prisma.unavailability.findMany({ where: { userId: { in: missing } } }),
+    // Anyone the AD took out of this dance's week can't be marked down for
+    // not turning up to it. The app removed them from the scheduling that
+    // produced this practice; holding it against them afterwards would be the
+    // app penalising its own decision.
+    prisma.weeklyExclusion.findMany({
+      where: {
+        userId: { in: missing },
+        danceId: practice.danceId,
+        weekOf: startOfWeek(practice.startDateTime),
+      },
+      select: { userId: true },
+    }),
   ]);
+  const excluded = new Set(exclusions.map((e) => e.userId));
 
   await prisma.attendance.createMany({
     data: missing.map((userId) => ({
       practiceId,
       userId,
-      status: statusForNoCheckIn(
-        userId,
-        practice.startDateTime,
-        practice.endDateTime,
-        conflicts,
-        unavailabilities,
-      ),
+      status: excluded.has(userId)
+        ? ("EXCUSED_ABSENT" as AttendanceStatus)
+        : statusForNoCheckIn(
+            userId,
+            practice.startDateTime,
+            practice.endDateTime,
+            conflicts,
+            unavailabilities,
+          ),
     })),
     skipDuplicates: true,
   });

@@ -11,6 +11,7 @@ import {
   notifyPracticeChanged,
   notifyPracticeConfirmed,
   notifySchedulePublished,
+  notifyWeekCancelled,
 } from "@/lib/notify";
 import {
   removePracticeFromTeamCalendar,
@@ -53,7 +54,7 @@ export async function getCandidateSlots(
     }),
     prisma.space.findMany({
       where: spaceId === ANY_SPACE ? {} : { id: spaceId },
-      include: { availabilities: true },
+      include: { bookings: true },
       orderBy: { name: "asc" },
     }),
     // Both PROPOSED and CONFIRMED: the AD drafts a whole term and confirms
@@ -87,7 +88,7 @@ export async function getCandidateSlots(
     prisma.unavailability.findMany({
       where: { userId: { in: castUserIds } },
     }),
-    prisma.choreographerWeeklyExcuse.findMany({ where: { danceId } }),
+    prisma.weeklyExclusion.findMany({ where: { danceId } }),
   ]);
 
   const existingPracticesForCast = allPractices.map((p) => ({
@@ -98,8 +99,10 @@ export async function getCandidateSlots(
     castUserIds: p.dance.memberships.map((m) => m.userId),
   }));
 
-  // A choreographer's weekly excuse only applies to the specific week it
-  // names, so this is keyed by week rather than a flat set of user ids.
+  // An exclusion only applies to the week it names, so this is keyed by week
+  // rather than a flat set of user ids. Excluding someone drops them out of
+  // the hard mandatory-attendee check AND out of the soft scoring, which is
+  // what "leave them out of this week entirely" has to mean.
   const choreographerExcusedByWeek = new Map<string, Set<string>>();
   for (const excuse of weeklyExcuses) {
     const key = excuse.weekOf.toISOString();
@@ -108,25 +111,16 @@ export async function getCandidateSlots(
     }
     choreographerExcusedByWeek.get(key)!.add(excuse.userId);
   }
+  const excludedUserIds = new Set(weeklyExcuses.map((e) => e.userId));
 
   const spaces = spaceRows.map((space) => ({
     spaceId: space.id,
     spaceName: space.name,
-    recurringWindows: space.availabilities
-      .filter((a) => a.dayOfWeek !== null && a.startTime && a.endTime)
-      .map((a) => ({
-        dayOfWeek: a.dayOfWeek!,
-        startTime: a.startTime!,
-        endTime: a.endTime!,
-      })),
-    dateOverrides: space.availabilities
-      .filter((a) => a.date !== null)
-      .map((a) => ({
-        date: a.date!,
-        isAvailable: a.isAvailable,
-        startTime: a.startTime,
-        endTime: a.endTime,
-      })),
+    bookings: space.bookings.map((b) => ({
+      date: b.date,
+      startTime: b.startTime,
+      endTime: b.endTime,
+    })),
     existingPractices: allPractices
       .filter((p) => p.spaceId === space.id)
       .map((p) => ({
@@ -153,7 +147,7 @@ export async function getCandidateSlots(
     spaces,
     existingPracticesForCast,
     choreographerExcusedByWeek,
-    ignoredUserIds: new Set(ignoredUserIds),
+    ignoredUserIds: new Set([...ignoredUserIds, ...excludedUserIds]),
     historicalAbsenceRates,
     danceId,
     durationMinutes,
@@ -166,7 +160,9 @@ export interface SidebarCastMember {
   userId: string;
   name: string;
   role: "DANCER" | "CHOREOGRAPHER";
-  excusedThisWeek: boolean;
+  /** Left out of this week's scheduling, with the reason on record. */
+  excludedThisWeek: boolean;
+  exclusionReason: string | null;
   conflicts: {
     id: string;
     startDateTime: Date;
@@ -203,16 +199,17 @@ export async function getSchedulingSidebarData(
         endDateTime: { gt: rangeStart },
       },
     }),
-    prisma.choreographerWeeklyExcuse.findMany({ where: { danceId, weekOf } }),
+    prisma.weeklyExclusion.findMany({ where: { danceId, weekOf } }),
   ]);
 
-  const excusedIds = new Set(excuses.map((e) => e.userId));
+  const excusedById = new Map(excuses.map((e) => [e.userId, e]));
 
   return memberships.map((m) => ({
     userId: m.userId,
     name: m.user.name ?? m.user.email,
     role: m.role,
-    excusedThisWeek: excusedIds.has(m.userId),
+    excludedThisWeek: excusedById.has(m.userId),
+    exclusionReason: excusedById.get(m.userId)?.reason ?? null,
     conflicts: conflicts
       .filter((c) => c.userId === m.userId)
       .map((c) => ({
@@ -240,6 +237,9 @@ export interface WeekTrackerRow {
   status: WeekStatus;
   /** Published practices carrying an edit nobody has been told about yet. */
   pendingChanges: number;
+  /** Set when this week was cancelled after being published and the cast
+   * still hasn't been told. */
+  pendingCancellation: number;
   practices: {
     id: string;
     startDateTime: Date;
@@ -280,6 +280,11 @@ export async function getWeekTracker(
   ]);
 
   const offIds = new Set(weeksOff.map((w) => w.danceId));
+  const pendingCancelById = new Map(
+    weeksOff
+      .filter((w) => w.pendingCancellationNotice)
+      .map((w) => [w.danceId, w.cancelledPracticeCount]),
+  );
 
   return dances.map((dance) => {
     const mine = practices.filter((p) => p.danceId === dance.id);
@@ -298,6 +303,7 @@ export async function getWeekTracker(
       weekOff: offIds.has(dance.id),
       status,
       pendingChanges: mine.filter((p) => p.pendingAnnouncement).length,
+      pendingCancellation: pendingCancelById.get(dance.id) ?? 0,
       practices: mine.map((p) => ({
         id: p.id,
         startDateTime: p.startDateTime,
@@ -571,9 +577,15 @@ export async function confirmPractice(practiceId: string) {
   revalidateSchedule();
 }
 
-/** Takes a practice back off the board without deleting it. The cast is told
- * once, and it returns to the draft pile where the AD can move it freely
- * again. */
+/** Takes a practice back off the board without deleting it.
+ *
+ * Deliberately silent. Going back to draft is the AD reopening something to
+ * work on, not a decision the cast needs to hear about that second — and it
+ * used to fire "cancelled" at everyone the moment the dropdown moved, which
+ * made the dropdown unusable. It comes off the shared calendar and is marked
+ * as having an unsent change, so announcing it stays available and deliberate.
+ *
+ * Actually cancelling a week is a different act: see `setWeekStatus`. */
 export async function unpublishPractice(practiceId: string) {
   await requireAdmin();
   const practice = await prisma.practice.findUniqueOrThrow({
@@ -582,14 +594,13 @@ export async function unpublishPractice(practiceId: string) {
   });
   if (practice.status !== "CONFIRMED") return;
 
-  await notifyPracticeChanged(practiceId, "cancelled");
   await removePracticeFromTeamCalendar(practiceId);
   await prisma.practice.update({
     where: { id: practiceId },
     data: {
       status: "PROPOSED",
-      pendingAnnouncement: false,
-      pendingChangeNote: null,
+      pendingAnnouncement: true,
+      pendingChangeNote: "taken off the schedule",
     },
   });
 
@@ -603,6 +614,9 @@ export interface PublishResult {
   /** Dances with nothing booked this week that aren't marked as off. Set
    * when the publish was refused; empty when it went through. */
   missing: string[];
+  /** Published practices cleared by marking the week as not practising.
+   * Non-zero means there's a cancellation the cast hasn't been told about. */
+  cancelledPublished?: number;
 }
 
 /** Publishes one dance's drafts for one week.
@@ -828,21 +842,51 @@ export async function setWeekStatus(
   const weekEnd = new Date(weekOf.getTime() + 7 * 24 * 60 * 60 * 1000);
 
   if (status === "NOT_PRACTISING") {
-    const booked = await prisma.practice.count({
-      where: { danceId, startDateTime: { gte: weekOf, lt: weekEnd } },
+    // Cancelling a week that was already published is the one case where the
+    // cast genuinely needs telling — but it is still the AD's call, not a
+    // side effect of moving a dropdown. The practices go; the message waits
+    // behind a prompt on the tracker.
+    const published = await prisma.practice.count({
+      where: {
+        danceId,
+        status: "CONFIRMED",
+        startDateTime: { gte: weekOf, lt: weekEnd },
+      },
     });
-    if (booked > 0) {
-      throw new Error(
-        "Remove this week's practices before marking the dance as sitting out",
-      );
+
+    const practices = await prisma.practice.findMany({
+      where: { danceId, startDateTime: { gte: weekOf, lt: weekEnd } },
+      select: { id: true },
+    });
+    for (const p of practices) {
+      await removePracticeFromTeamCalendar(p.id);
     }
+    await prisma.practice.deleteMany({
+      where: { id: { in: practices.map((p) => p.id) } },
+    });
+
     await prisma.danceWeekOff.upsert({
       where: { danceId_weekOf: { danceId, weekOf } },
-      update: {},
-      create: { danceId, weekOf },
+      update: {
+        pendingCancellationNotice: published > 0,
+        cancelledPracticeCount: published,
+      },
+      create: {
+        danceId,
+        weekOf,
+        pendingCancellationNotice: published > 0,
+        cancelledPracticeCount: published,
+      },
     });
+
     revalidateSchedule();
-    return { published: 0, announced: 0, peopleNotified: 0, missing: [] };
+    return {
+      published: 0,
+      announced: 0,
+      peopleNotified: 0,
+      missing: [],
+      cancelledPublished: published,
+    };
   }
 
   await prisma.danceWeekOff.deleteMany({ where: { danceId, weekOf } });
@@ -870,25 +914,98 @@ export async function setWeekStatus(
   return { published: 0, announced: 0, peopleNotified: 0, missing: [] };
 }
 
-export async function setChoreographerWeeklyExcuse(
+/** Sends the cancellation the AD staged by marking a week as not practising.
+ *
+ * Separate from marking the week off on purpose. Cancelling and announcing a
+ * cancellation are two decisions, and conflating them is how a dropdown ends
+ * up messaging forty people by accident. */
+export async function announceWeekCancelled(
   danceId: string,
-  userId: string,
   weekOfIso: string,
-  excused: boolean,
-) {
+): Promise<{ notified: number }> {
   await requireAdmin();
   const weekOf = startOfWeek(new Date(weekOfIso));
 
-  if (excused) {
-    await prisma.choreographerWeeklyExcuse.upsert({
-      where: { danceId_userId_weekOf: { danceId, userId, weekOf } },
-      update: {},
-      create: { danceId, userId, weekOf },
-    });
-  } else {
-    await prisma.choreographerWeeklyExcuse.deleteMany({
-      where: { danceId, userId, weekOf },
-    });
+  const off = await prisma.danceWeekOff.findUnique({
+    where: { danceId_weekOf: { danceId, weekOf } },
+  });
+  if (!off?.pendingCancellationNotice) return { notified: 0 };
+
+  const notified = await notifyWeekCancelled(danceId, weekOf);
+
+  await prisma.danceWeekOff.update({
+    where: { id: off.id },
+    data: { pendingCancellationNotice: false },
+  });
+  revalidateSchedule();
+  return { notified };
+}
+
+/** Drops the prompt without sending — "they already know". */
+export async function dismissWeekCancellationNotice(
+  danceId: string,
+  weekOfIso: string,
+) {
+  await requireAdmin();
+  const weekOf = startOfWeek(new Date(weekOfIso));
+  await prisma.danceWeekOff.updateMany({
+    where: { danceId, weekOf },
+    data: { pendingCancellationNotice: false },
+  });
+  revalidateSchedule();
+}
+
+/** Takes one person out of one dance's scheduling for one week — and leaves a
+ * record saying why.
+ *
+ * The dancer half of this used to be a checkbox held in the browser. It
+ * changed the suggestions and then evaporated: no trace of who was left out,
+ * or why, and if a practice went ahead anyway they could be marked down as an
+ * unexcused absence for a week the app itself had removed them from.
+ *
+ * The reason defaults to whatever conflicts prompted it, so the common case
+ * needs no typing. */
+export async function setWeeklyExclusion(
+  danceId: string,
+  userId: string,
+  weekOfIso: string,
+  excluded: boolean,
+  reason?: string,
+) {
+  const admin = await requireAdmin();
+  const weekOf = startOfWeek(new Date(weekOfIso));
+
+  if (!excluded) {
+    await prisma.weeklyExclusion.deleteMany({ where: { danceId, userId, weekOf } });
+    revalidateSchedule();
+    return;
   }
-  revalidatePath("/admin/schedule-builder");
+
+  const text = (reason ?? "").trim() || (await describeWeekConflicts(userId, weekOf));
+
+  await prisma.weeklyExclusion.upsert({
+    where: { danceId_userId_weekOf: { danceId, userId, weekOf } },
+    update: { reason: text, createdById: admin.id },
+    create: { danceId, userId, weekOf, reason: text, createdById: admin.id },
+  });
+  revalidateSchedule();
+}
+
+/** Turns that week's conflicts into a sentence, so the record says something
+ * useful without the AD having to write it. */
+async function describeWeekConflicts(
+  userId: string,
+  weekOf: Date,
+): Promise<string> {
+  const weekEnd = new Date(weekOf.getTime() + 7 * 24 * 60 * 60 * 1000);
+  const conflicts = await prisma.conflict.findMany({
+    where: { userId, startDateTime: { gte: weekOf, lt: weekEnd } },
+    orderBy: { startDateTime: "asc" },
+    take: 3,
+    select: { title: true, startDateTime: true },
+  });
+  if (conflicts.length === 0) return "Left out of this week's scheduling";
+  return conflicts
+    .map((c) => `${c.title ?? "Conflict"} (${changeFormatter.format(c.startDateTime)})`)
+    .join("; ");
 }

@@ -12,7 +12,12 @@ export default async function ScheduleBuilderPage() {
     }),
     prisma.space.findMany({
       orderBy: { name: "asc" },
-      include: { availabilities: true },
+      include: {
+        bookings: {
+          where: { date: { gte: addDays(new Date(), -14) } },
+          orderBy: [{ date: "asc" }, { startTime: "asc" }],
+        },
+      },
     }),
     prisma.practice.findMany({
       where: {
@@ -54,15 +59,12 @@ export default async function ScheduleBuilderPage() {
           Schedule Builder
         </h1>
         <p className="mt-1 max-w-2xl text-sm leading-relaxed text-ink-soft">
-          Let the app propose the whole week, or place practices yourself by
-          dragging on the grid. Everything you do here is a draft until you
-          publish: drafts hold their room so nothing gets double-booked, but
-          nobody outside this screen sees them. Move things as many times as
-          you like — the team hears about it once, when you press publish.
+          Everything here is a draft until you publish. Drafts hold their room
+          so nothing double-books, but nobody outside this screen sees them.
         </p>
       </div>
-      <BuildWeek weekOfIso={startOfWeek(new Date()).toISOString()} />
       <ScheduleBuilder
+      buildWeek={<BuildWeek weekOfIso={startOfWeek(new Date()).toISOString()} />}
       dances={dances.map((d) => ({
         id: d.id,
         name: d.name,
@@ -72,15 +74,14 @@ export default async function ScheduleBuilderPage() {
       spaces={spaces.map((s) => ({
         id: s.id,
         name: s.name,
-        availabilities: s.availabilities.map((a) => ({
-          id: a.id,
-          dayOfWeek: a.dayOfWeek,
-          startTime: a.startTime,
-          endTime: a.endTime,
-          // Dated windows are what a shared-calendar import produces, so the
-          // grid needs them or a synced term looks empty.
-          date: a.date ? a.date.toISOString() : null,
-          isAvailable: a.isAvailable,
+        // Every bookable window is now a dated block off the spaces calendar.
+        // The date is the bare "YYYY-MM-DD" the column holds, read in UTC to
+        // match how @db.Date is anchored.
+        bookings: s.bookings.map((b) => ({
+          id: b.id,
+          dateKey: b.date.toISOString().slice(0, 10),
+          startTime: b.startTime,
+          endTime: b.endTime,
         })),
       }))}
       initialPractices={practices.map((p) => ({
