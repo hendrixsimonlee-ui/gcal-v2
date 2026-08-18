@@ -1,0 +1,271 @@
+import { google, type calendar_v3 } from "googleapis";
+import { prisma } from "@/lib/prisma";
+import {
+  appDateKey,
+  appTimeKey,
+  endOfDayInApp,
+  isSameAppDay,
+} from "@/lib/timezone";
+
+/** Builds an authenticated Calendar client from the tokens stored on the
+ * user's Google account (captured at sign-in, since we request the
+ * calendar.readonly scope up front). Persists refreshed access tokens back
+ * to the Account row so the next import doesn't need a fresh consent. */
+export async function getGoogleCalendarClientForUser(userId: string) {
+  const account = await prisma.account.findFirst({
+    where: { userId, provider: "google" },
+  });
+  if (!account?.refresh_token) {
+    throw new Error(
+      "Google Calendar isn't connected for this account. Sign out and back in to grant access.",
+    );
+  }
+
+  const oauth2Client = new google.auth.OAuth2(
+    process.env.GOOGLE_CLIENT_ID,
+    process.env.GOOGLE_CLIENT_SECRET,
+  );
+  oauth2Client.setCredentials({
+    access_token: account.access_token ?? undefined,
+    refresh_token: account.refresh_token,
+    expiry_date: account.expires_at ? account.expires_at * 1000 : undefined,
+  });
+
+  oauth2Client.on("tokens", (tokens) => {
+    void prisma.account.update({
+      where: { id: account.id },
+      data: {
+        access_token: tokens.access_token ?? account.access_token,
+        expires_at: tokens.expiry_date
+          ? Math.floor(tokens.expiry_date / 1000)
+          : account.expires_at,
+      },
+    });
+  });
+
+  return google.calendar({ version: "v3", auth: oauth2Client });
+}
+
+/** Turns Google's OAuth failures into something the AD can act on.
+ *
+ * `invalid_grant` in particular is the one that matters and the one that
+ * reads as gibberish. It means the stored refresh token is dead, and there
+ * are only a few ways that happens:
+ *
+ *  - The OAuth consent screen is still in **Testing** in Google Cloud. Google
+ *    expires refresh tokens for unpublished apps after **7 days**, so the
+ *    connection works, then stops a week later for no visible reason. This is
+ *    far and away the most common cause, and the permanent fix is to publish
+ *    the consent screen.
+ *  - The Google client ID changed, so tokens issued by the old one are no
+ *    longer recognised.
+ *  - Somebody revoked the app's access, or changed their password.
+ *
+ * Every one of them is fixed the same way from the app's side: sign out and
+ * back in, which issues a fresh token (auth.ts asks for offline access with
+ * prompt=consent precisely so that works). */
+export function describeGoogleError(error: unknown): Error {
+  const raw =
+    error instanceof Error ? error.message : String(error ?? "Unknown error");
+
+  if (/invalid_grant/i.test(raw)) {
+    return new Error(
+      "Google has stopped accepting this account's saved permission. " +
+        "Sign out and sign back in to reconnect. If it keeps happening every " +
+        "few days, the OAuth consent screen in Google Cloud is still set to " +
+        "Testing — published apps keep their access, apps in Testing lose it " +
+        "after 7 days.",
+    );
+  }
+  if (/invalid_client/i.test(raw)) {
+    return new Error(
+      "Google rejected the app's credentials. Check GOOGLE_CLIENT_ID and " +
+        "GOOGLE_CLIENT_SECRET in the Vercel environment variables.",
+    );
+  }
+  if (/insufficient|insufficientPermissions|forbidden|\b403\b/i.test(raw)) {
+    return new Error(
+      "Google says this account can't see that calendar. Make sure it's " +
+        "shared with the club account, with at least 'See all event details'.",
+    );
+  }
+  if (/notFound|\b404\b/i.test(raw)) {
+    return new Error(
+      "That calendar no longer exists, or isn't shared with this account any more.",
+    );
+  }
+  return error instanceof Error ? error : new Error(raw);
+}
+
+export interface GoogleCalendarSummary {
+  id: string;
+  name: string;
+  primary: boolean;
+}
+
+/** Every calendar the signed-in user can read, so the AD can pick the one a
+ * room's bookings live on instead of hunting down its calendar ID. */
+export async function listGoogleCalendarsForUser(
+  userId: string,
+): Promise<GoogleCalendarSummary[]> {
+  const calendar = await getGoogleCalendarClientForUser(userId);
+  const { data } = await calendar.calendarList
+    .list({ maxResults: 250 })
+    .catch((error) => {
+      throw describeGoogleError(error);
+    });
+
+  return (data.items ?? [])
+    .filter((item): item is typeof item & { id: string } => Boolean(item.id))
+    .map((item) => ({
+      id: item.id,
+      name: item.summary ?? item.id,
+      primary: item.primary ?? false,
+    }))
+    .sort((a, b) => Number(b.primary) - Number(a.primary) || a.name.localeCompare(b.name));
+}
+
+/** Every timed event on a calendar in a range, following `nextPageToken`.
+ *
+ * Google caps `events.list` at 2500 results per page and hands back a token
+ * for the rest. A single call therefore looks successful while silently
+ * dropping everything past the first page — which is exactly what a whole
+ * term of room bookings, or a busy student's year of classes, will be. The
+ * page size stays at 2500 so the common case is still one round trip.
+ *
+ * The guard is a safety rail, not a limit anyone should hit: 40 pages is
+ * 100,000 events. If a token ever came back forever, this stops rather than
+ * looping until the function times out. */
+export async function listAllEvents(
+  calendar: calendar_v3.Calendar,
+  calendarId: string,
+  rangeStart: Date,
+  rangeEnd: Date,
+): Promise<calendar_v3.Schema$Event[]> {
+  const items: calendar_v3.Schema$Event[] = [];
+  let pageToken: string | undefined;
+  let pages = 0;
+
+  do {
+    const { data } = await calendar.events
+      .list({
+        calendarId,
+        timeMin: rangeStart.toISOString(),
+        timeMax: rangeEnd.toISOString(),
+        singleEvents: true,
+        orderBy: "startTime",
+        maxResults: 2500,
+        pageToken,
+      })
+      .catch((error) => {
+        throw describeGoogleError(error);
+      });
+    items.push(...(data.items ?? []));
+    pageToken = data.nextPageToken ?? undefined;
+    pages++;
+  } while (pageToken && pages < 40);
+
+  return items;
+}
+
+export interface GoogleCalendarBlock {
+  eventId: string;
+  /** Calendar date as YYYY-MM-DD, in the viewer's timezone. */
+  date: string;
+  /** "HH:mm" local start/end. */
+  startTime: string;
+  endTime: string;
+  title: string;
+  /** The event's own location field, which the app takes as the room's. */
+  location: string | null;
+}
+
+/** Timed events on a calendar over a date range, flattened into date +
+ * local start/end times — the shape a space availability window needs.
+ *
+ * All-day events are skipped: a room calendar's all-day entries are notes
+ * ("Finals week"), not bookable blocks, and guessing hours for them would
+ * invent availability nobody granted. Events that straddle midnight are
+ * clamped to their start date for the same reason — the AD can split them by
+ * hand if a room really is open overnight. */
+export async function fetchCalendarBlocks(
+  userId: string,
+  calendarId: string,
+  rangeStart: Date,
+  rangeEnd: Date,
+): Promise<{
+  blocks: GoogleCalendarBlock[];
+  /** Everything the calendar returned in range, before any filtering. When a
+   * sync imports nothing, the first question is whether it saw nothing or
+   * threw everything away — these counts answer it. */
+  eventsSeen: number;
+  skippedAllDay: number;
+  skippedCancelled: number;
+  skippedZeroLength: number;
+}> {
+  const calendar = await getGoogleCalendarClientForUser(userId);
+  const events = await listAllEvents(calendar, calendarId, rangeStart, rangeEnd);
+
+  const blocks: GoogleCalendarBlock[] = [];
+  let skippedAllDay = 0;
+  let skippedCancelled = 0;
+  let skippedZeroLength = 0;
+
+  for (const event of events) {
+    if (!event.id) continue;
+    if (event.status === "cancelled") {
+      skippedCancelled++;
+      continue;
+    }
+    if (!event.start?.dateTime || !event.end?.dateTime) {
+      skippedAllDay++;
+      continue;
+    }
+
+    const start = new Date(event.start.dateTime);
+    const end = new Date(event.end.dateTime);
+    if (end <= start) {
+      skippedZeroLength++;
+      continue;
+    }
+
+    const sameDayEnd =
+      isSameAppDay(end, start)
+        ? end
+        : endOfLocalDay(start);
+
+    blocks.push({
+      eventId: event.id,
+      date: localDateKey(start),
+      startTime: localTime(start),
+      endTime: localTime(sameDayEnd),
+      title: event.summary ?? "Booked",
+      location: event.location ?? null,
+    });
+  }
+
+  return {
+    blocks,
+    eventsSeen: events.length,
+    skippedAllDay,
+    skippedCancelled,
+    skippedZeroLength,
+  };
+}
+
+/** These three used to read the server's clock, which on Vercel is UTC — a
+ * 7pm rehearsal block imported as midnight the following day. They now
+ * resolve in the app's timezone, so what the calendar shows and what the app
+ * stores are the same wall-clock time. */
+
+function endOfLocalDay(date: Date): Date {
+  return endOfDayInApp(date);
+}
+
+function localDateKey(date: Date): string {
+  return appDateKey(date);
+}
+
+function localTime(date: Date): string {
+  return appTimeKey(date);
+}
