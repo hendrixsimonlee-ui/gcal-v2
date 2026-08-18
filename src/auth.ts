@@ -40,6 +40,72 @@ export async function promoteIfInitialAdmin(
   });
 }
 
+/** Writes the tokens from this sign-in onto the Account row.
+ *
+ * Auth.js only stores tokens through `linkAccount`, and `linkAccount` runs
+ * exactly once — the first time somebody signs in with Google. Every sign-in
+ * after that finds the account already linked, creates a session, and drops
+ * the fresh tokens on the floor (see @auth/core handle-login: the
+ * `userByAccount` branch returns without touching the account).
+ *
+ * That is fine until the stored refresh token dies, which happens routinely:
+ * Google expires refresh tokens after 7 days while the OAuth consent screen
+ * is in Testing, and also kills them if access is revoked or the client
+ * changes. Once dead, every Calendar call returns `invalid_grant` — and
+ * signing out and back in doesn't help, because the good token Google just
+ * issued is discarded and the dead one stays.
+ *
+ * So we persist it ourselves. Sign-in asks for `access_type=offline` with
+ * `prompt=consent`, so Google returns a new refresh token every time, and a
+ * re-login is now a genuine reconnect.
+ *
+ * Only fields Google actually sent are written: a re-auth that omits the
+ * refresh token must not blank out the working one we already have. */
+export async function persistGoogleTokens(account: unknown) {
+  const a = account as Record<string, unknown> | null | undefined;
+  if (!a || a.provider !== "google") return;
+
+  const providerAccountId = a.providerAccountId;
+  if (typeof providerAccountId !== "string" || !providerAccountId) return;
+
+  const text = (value: unknown) =>
+    typeof value === "string" && value.length > 0 ? value : undefined;
+
+  const data: {
+    access_token?: string;
+    refresh_token?: string;
+    expires_at?: number;
+    scope?: string;
+    token_type?: string;
+    id_token?: string;
+  } = {};
+
+  const accessToken = text(a.access_token);
+  if (accessToken) data.access_token = accessToken;
+  const refreshToken = text(a.refresh_token);
+  if (refreshToken) data.refresh_token = refreshToken;
+  if (typeof a.expires_at === "number" && Number.isFinite(a.expires_at)) {
+    data.expires_at = Math.floor(a.expires_at);
+  }
+  const scope = text(a.scope);
+  if (scope) data.scope = scope;
+  const tokenType = text(a.token_type);
+  if (tokenType) data.token_type = tokenType;
+  const idToken = text(a.id_token);
+  if (idToken) data.id_token = idToken;
+
+  if (Object.keys(data).length === 0) return;
+
+  // updateMany, not update: on a first sign-in the adapter has already written
+  // this exact row a moment ago, and on any later one there's nothing to
+  // create. Either way "no matching row" is a no-op rather than a crash that
+  // would take the whole sign-in down with it.
+  await prisma.account.updateMany({
+    where: { provider: "google", providerAccountId },
+    data,
+  });
+}
+
 export const { handlers, signIn, signOut, auth } = NextAuth({
   adapter: PrismaAdapter(prisma),
   session: { strategy: "database" },
@@ -74,8 +140,11 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     // Bootstraps the very first admin. Without this there's a chicken-and-egg
     // problem: only an admin can promote someone, but nobody is one yet, so
     // the first one would have to be set by hand in the database.
-    async signIn({ user }) {
+    async signIn({ user, account }) {
       await promoteIfInitialAdmin(user.id, user.email);
+      // Keeps the stored Google tokens current — without this, signing back
+      // in can never repair a dead one. See persistGoogleTokens.
+      await persistGoogleTokens(account);
     },
   },
   callbacks: {

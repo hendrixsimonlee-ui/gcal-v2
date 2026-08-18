@@ -7,7 +7,7 @@
     "build": "prisma generate && prisma migrate deploy && next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "TZ=UTC tsx src/lib/timezone.test.ts && TZ=UTC tsx src/lib/scheduling.test.ts && TZ=UTC tsx src/lib/attendance.test.ts && TZ=UTC tsx src/lib/optimizer.test.ts",
+    "test": "TZ=UTC tsx src/lib/timezone.test.ts && TZ=UTC tsx src/lib/scheduling.test.ts && TZ=UTC tsx src/lib/attendance.test.ts && TZ=UTC tsx src/lib/optimizer.test.ts && TZ=UTC tsx src/lib/google-reconnect.test.ts",
     "seed:demo": "tsx --env-file=.env prisma/seed-demo.ts",
     "postinstall": "prisma generate"
   },
