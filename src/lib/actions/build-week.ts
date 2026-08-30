@@ -112,11 +112,22 @@ export async function proposeWeek(
   // inherits every hard constraint it already enforces.
   const toPlace: DanceToPlace[] = [];
   for (const dance of dances) {
+    // Ask for slots inside this week, rather than taking the general
+    // suggestions and filtering.
+    //
+    // This is what stopped the button working. getCandidateSlots searches
+    // forward from now and returns the best eight it finds anywhere in the
+    // next few weeks; filtering those down to one week usually left nothing,
+    // because the best eight overall are rarely all in the same week. Every
+    // dance then came back unplaced and the week looked unschedulable — while
+    // placing the same dances by hand worked, since by hand the AD could see
+    // all four weeks at once.
     const candidates = await getCandidateSlots(
       dance.id,
       ANY_SPACE,
       dance.defaultDurationMinutes ?? 90,
       [],
+      { startIso: weekStart.toISOString(), endIso: weekEnd.toISOString() },
     );
     toPlace.push({
       danceId: dance.id,
@@ -125,9 +136,7 @@ export async function proposeWeek(
         userId: m.userId,
         role: m.role,
       })),
-      candidates: candidates.filter(
-        (c) => c.startDateTime >= weekStart && c.startDateTime < weekEnd,
-      ),
+      candidates,
     });
   }
 

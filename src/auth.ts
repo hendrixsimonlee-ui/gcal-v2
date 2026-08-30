@@ -106,6 +106,50 @@ export async function persistGoogleTokens(account: unknown) {
   });
 }
 
+/** Copies the person's Google name and photo onto their User row.
+ *
+ * Needed because of how people get onto the roster. The AD adds them by email
+ * before they've ever signed in, which creates a User row with a typed name
+ * and no photo. When they do sign in, `allowDangerousEmailAccountLinking`
+ * attaches the Google account to that existing row — and Auth.js links the
+ * account without calling `updateUser`, so the name and photo Google just
+ * supplied are dropped. Later sign-ins don't help either: they take the
+ * already-linked path, which returns without touching the user at all.
+ *
+ * The visible result is everybody wearing a question-mark avatar for ever,
+ * since `image` never becomes anything but null.
+ *
+ * The photo needs no extra permission — it comes back in the `profile` scope
+ * that sign-in already requests, so there is nothing to enable in Google
+ * Cloud. A name typed by the AD is only replaced when Google actually offers
+ * one, so nobody loses the name their team knows them by. */
+export async function persistGoogleProfile(
+  userId: string | undefined,
+  profile: unknown,
+) {
+  if (!userId || !profile || typeof profile !== "object") return;
+
+  const p = profile as Record<string, unknown>;
+  const text = (value: unknown) =>
+    typeof value === "string" && value.trim() ? value.trim() : undefined;
+
+  const picture = text(p.picture);
+  const name = text(p.name);
+
+  const current = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { name: true, image: true },
+  });
+  if (!current) return;
+
+  const data: { name?: string; image?: string } = {};
+  if (picture && picture !== current.image) data.image = picture;
+  if (name && !current.name) data.name = name;
+  if (Object.keys(data).length === 0) return;
+
+  await prisma.user.update({ where: { id: userId }, data });
+}
+
 export const { handlers, signIn, signOut, auth } = NextAuth({
   adapter: PrismaAdapter(prisma),
   session: { strategy: "database" },
@@ -140,11 +184,12 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     // Bootstraps the very first admin. Without this there's a chicken-and-egg
     // problem: only an admin can promote someone, but nobody is one yet, so
     // the first one would have to be set by hand in the database.
-    async signIn({ user, account }) {
+    async signIn({ user, account, profile }) {
       await promoteIfInitialAdmin(user.id, user.email);
       // Keeps the stored Google tokens current — without this, signing back
       // in can never repair a dead one. See persistGoogleTokens.
       await persistGoogleTokens(account);
+      await persistGoogleProfile(user.id, profile);
     },
   },
   callbacks: {

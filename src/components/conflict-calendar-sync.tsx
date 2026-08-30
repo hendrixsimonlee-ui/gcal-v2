@@ -34,6 +34,7 @@ export function ConflictCalendarSync({
   const [isPending, startTransition] = useTransition();
   const [calendars, setCalendars] = useState<GoogleCalendarSummary[] | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [detail, setDetail] = useState<string[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   function loadCalendars() {
@@ -57,6 +58,7 @@ export function ConflictCalendarSync({
 
   function sync(weeks: number, label: string, wholeTerm = false) {
     setMessage(null);
+    setDetail(null);
     setError(null);
     startTransition(async () => {
       try {
@@ -65,11 +67,42 @@ export function ConflictCalendarSync({
           wholeTerm,
         });
         const changed = result.added + result.updated + result.removed;
+        const imported = result.added + result.updated;
+
+        // "Nothing changed" used to be said in three very different
+        // situations: genuinely up to date, an empty window, and a calendar
+        // whose conflicts were all thrown away for being all-day. Only the
+        // first is good news, so say which one it is.
         setMessage(
           changed === 0
-            ? `${label}: already up to date — nothing on that calendar has changed.`
+            ? result.eventsSeen === 0
+              ? `${label}: nothing found on that calendar.`
+              : imported === 0
+                ? `${label}: found things on that calendar but imported none of them.`
+                : `${label}: already up to date.`
             : `${label}: ${result.added} added · ${result.updated} updated · ${result.removed} removed`,
         );
+
+        const lines = [
+          `Looked at ${result.rangeStartKey} to ${result.rangeEndKey} and found ` +
+            `${result.eventsSeen} ${result.eventsSeen === 1 ? "event" : "events"}.`,
+        ];
+        if (result.skippedAllDay > 0) {
+          lines.push(
+            `${result.skippedAllDay} ${
+              result.skippedAllDay === 1 ? "is an all-day entry" : "are all-day entries"
+            } and can't be used: a conflict needs a start and end time, or the ` +
+              `scheduler has no idea which part of the day to avoid. Give them ` +
+              `real times and sync again.`,
+          );
+        }
+        if (result.eventsSeen === 0) {
+          lines.push(
+            `Either your conflicts are outside that date range, or this isn't ` +
+              `the calendar they're on.`,
+          );
+        }
+        setDetail(lines);
         router.refresh();
       } catch (e) {
         setError(e instanceof Error ? e.message : "Sync failed");
@@ -160,6 +193,22 @@ export function ConflictCalendarSync({
         <p className="mt-2 text-sm font-medium text-good">
           {message}
         </p>
+      )}
+      {detail && (
+        <ul className="mt-1 flex flex-col gap-1">
+          {detail.map((line, i) => (
+            <li
+              key={i}
+              className={
+                i === 0
+                  ? "text-xs text-ink-soft"
+                  : "rounded-lg bg-warn-soft px-2.5 py-2 text-xs text-warn"
+              }
+            >
+              {line}
+            </li>
+          ))}
+        </ul>
       )}
       {error && (
         <p className="mt-2 text-sm font-medium text-bad">

@@ -20,12 +20,19 @@ export interface ConflictInterval {
   startDateTime: Date;
   endDateTime: Date;
   isExcused: boolean;
+  /** The event's own title, so a slot can say "Ashley — CHEM 101 lab" rather
+   * than just counting heads. Null when the conflict was typed by hand
+   * without one. */
+  title?: string | null;
 }
 
 export interface UnavailabilityInterval {
   userId: string;
   startDate: Date;
   endDate: Date;
+  /** "Home for fall break" — shown beside their name so the AD knows why
+   * they're out rather than just that they are. */
+  reason?: string | null;
 }
 
 export interface ExistingPractice {
@@ -78,6 +85,16 @@ export interface SchedulingInput {
   durationMinutes: number;
   searchWeeks: number;
   slotIncrementMinutes: number;
+  /** Search exactly this window instead of "from now, for searchWeeks".
+   *
+   * Build-the-week needs candidates *inside* one named week. Without this it
+   * had to take the general suggestions — the best eight anywhere in the next
+   * four weeks — and filter them down to the target week, which usually left
+   * nothing at all, because the best eight slots overall are rarely all in the
+   * same week. The result was a week that "couldn't be built" while placing
+   * the same dances by hand worked fine. */
+  windowStart?: Date;
+  windowEnd?: Date;
 }
 
 export interface CastConflictNote {
@@ -88,7 +105,27 @@ export interface CastConflictNote {
     | "unexcused-conflict"
     | "excused-conflict"
     | "other-practice"
-    | "historically-absent";
+    | "historically-absent"
+    /** A choreographer who can't make it. Kept separate because it costs far
+     * more than a dancer's conflict and the AD needs to see it as its own
+     * thing, not buried in a count. */
+    | "choreographer-conflict"
+    | "choreographer-away";
+  /** What the person actually has on, so the AD can judge it rather than just
+   * seeing a number. Null for reasons that aren't a logged conflict. */
+  title?: string | null;
+  startIso?: string;
+  endIso?: string;
+}
+
+/** Someone unavailable for this whole slot — out of town rather than busy.
+ * Kept apart from the conflicted list because they are missing from every
+ * slot equally, so counting them as a conflict would be noise. */
+export interface AwayCastMember {
+  userId: string;
+  name: string;
+  role: CastRole;
+  reason: string | null;
 }
 
 export interface CandidateSlot {
@@ -98,6 +135,15 @@ export interface CandidateSlot {
   spaceName: string;
   score: number;
   conflictedCastMembers: CastConflictNote[];
+  /** Away for this slot, and deliberately not counted against it. */
+  awayCastMembers: AwayCastMember[];
+  /** How many choreographers can't make it. One of three missing is a normal
+   * slot; the UI shows it without alarm. */
+  choreographersMissing: number;
+  /** True when every choreographer expected this week is unavailable, so
+   * there is nobody to run the rehearsal. Ranked below everything else, but
+   * still offered — the AD decides whether to hold it. */
+  noChoreographerAvailable: boolean;
 }
 
 const UNEXCUSED_CONFLICT_POINTS = 2;
@@ -141,9 +187,17 @@ function storedDateKey(date: Date): string {
 }
 
 /** Generates and ranks candidate practice slots for a dance across one or
- * more spaces. Hard-filters on space availability, room double-booking, and
- * mandatory choreographer availability; soft-scores the rest of the cast
- * (lower is better) so callers can rank "good enough" options. */
+ * more spaces.
+ *
+ * Only two things make a slot impossible: the room isn't ours for the whole
+ * window, or another dance is already in it. Everything else is a weight, so
+ * the AD is always shown the least-bad options rather than an empty list.
+ * Lower scores are better. One choreographer missing out of several is a
+ * minor cost, since the others can run the rehearsal; every choreographer
+ * missing costs more than the whole cast can add up to, so those slots sort
+ * below all others without ever disappearing. People who are away are set
+ * aside entirely, since they are missing from every slot equally and cannot
+ * change the ranking. */
 export function generateCandidateSlots(input: SchedulingInput): CandidateSlot[] {
   const {
     castMembers,
@@ -161,8 +215,33 @@ export function generateCandidateSlots(input: SchedulingInput): CandidateSlot[] 
   } = input;
 
   const choreographers = castMembers.filter((m) => m.role === "CHOREOGRAPHER");
-  const searchStart = new Date();
-  const searchEnd = addWeeks(startOfWeek(searchStart), searchWeeks);
+
+  // A named window wins over "from now, for searchWeeks". Build-the-week asks
+  // for one specific week, including days already past inside it — the AD
+  // schedules Wednesday's rehearsal on Wednesday morning often enough that
+  // refusing to look at today is its own bug.
+  const searchStart = input.windowStart ?? new Date();
+  const searchEnd =
+    input.windowEnd ?? addWeeks(startOfWeek(searchStart), searchWeeks);
+
+  // What matters is whether anyone is left to run the rehearsal.
+  //
+  // A dance with three choreographers loses nothing much when one is busy —
+  // the other two take it. So a missing choreographer is only a little worse
+  // than a missing dancer, and slots like that stay in ordinary contention.
+  //
+  // The case that must never be chosen while any alternative exists is *every*
+  // choreographer missing: there is then nobody to run the practice at all.
+  // That is charged separately, and sized to beat anything the rest of the
+  // cast can add up to — the worst a single dancer contributes is an unexcused
+  // conflict (2) plus a clash with another dance (2) plus a historical nudge
+  // (1), so ten per head with a floor leaves room to spare. Scaling with cast
+  // size keeps it true for a dance of six and a dance of twenty-five alike.
+  //
+  // It is still only a weight, so a week with no better option will offer the
+  // slot rather than claiming the week can't be scheduled.
+  const NO_CHOREOGRAPHER_PENALTY = 10 * castMembers.length + 50;
+  const ONE_CHOREOGRAPHER_MISSING_POINTS = 3;
 
   const candidates: (CandidateSlot | null)[] = [];
 
@@ -221,32 +300,94 @@ export function generateCandidateSlots(input: SchedulingInput): CandidateSlot[] 
       if (overlaps(start, end, p.startDateTime, p.endDateTime)) return null;
     }
 
-    // Hard filter: every mandatory (non-excused, non-ignored) choreographer
-    // must be free of conflicts and unavailability. Excuses are specific to
-    // the week this candidate falls in.
     const excusedThisWeek = choreographerExcusedByWeek.get(
       startOfWeek(start).toISOString(),
     );
-    for (const choreographer of choreographers) {
-      if (excusedThisWeek?.has(choreographer.userId)) continue;
-      if (ignoredUserIds.has(choreographer.userId)) continue;
 
-      const hasConflict = conflicts.some(
+    const conflictedCastMembers: CastConflictNote[] = [];
+    const awayCastMembers: AwayCastMember[] = [];
+    let score = 0;
+    let choreographersMissing = 0;
+
+    // Anyone away is out of the mix, not counted as missing.
+    //
+    // Someone out of town is unavailable for every slot the week could offer,
+    // so scoring them adds the same amount everywhere and cannot change which
+    // slot wins — it only makes every option look bad. They're listed
+    // separately instead, so the real headcount is still visible when the AD
+    // decides whether the rehearsal is worth holding.
+    const awayUserIds = new Set<string>();
+    for (const member of castMembers) {
+      const away = unavailabilities.find(
+        (u) =>
+          u.userId === member.userId &&
+          overlaps(start, end, u.startDate, addDays(u.endDate, 1)),
+      );
+      if (away) {
+        awayUserIds.add(member.userId);
+        awayCastMembers.push({
+          userId: member.userId,
+          name: member.name,
+          role: member.role,
+          reason: away.reason ?? null,
+        });
+      }
+    }
+
+    // Choreographers are weighted, not required.
+    //
+    // This used to drop the slot outright. One choreographer with a busy week
+    // could therefore delete every slot in it, and the week came back as "no
+    // viable rehearsal time" — with no way to see how close anything got.
+    //
+    // The count that matters is how many are left, not how many are missing:
+    // with three choreographers, one being busy costs the rehearsal very
+    // little, because the other two run it. So each absence is charged
+    // lightly here, and the heavy penalty below applies only when the last
+    // one goes.
+    const expectedChoreographers = choreographers.filter(
+      (c) =>
+        !excusedThisWeek?.has(c.userId) &&
+        !ignoredUserIds.has(c.userId) &&
+        !awayUserIds.has(c.userId),
+    );
+
+    for (const choreographer of expectedChoreographers) {
+      const conflict = conflicts.find(
         (c) =>
           c.userId === choreographer.userId &&
           overlaps(start, end, c.startDateTime, c.endDateTime),
       );
-      const isUnavailable = unavailabilities.some(
-        (u) =>
-          u.userId === choreographer.userId &&
-          overlaps(start, end, u.startDate, addDays(u.endDate, 1)),
-      );
-      if (hasConflict || isUnavailable) return null;
+      if (!conflict) continue;
+
+      choreographersMissing++;
+      score += ONE_CHOREOGRAPHER_MISSING_POINTS;
+      conflictedCastMembers.push({
+        userId: choreographer.userId,
+        name: choreographer.name,
+        points: ONE_CHOREOGRAPHER_MISSING_POINTS,
+        reason: "choreographer-conflict",
+        title: conflict.title ?? null,
+        startIso: conflict.startDateTime.toISOString(),
+        endIso: conflict.endDateTime.toISOString(),
+      });
+    }
+
+    // Nobody left to run it. The one case that must lose to any alternative.
+    //
+    // Guarded on there having been someone to lose in the first place: if
+    // every choreographer is away or excused this week, the AD has already
+    // decided the dance runs without them, and charging for it would penalise
+    // every slot equally for a decision already made.
+    const noChoreographerLeft =
+      expectedChoreographers.length > 0 &&
+      choreographersMissing === expectedChoreographers.length;
+    if (noChoreographerLeft) {
+      score += NO_CHOREOGRAPHER_PENALTY;
     }
 
     // Soft score: everyone else's conflicts and other-dance practices.
-    const conflictedCastMembers: CastConflictNote[] = [];
-    let score = 0;
+    const choreographerIds = new Set(choreographers.map((c) => c.userId));
 
     for (const member of castMembers) {
       if (ignoredUserIds.has(member.userId)) continue;
@@ -254,12 +395,9 @@ export function generateCandidateSlots(input: SchedulingInput): CandidateSlot[] 
       // from the hard mandatory-attendance requirement — their conflict
       // shouldn't count against the ranking either.
       if (excusedThisWeek?.has(member.userId)) continue;
-      const isUnavailable = unavailabilities.some(
-        (u) =>
-          u.userId === member.userId &&
-          overlaps(start, end, u.startDate, addDays(u.endDate, 1)),
-      );
-      if (isUnavailable) continue;
+      if (awayUserIds.has(member.userId)) continue;
+      // Already charged, at the much heavier choreographer rate, just above.
+      if (choreographerIds.has(member.userId)) continue;
 
       const memberConflicts = conflicts.filter(
         (c) =>
@@ -276,6 +414,11 @@ export function generateCandidateSlots(input: SchedulingInput): CandidateSlot[] 
           name: member.name,
           points,
           reason: conflict.isExcused ? "excused-conflict" : "unexcused-conflict",
+          // What they actually have on. A count tells the AD how many can't
+          // come; the title and time tell them whether it's worth moving.
+          title: conflict.title ?? null,
+          startIso: conflict.startDateTime.toISOString(),
+          endIso: conflict.endDateTime.toISOString(),
         });
       }
 
@@ -318,6 +461,9 @@ export function generateCandidateSlots(input: SchedulingInput): CandidateSlot[] 
       spaceName: space.spaceName,
       score,
       conflictedCastMembers,
+      awayCastMembers,
+      choreographersMissing,
+      noChoreographerAvailable: noChoreographerLeft,
     };
   }
 

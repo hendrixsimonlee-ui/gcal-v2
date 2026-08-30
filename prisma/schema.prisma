@@ -124,6 +124,8 @@ model User {
   pushSubscriptions   PushSubscription[]
   notifications       Notification[]
   conflictSubmissions ConflictSubmission[]
+  conflictSubmissionsMadeForOthers ConflictSubmission[] @relation("ConflictSubmissionSubmitter")
+  practiceCalendarExports PracticeCalendarExport[]
   exclusionsAuthored  WeeklyExclusion[]           @relation("ExclusionAuthor")
   weeksReviewed       AttendanceWeekReview[]      @relation("WeekReviewer")
 
@@ -326,6 +328,9 @@ model Practice {
   /// The event this practice owns on the shared team calendar, so an edit
   /// updates that event in place instead of creating a second one.
   googleEventId String?
+
+  /// Copies of this practice living on individual people's calendars.
+  calendarExports PracticeCalendarExport[]
 
   /// When this practice was first published. Distinct from `status` because
   /// the AD can unpublish and republish; this is the first time the cast was
@@ -532,10 +537,20 @@ model ConflictSubmission {
 
   weekOf DateTime @db.Date
 
-  /// Null while the row exists only to remember a nudge. "Submitted" is the
-  /// dancer's own act and nothing else may set it — an AD reminder must never
-  /// make someone look like they answered.
+  /// Null while the row exists only to remember a nudge. A reminder must
+  /// never make somebody look like they answered, so nudging alone leaves
+  /// this unset.
   submittedAt DateTime?
+
+  /// Who pressed submit, when it wasn't the dancer.
+  ///
+  /// The AD can submit on behalf of someone who never got round to it, so the
+  /// week isn't held up by one person. Recording it keeps the distinction
+  /// that matters: null means they answered for themselves, set means it was
+  /// covered for them — which is what you need when somebody says they were
+  /// never asked.
+  submittedByUserId String?
+  submittedBy       User?   @relation("ConflictSubmissionSubmitter", fields: [submittedByUserId], references: [id])
 
   /// The last time the AD nudged them about this week, so a second nudge is
   /// a deliberate act rather than an accident of clicking twice.
@@ -590,4 +605,36 @@ model Notification {
   createdAt DateTime @default(now())
 
   @@index([userId, read])
+}
+
+/// One practice, as it exists on one person's own Google Calendar.
+///
+/// Pushing practices into somebody's calendar is only safe if a second push
+/// can find what the first one wrote. Without this the app would have no way
+/// to tell "already there" from "not there yet", and every re-sync — after
+/// any reschedule, and there are always reschedules — would leave another
+/// copy behind until their week was unreadable.
+///
+/// Keyed per person as well as per practice because the same practice lands
+/// in a different calendar, under a different event id, for each member of
+/// the cast.
+model PracticeCalendarExport {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  practiceId String
+  practice   Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+
+  /// The calendar it was written to, so moving to a different one doesn't
+  /// orphan the event beyond finding.
+  googleCalendarId String
+  googleEventId    String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, practiceId])
+  @@index([practiceId])
 }

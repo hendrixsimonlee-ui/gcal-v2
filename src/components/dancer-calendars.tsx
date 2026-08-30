@@ -157,6 +157,21 @@ export function DancerCalendars({
                   <span className="block text-xs text-ink-faint">
                     {row.email}
                   </span>
+                  {/* Someone who skipped the calendar tick-boxes looks
+                      completely normal everywhere else, so flag it here —
+                      otherwise it surfaces as a rehearsal booked on top of
+                      their midterm. */}
+                  {row.grantedCalendarAccess === false && (
+                    <span className="mt-0.5 block text-xs font-medium text-bad">
+                      Didn&rsquo;t grant calendar access — needs to sign out
+                      and back in, ticking the calendar boxes
+                    </span>
+                  )}
+                  {row.grantedCalendarAccess === null && (
+                    <span className="mt-0.5 block text-xs text-warn">
+                      Hasn&rsquo;t signed in yet
+                    </span>
+                  )}
                 </td>
                 <td className="px-4 py-2">
                   {calendars ? (

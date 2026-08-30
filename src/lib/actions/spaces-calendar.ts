@@ -19,7 +19,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/authz";
-import { calendarDateFromInput } from "@/lib/dates";
+import { calendarDateFromInput, calendarDateKey } from "@/lib/dates";
 import {
   fetchCalendarBlocks,
   getGoogleCalendarClientForUser,
@@ -382,7 +382,12 @@ export async function getWeekSpaceSummary(
     entry.totalHours += minutesBetween(booking.startTime, booking.endTime) / 60;
     entry.blocks.push({
       id: booking.id,
-      dateKey: appDateKey(booking.date),
+      // calendarDateKey, not appDateKey: `date` is a @db.Date column, which
+      // Postgres hands back anchored at UTC midnight. Reading that with an
+      // Eastern formatter lands on the evening before, so every booking
+      // displayed a day early. The Schedule Builder is unaffected because its
+      // practices are real timestamps rather than date-only columns.
+      dateKey: calendarDateKey(booking.date),
       startTime: booking.startTime,
       endTime: booking.endTime,
     });

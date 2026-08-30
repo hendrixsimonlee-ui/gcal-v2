@@ -118,7 +118,16 @@ function errorMessageTests() {
     ["invalid_request", /GOOGLE_CLIENT_ID/],
     ["invalid_client", /GOOGLE_CLIENT_ID/],
     ["Invalid Credentials", /sign out and sign back in/i],
-    ["Request had insufficient authentication scopes", /shared with the club/i],
+    // The one Katherine hit. Listing your own calendars can't fail because a
+    // calendar isn't shared — no calendar has been picked yet — so this must
+    // point at the consent tick-boxes, not at sharing.
+    ["Request had insufficient authentication scopes", /tick-box/i],
+    ["insufficientPermissions", /tick-box/i],
+    [
+      "Google Calendar API has not been used in project 123 before",
+      /APIs & Services/,
+    ],
+    ["Forbidden", /shared with the club/i],
     ["notFound", /no longer exists/i],
   ];
   for (const [raw, expected] of cases) {
@@ -126,6 +135,16 @@ function errorMessageTests() {
     check(`"${raw}" becomes something actionable`, expected.test(message));
     check(`"${raw}" no longer shows the raw code`, message !== raw);
   }
+
+  // A scopes problem must never be described as a sharing problem — that was
+  // the message on screen, and it sent people to fix the wrong thing.
+  const scopeMessage = describeGoogleError(
+    new Error("Request had insufficient authentication scopes"),
+  ).message;
+  check(
+    "a scopes failure is never blamed on calendar sharing",
+    !/shared with the club/i.test(scopeMessage),
+  );
 }
 
 async function main() {
@@ -255,6 +274,73 @@ async function main() {
     await persistGoogleTokens({ provider: "google" }); // no providerAccountId
     await persistGoogleTokens(googleSignIn({ providerAccountId: "unknown-id" }));
     check("bad or unrelated sign-in payloads don't throw", true);
+
+    // --- Skipping the calendar tick-boxes is caught before Google is called
+    //
+    // Someone can sign in successfully and still hold a token with no
+    // calendar access, because Google's consent screen tick-boxes are
+    // individual and start unticked. That used to surface as a 403 blamed on
+    // calendar sharing, sending them to fix something that wasn't broken.
+    const { getGoogleCalendarClientForUser } = await import(
+      "@/lib/google-calendar"
+    );
+
+    await prisma.account.updateMany({
+      where: { providerAccountId: "google-uid-1" },
+      data: { scope: "openid email profile" },
+    });
+    let refused: string | null = null;
+    try {
+      await getGoogleCalendarClientForUser(user.id);
+    } catch (e) {
+      refused = e instanceof Error ? e.message : String(e);
+    }
+    check(
+      "a sign-in without the calendar scope is refused up front",
+      refused !== null,
+    );
+    check(
+      "…and told about the tick-boxes, not about sharing",
+      refused !== null &&
+        /tick the calendar boxes/i.test(refused) &&
+        !/shared with the club/i.test(refused),
+    );
+
+    // Having the scope must not trip the same guard.
+    await prisma.account.updateMany({
+      where: { providerAccountId: "google-uid-1" },
+      data: {
+        scope:
+          "openid email https://www.googleapis.com/auth/calendar.readonly",
+      },
+    });
+    let scopedError: string | null = null;
+    try {
+      await getGoogleCalendarClientForUser(user.id);
+    } catch (e) {
+      scopedError = e instanceof Error ? e.message : String(e);
+    }
+    check(
+      "someone who did grant calendar access gets through the guard",
+      scopedError === null,
+    );
+
+    // A row saved before scopes were stored must not be treated as a refusal —
+    // that would lock out people whose access is working fine.
+    await prisma.account.updateMany({
+      where: { providerAccountId: "google-uid-1" },
+      data: { scope: null },
+    });
+    let legacyError: string | null = null;
+    try {
+      await getGoogleCalendarClientForUser(user.id);
+    } catch (e) {
+      legacyError = e instanceof Error ? e.message : String(e);
+    }
+    check(
+      "an older row with no recorded scopes is left alone",
+      legacyError === null,
+    );
 
     await prisma.user.deleteMany({ where: { id: { in: [user.id, other.id] } } });
   } finally {

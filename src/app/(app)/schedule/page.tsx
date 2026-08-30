@@ -5,6 +5,7 @@ import { googleCalendarAddUrl } from "@/lib/calendar-links";
 import { getOpenCheckIns } from "@/lib/actions/attendance";
 import { CheckInCard } from "@/components/check-in-card";
 import { PushToggle } from "@/components/push-toggle";
+import { PracticeCalendarSync } from "@/components/practice-calendar-sync";
 import { startOfWeek, addDays, formatWeekLabel, toDateParam } from "@/lib/dates";
 import { APP_TIME_ZONE } from "@/lib/timezone";
 
@@ -96,6 +97,10 @@ export default async function MySchedulePage() {
       <CheckInCard initial={openCheckIns} />
 
       <PushToggle />
+
+      {/* The whole term in one press. The single-week download below stays for
+          anyone who just wants this week as a file. */}
+      <PracticeCalendarSync />
 
       {thisWeekCount > 0 && (
         <a

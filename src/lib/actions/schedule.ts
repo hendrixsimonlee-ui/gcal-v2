@@ -44,6 +44,9 @@ export async function getCandidateSlots(
   spaceId: string,
   durationMinutes: number,
   ignoredUserIds: string[],
+  /** Restrict the search to one window — what build-the-week needs. Omitted
+   * for the AD's own browsing, which searches forward from now as before. */
+  window?: { startIso: string; endIso: string },
 ): Promise<CandidateSlot[]> {
   await requireAdmin();
 
@@ -142,6 +145,7 @@ export async function getCandidateSlots(
       // An unreviewed conflict is weighted as unexcused: it's a real
       // conflict either way, and the heavier cost nudges the AD to review it.
       isExcused: c.status === "EXCUSED",
+      title: c.title,
     })),
     unavailabilities,
     spaces,
@@ -153,6 +157,8 @@ export async function getCandidateSlots(
     durationMinutes,
     searchWeeks: SEARCH_WEEKS,
     slotIncrementMinutes: SLOT_INCREMENT_MINUTES,
+    windowStart: window ? new Date(window.startIso) : undefined,
+    windowEnd: window ? new Date(window.endIso) : undefined,
   });
 }
 

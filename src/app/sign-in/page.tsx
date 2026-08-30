@@ -30,9 +30,26 @@ export default async function SignInPage() {
         </h1>
         <p className="mt-2 text-sm text-ink-soft">
           Sign in with your Google account to view your schedule, log
-          conflicts, and (if you connect it) import events from Google
-          Calendar.
+          conflicts, and import them straight from Google Calendar.
         </p>
+
+        {/* Said before the consent screen, not after it.
+            Google lists each permission with its own tick-box, and the
+            calendar ones are not ticked for you. Miss them and you arrive
+            here signed in and apparently fine, but every calendar sync
+            fails — with an error that sounds like the calendar is missing
+            rather than like a box you didn't tick. Reconnecting means
+            signing out and back in, so it is much cheaper to say this once
+            in advance than to explain it to forty people afterwards. */}
+        <p className="mt-4 rounded-lg bg-warn-soft px-3 py-2.5 text-left text-xs text-warn">
+          <span className="font-semibold">
+            Tick the calendar boxes when Google asks.
+          </span>{" "}
+          Each permission has its own tick-box and they start unticked. If you
+          skip them you&rsquo;ll be signed in, but your conflicts won&rsquo;t
+          import and you&rsquo;ll have to sign out and back in to fix it.
+        </p>
+
         <form
           action={async () => {
             "use server";

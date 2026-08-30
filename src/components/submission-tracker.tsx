@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import {
   getWeeklySubmissions,
   nudgeMissingSubmissions,
+  submitWeeklyConflictsForEveryone,
+  submitWeeklyConflictsForUser,
   syncConflictCalendar,
   type ConflictSubmissionRow,
 } from "@/lib/actions/conflicts";
@@ -111,6 +113,34 @@ export function SubmissionTracker({
           >
             {isPending ? "Sending…" : "Nudge everyone outstanding"}
           </button>
+
+          {/* Chasing people is the slow path. When the week has to be built
+              now, take what they have logged as their answer and move on —
+              recorded as submitted by the AD, so it stays clear who actually
+              replied. */}
+          <button
+            onClick={() => {
+              if (
+                !confirm(
+                  `Submit this week for ${missing.length} ${ missing.length === 1 ? "person" : "people"} who haven't answered? ` +
+                    "Whatever they've already logged is taken as their conflicts for the week.",
+                )
+              ) {
+                return;
+              }
+              run(async () => {
+                const result =
+                  await submitWeeklyConflictsForEveryone(weekOfIso);
+                return result.submitted === 0
+                  ? "Everyone had already submitted."
+                  : `Submitted for ${result.submitted}: ${result.names.join(", ")}.`;
+              });
+            }}
+            disabled={isPending}
+            className="mt-2 ml-2 rounded-lg border border-warn/40 bg-surface px-3 py-1.5 text-xs font-medium text-warn transition-colors hover:bg-warn-soft disabled:opacity-45"
+          >
+            Submit for them
+          </button>
         </div>
       )}
 
@@ -122,15 +152,40 @@ export function SubmissionTracker({
           >
             <span className="font-medium text-ink">{row.name}</span>
             {row.submittedAtIso ? (
-              <span className="rounded-full bg-good-soft px-2 py-0.5 text-[11px] font-medium text-good">
-                In · {stampFormatter.format(new Date(row.submittedAtIso))}
+              <span
+                className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${ row.submittedByName
+                    ? "bg-info-soft text-info"
+                    : "bg-good-soft text-good"
+                }`}
+                title={
+                  row.submittedByName
+                    ? `Submitted by ${row.submittedByName}, not by ${row.name}`
+                    : undefined
+                }
+              >
+                {row.submittedByName ? "Submitted for them" : "In"} ·{" "}
+                {stampFormatter.format(new Date(row.submittedAtIso))}
               </span>
             ) : (
-              <span className="rounded-full bg-warn-soft px-2 py-0.5 text-[11px] font-medium text-warn">
-                {row.nudgedAtIso
-                  ? `Nudged ${stampFormatter.format(new Date(row.nudgedAtIso))}`
-                  : "Not in yet"}
-              </span>
+              <>
+                <span className="rounded-full bg-warn-soft px-2 py-0.5 text-[11px] font-medium text-warn">
+                  {row.nudgedAtIso
+                    ? `Nudged ${stampFormatter.format(new Date(row.nudgedAtIso))}`
+                    : "Not in yet"}
+                </span>
+                <button
+                  onClick={() =>
+                    run(async () => {
+                      await submitWeeklyConflictsForUser(row.userId, weekOfIso);
+                      return `Submitted this week for ${row.name}.`;
+                    })
+                  }
+                  disabled={isPending}
+                  className="text-xs font-medium text-accent-ink hover:underline disabled:opacity-45"
+                >
+                  Submit for them
+                </button>
+              </>
             )}
             <span className="text-xs tabular-nums text-ink-soft">
               {row.conflictCount}{" "}

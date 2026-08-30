@@ -57,6 +57,28 @@ export async function getGoogleCalendarClientForUser(userId: string) {
     );
   }
 
+  // Signing in and granting calendar access are two different things.
+  //
+  // Google's consent screen lists each permission with its own tick-box, and
+  // they are not all ticked by default. Someone can breeze through it, land in
+  // the app fully signed in, and hold a token with no calendar access at all.
+  // Every calendar call then fails with a 403 about "insufficient
+  // authentication scopes", which reads like the calendar is missing or
+  // unshared and sends them hunting in entirely the wrong place.
+  //
+  // The granted scopes come back with the token and we store them, so this is
+  // checkable before spending a round trip. Only enforced when we actually
+  // recorded the scopes: a row saved before they were stored has scope null,
+  // and refusing those would lock out people whose access is fine.
+  if (account.scope && !account.scope.includes("calendar")) {
+    throw new Error(
+      "You're signed in, but this account didn't grant access to your " +
+        "calendars. On Google's permission screen each item has its own " +
+        "tick-box and the calendar ones aren't ticked for you. Sign out, sign " +
+        "back in, and tick the calendar boxes before pressing Continue.",
+    );
+  }
+
   const oauth2Client = new google.auth.OAuth2(
     process.env.GOOGLE_CLIENT_ID,
     process.env.GOOGLE_CLIENT_SECRET,
@@ -148,7 +170,25 @@ export function describeGoogleError(error: unknown): Error {
         "GOOGLE_CLIENT_SECRET in the Vercel environment variables.",
     );
   }
-  if (/insufficient|insufficientPermissions|forbidden|\b403\b/i.test(raw)) {
+  // Two very different problems both arrive as 403, and the advice for one is
+  // useless for the other. "Insufficient scopes" is about the permission this
+  // account granted at sign-in; a plain forbidden is about who the calendar is
+  // shared with. Telling someone to check sharing when the real problem is an
+  // unticked consent box sends them somewhere they can't fix it.
+  if (/insufficient|insufficientPermissions|scope/i.test(raw)) {
+    return new Error(
+      "This account is signed in but hasn't granted calendar access. On " +
+        "Google's permission screen each item has its own tick-box — sign " +
+        "out, sign back in, and tick the calendar ones.",
+    );
+  }
+  if (/accessNotConfigured|has not been used in project/i.test(raw)) {
+    return new Error(
+      "The Google Calendar API isn't switched on for this project. Enable it " +
+        "in Google Cloud Console under APIs & Services, then try again.",
+    );
+  }
+  if (/forbidden|\b403\b/i.test(raw)) {
     return new Error(
       "Google says this account can't see that calendar. Make sure it's " +
         "shared with the club account, with at least 'See all event details'.",

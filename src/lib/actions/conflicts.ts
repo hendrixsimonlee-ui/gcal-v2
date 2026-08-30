@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAdmin, requireUser } from "@/lib/authz";
 import { startOfWeek, addDays, formatWeekLabel } from "@/lib/dates";
 import { notifyConflictsDue } from "@/lib/notify";
-import { clampToSupportedRange } from "@/lib/timezone";
+import { appDateKey, clampToSupportedRange } from "@/lib/timezone";
 import { activeRange } from "@/lib/terms";
 import {
   getGoogleCalendarClientForUser,
@@ -173,11 +173,87 @@ export async function submitWeeklyConflicts(weekOfIso: string) {
 
   await prisma.conflictSubmission.upsert({
     where: { userId_weekOf: { userId: user.id, weekOf } },
-    update: { submittedAt: new Date() },
-    create: { userId: user.id, weekOf },
+    // submittedAt on the create branch too.
+    //
+    // It was missing, so the first press of Submit created a row with a null
+    // submittedAt — which is the shape that means "nudged, hasn't answered".
+    // Anyone who submitted before ever being nudged therefore stayed on the
+    // outstanding list no matter how many times they pressed it, and only a
+    // second press (which took the update branch) registered.
+    update: { submittedAt: new Date(), submittedByUserId: null },
+    create: { userId: user.id, weekOf, submittedAt: new Date() },
   });
   revalidatePath("/conflicts");
   revalidatePath("/admin/conflicts");
+}
+
+/** Submits a week on somebody else's behalf.
+ *
+ * One person who never gets round to it shouldn't hold up the whole week's
+ * scheduling. What they have logged already is taken as their answer, which
+ * is the same thing the AD would do by hand.
+ *
+ * Who did it is recorded rather than hidden: `submittedByUserId` stays null
+ * when a dancer answers for themselves, so "everyone submitted" and "I
+ * submitted for four people who never replied" remain different facts. */
+export async function submitWeeklyConflictsForUser(
+  userId: string,
+  weekOfIso: string,
+) {
+  const admin = await requireAdmin();
+  const weekOf = startOfWeek(new Date(weekOfIso));
+
+  await prisma.conflictSubmission.upsert({
+    where: { userId_weekOf: { userId, weekOf } },
+    update: { submittedAt: new Date(), submittedByUserId: admin.id },
+    create: {
+      userId,
+      weekOf,
+      submittedAt: new Date(),
+      submittedByUserId: admin.id,
+    },
+  });
+  revalidatePath("/conflicts");
+  revalidatePath("/admin/conflicts");
+}
+
+/** Submits for everyone who still hasn't, in one press. */
+export async function submitWeeklyConflictsForEveryone(
+  weekOfIso: string,
+): Promise<{ submitted: number; names: string[] }> {
+  const admin = await requireAdmin();
+  const weekOf = startOfWeek(new Date(weekOfIso));
+
+  const [users, alreadyIn] = await Promise.all([
+    prisma.user.findMany({ select: { id: true, name: true, email: true } }),
+    prisma.conflictSubmission.findMany({
+      where: { weekOf, submittedAt: { not: null } },
+      select: { userId: true },
+    }),
+  ]);
+
+  const done = new Set(alreadyIn.map((r) => r.userId));
+  const outstanding = users.filter((u) => !done.has(u.id));
+
+  for (const person of outstanding) {
+    await prisma.conflictSubmission.upsert({
+      where: { userId_weekOf: { userId: person.id, weekOf } },
+      update: { submittedAt: new Date(), submittedByUserId: admin.id },
+      create: {
+        userId: person.id,
+        weekOf,
+        submittedAt: new Date(),
+        submittedByUserId: admin.id,
+      },
+    });
+  }
+
+  revalidatePath("/conflicts");
+  revalidatePath("/admin/conflicts");
+  return {
+    submitted: outstanding.length,
+    names: outstanding.map((u) => u.name ?? u.email),
+  };
 }
 
 export async function unsubmitWeeklyConflicts(weekOfIso: string) {
@@ -198,6 +274,9 @@ export interface ConflictSubmissionRow {
   nudgedAtIso: string | null;
   conflictCount: number;
   hasCalendarLinked: boolean;
+  /** Who submitted, when it wasn't this person. Null means they answered for
+   * themselves — so "submitted" and "covered for" stay distinguishable. */
+  submittedByName: string | null;
 }
 
 /** Who has answered for a week and who hasn't — the AD's dashboard.
@@ -223,7 +302,10 @@ export async function getWeeklySubmissions(
         conflictCalendarId: true,
       },
     }),
-    prisma.conflictSubmission.findMany({ where: { weekOf } }),
+    prisma.conflictSubmission.findMany({
+      where: { weekOf },
+      include: { submittedBy: { select: { name: true, email: true } } },
+    }),
     prisma.conflict.findMany({
       where: { startDateTime: { gte: weekOf, lt: weekEnd } },
       select: { userId: true },
@@ -241,6 +323,10 @@ export async function getWeeklySubmissions(
     name: u.name ?? u.email,
     email: u.email,
     submittedAtIso: byUser.get(u.id)?.submittedAt?.toISOString() ?? null,
+    submittedByName: byUser.get(u.id)?.submittedBy
+      ? (byUser.get(u.id)!.submittedBy!.name ??
+        byUser.get(u.id)!.submittedBy!.email)
+      : null,
     nudgedAtIso: byUser.get(u.id)?.nudgedAt?.toISOString() ?? null,
     conflictCount: counts.get(u.id) ?? 0,
     hasCalendarLinked: Boolean(u.conflictCalendarId),
@@ -394,6 +480,9 @@ export interface DancerCalendarRow {
   calendarName: string | null;
   conflictsInTerm: number;
   lastSyncedIso: string | null;
+  /** Did this person tick the calendar boxes on Google's consent screen?
+   * `null` when they've never signed in, which is a different problem. */
+  grantedCalendarAccess: boolean | null;
 }
 
 /** Who's wired up and who isn't, for the whole roster at once. */
@@ -401,7 +490,7 @@ export async function getDancerCalendars(): Promise<DancerCalendarRow[]> {
   await requireAdmin();
   const { range } = await activeRange();
 
-  const [users, counts] = await Promise.all([
+  const [users, counts, accounts] = await Promise.all([
     prisma.user.findMany({
       orderBy: [{ name: "asc" }, { email: "asc" }],
       select: {
@@ -421,18 +510,41 @@ export async function getDancerCalendars(): Promise<DancerCalendarRow[]> {
       _count: { _all: true },
       _max: { updatedAt: true },
     }),
+    // What each person actually granted at sign-in. Someone who skipped the
+    // calendar tick-boxes looks completely normal everywhere else in the app,
+    // so without this the AD only finds out when a rehearsal lands on their
+    // midterm.
+    prisma.account.findMany({
+      where: { provider: "google" },
+      select: { userId: true, scope: true },
+    }),
   ]);
 
   const byUser = new Map(counts.map((c) => [c.userId, c]));
-  return users.map((u) => ({
-    userId: u.id,
-    name: u.name ?? u.email,
-    email: u.email,
-    calendarId: u.conflictCalendarId,
-    calendarName: u.conflictCalendarName,
-    conflictsInTerm: byUser.get(u.id)?._count._all ?? 0,
-    lastSyncedIso: byUser.get(u.id)?._max.updatedAt?.toISOString() ?? null,
-  }));
+  const scopeByUser = new Map(accounts.map((a) => [a.userId, a.scope]));
+
+  return users.map((u) => {
+    const hasAccount = scopeByUser.has(u.id);
+    const scope = scopeByUser.get(u.id);
+    return {
+      userId: u.id,
+      name: u.name ?? u.email,
+      email: u.email,
+      calendarId: u.conflictCalendarId,
+      calendarName: u.conflictCalendarName,
+      conflictsInTerm: byUser.get(u.id)?._count._all ?? 0,
+      lastSyncedIso: byUser.get(u.id)?._max.updatedAt?.toISOString() ?? null,
+      // null means "not signed in yet", which is a different thing from
+      // "signed in and didn't grant it" and shouldn't be chased the same way.
+      // A row with no recorded scope predates scope storage, so treat it as
+      // fine rather than accusing someone whose access works.
+      grantedCalendarAccess: !hasAccount
+        ? null
+        : scope
+          ? scope.includes("calendar")
+          : true,
+    };
+  });
 }
 
 /** Syncs the whole term for every dancer who has a calendar linked.
@@ -481,6 +593,21 @@ export interface ConflictSyncResult {
   updated: number;
   removed: number;
   calendarName: string;
+  /** Everything the calendar returned in range, before any filtering.
+   *
+   * Without this, "0 added" is reported as "already up to date", which is a
+   * lie in the two cases that actually happen: the conflicts are all-day
+   * entries, or they sit outside the window that was searched. Both look
+   * identical to a dancer who can see their conflicts right there in Google. */
+  eventsSeen: number;
+  /** All-day entries. A conflict has to have a start and end time for the
+   * scheduler to avoid it, so these can't be imported as-is — but they're the
+   * single most common reason a sync appears to do nothing. */
+  skippedAllDay: number;
+  skippedCancelled: number;
+  /** The window actually searched, as plain dates. */
+  rangeStartKey: string;
+  rangeEndKey: string;
 }
 
 /** Pulls conflicts in from the person's chosen conflict calendar.
@@ -533,15 +660,30 @@ export async function syncConflictCalendar(
   // token there would require them to have signed in and granted calendar
   // access, which is exactly the step the AD is doing this to avoid.
   const calendar = await getGoogleCalendarClientForUser(actor.id);
-  const events = (
-    await listAllEvents(calendar, calendarId, rangeStart, rangeEnd)
-  ).filter(
-    (event) =>
-      event.id &&
-      event.status !== "cancelled" &&
-      event.start?.dateTime &&
-      event.end?.dateTime,
+  const allEvents = await listAllEvents(
+    calendar,
+    calendarId,
+    rangeStart,
+    rangeEnd,
   );
+
+  // Count what gets dropped and why. The filter used to be silent, so a
+  // calendar full of all-day conflicts synced as "nothing changed" and the
+  // dancer had no way to tell that from a working sync.
+  let skippedAllDay = 0;
+  let skippedCancelled = 0;
+  const events = allEvents.filter((event) => {
+    if (!event.id) return false;
+    if (event.status === "cancelled") {
+      skippedCancelled++;
+      return false;
+    }
+    if (!event.start?.dateTime || !event.end?.dateTime) {
+      skippedAllDay++;
+      return false;
+    }
+    return true;
+  });
 
   const existing = await prisma.conflict.findMany({
     where: {
@@ -617,5 +759,10 @@ export async function syncConflictCalendar(
     updated,
     removed: staleIds.length,
     calendarName: me.conflictCalendarName ?? "your main calendar",
+    eventsSeen: allEvents.length,
+    skippedAllDay,
+    skippedCancelled,
+    rangeStartKey: appDateKey(rangeStart),
+    rangeEndKey: appDateKey(new Date(rangeEnd.getTime() - 1)),
   };
 }

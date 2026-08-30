@@ -43,6 +43,9 @@ function slot(
       points: 2,
       reason: "unexcused-conflict" as const,
     })),
+    awayCastMembers: [],
+    choreographersMissing: 0,
+    noChoreographerAvailable: false,
   };
 }
 

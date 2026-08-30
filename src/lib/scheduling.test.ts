@@ -88,6 +88,15 @@ function withSpace(opts: {
   };
 }
 
+/** Does this candidate overlap a given window? */
+function overlapsWindow(
+  candidate: { startDateTime: Date; endDateTime: Date },
+  start: Date,
+  end: Date,
+): boolean {
+  return candidate.startDateTime < end && start < candidate.endDateTime;
+}
+
 // Test 1: baseline — should produce candidates, best score 0.
 {
   const result = generateCandidateSlots(base);
@@ -95,7 +104,8 @@ function withSpace(opts: {
   assert(result[0].score === 0, "baseline best candidate has score 0 (no conflicts)");
 }
 
-// Test 2: choreographer conflict should hard-fail every slot that overlaps it.
+// Test 2: with only one choreographer, their conflict means nobody can run
+// the rehearsal — so the slot must lose to any alternative, without vanishing.
 {
   const conflictStart = minutesIntoAppDay(nextMonday, 1080);
   const conflictEnd = minutesIntoAppDay(nextMonday, 1260);
@@ -112,13 +122,115 @@ function withSpace(opts: {
     ],
   };
   const result = generateCandidateSlots(input);
-  const hasThatDay = result.some(
-    (c) => appDateKey(c.startDateTime) === appDateKey(nextMonday),
+
+  const clashing = result.filter((c) =>
+    overlapsWindow(c, conflictStart, conflictEnd),
   );
   assert(
-    !hasThatDay,
-    "choreographer conflict hard-fails candidates on that day (mandatory attendee)",
+    clashing.length > 0,
+    "a choreographer's conflict still leaves the slot on offer",
   );
+  assert(
+    clashing.every((c) => c.noChoreographerAvailable),
+    "...flagged as having nobody to run it, since this dance has one choreographer",
+  );
+
+  const clean = result.filter(
+    (c) => !overlapsWindow(c, conflictStart, conflictEnd),
+  );
+  if (clean.length > 0) {
+    assert(
+      Math.max(...clean.map((c) => c.score)) <
+        Math.min(...clashing.map((c) => c.score)),
+      "...and sorts below every slot somebody can run",
+    );
+  }
+}
+
+// Test 2b: three choreographers, one busy. The other two can run it, so this
+// is an ordinary slot — barely penalised, and nowhere near last.
+{
+  const conflictStart = minutesIntoAppDay(nextMonday, 1080);
+  const conflictEnd = minutesIntoAppDay(nextMonday, 1260);
+  const threeChoreos = {
+    ...base,
+    castMembers: [
+      { userId: "choreo1", name: "Choreo One", role: "CHOREOGRAPHER" as const },
+      { userId: "choreo2", name: "Choreo Two", role: "CHOREOGRAPHER" as const },
+      { userId: "choreo3", name: "Choreo Three", role: "CHOREOGRAPHER" as const },
+      { userId: "dancer1", name: "Dancer One", role: "DANCER" as const },
+      { userId: "dancer2", name: "Dancer Two", role: "DANCER" as const },
+    ],
+    conflicts: [
+      {
+        id: "c1",
+        userId: "choreo1",
+        startDateTime: conflictStart,
+        endDateTime: conflictEnd,
+        isExcused: false,
+      },
+    ],
+  };
+  const result = generateCandidateSlots(threeChoreos);
+  const clashing = result.filter((c) =>
+    overlapsWindow(c, conflictStart, conflictEnd),
+  );
+
+  assert(clashing.length > 0, "one of three choreographers busy: slot stays");
+  assert(
+    clashing.every((c) => !c.noChoreographerAvailable),
+    "...and is not treated as leaderless, because two can still run it",
+  );
+  assert(
+    clashing.every((c) => c.choreographersMissing === 1),
+    "...with the one absence recorded",
+  );
+  assert(
+    clashing.every((c) => c.score < 10),
+    "...costing only a little, so it stays in ordinary contention",
+  );
+}
+
+// Test 2c: all three busy at once is the case that must never win.
+{
+  const conflictStart = minutesIntoAppDay(nextMonday, 1080);
+  const conflictEnd = minutesIntoAppDay(nextMonday, 1260);
+  const allBusy = {
+    ...base,
+    castMembers: [
+      { userId: "choreo1", name: "Choreo One", role: "CHOREOGRAPHER" as const },
+      { userId: "choreo2", name: "Choreo Two", role: "CHOREOGRAPHER" as const },
+      { userId: "choreo3", name: "Choreo Three", role: "CHOREOGRAPHER" as const },
+      { userId: "dancer1", name: "Dancer One", role: "DANCER" as const },
+    ],
+    conflicts: ["choreo1", "choreo2", "choreo3"].map((userId, i) => ({
+      id: `c${i}`,
+      userId,
+      startDateTime: conflictStart,
+      endDateTime: conflictEnd,
+      isExcused: false,
+    })),
+  };
+  const result = generateCandidateSlots(allBusy);
+  const clashing = result.filter((c) =>
+    overlapsWindow(c, conflictStart, conflictEnd),
+  );
+  const clean = result.filter(
+    (c) => !overlapsWindow(c, conflictStart, conflictEnd),
+  );
+
+  assert(clashing.length > 0, "all choreographers busy: the slot is still offered");
+  assert(
+    clashing.every((c) => c.noChoreographerAvailable),
+    "...flagged as having nobody to run it",
+  );
+  if (clean.length > 0) {
+    assert(
+      Math.max(...clean.map((c) => c.score)) <
+        Math.min(...clashing.map((c) => c.score)),
+      "...and ranks below every slot that has a choreographer",
+    );
+  }
 }
 
 // Test 3: choreographer weekly excuse lifts the hard-fail for that week only.
@@ -449,6 +561,69 @@ function withSpace(opts: {
           zonedParts(c.startDateTime).hour < 15,
       ),
     "slots come only from the hours actually booked",
+  );
+}
+
+// The named window is what build-the-week uses. Without it the search runs
+// forward from "now" and returns the best eight anywhere in the next four
+// weeks, which the caller then had to filter down to one week — usually to
+// nothing, since the best eight overall are rarely all in the same week.
+{
+  const weekStart = startOfWeek(addDays(nextMonday, 14));
+  const weekEnd = addDays(weekStart, 7);
+  const result = generateCandidateSlots({
+    ...base,
+    windowStart: weekStart,
+    windowEnd: weekEnd,
+  });
+  assert(result.length > 0, "a named window still finds candidates");
+  assert(
+    result.every(
+      (c) => c.startDateTime >= weekStart && c.startDateTime < weekEnd,
+    ),
+    "...and every one of them falls inside that window",
+  );
+
+  // The week two out is reachable only because the window says so — the
+  // default search would have ranked earlier weeks above it.
+  const unwindowed = generateCandidateSlots(base);
+  assert(
+    unwindowed.some((c) => c.startDateTime < weekStart),
+    "...while the default search still ranks the soonest weeks first",
+  );
+}
+
+// Someone away is out of the mix: not scored, not counted as missing, but
+// still named so the AD can see the real headcount.
+{
+  const away = {
+    userId: "dancer1",
+    startDate: asStoredDate(nextMonday),
+    endDate: asStoredDate(addDays(nextMonday, 3)),
+    reason: "Home for the long weekend",
+  };
+  const result = generateCandidateSlots({ ...base, unavailabilities: [away] });
+  const onThatDay = result.filter(
+    (c) => appDateKey(c.startDateTime) === appDateKey(nextMonday),
+  );
+  assert(onThatDay.length > 0, "an away dancer doesn't remove the slot");
+  assert(
+    onThatDay.every((c) => c.score === 0),
+    "...and doesn't drag its score, since they miss every slot equally",
+  );
+  assert(
+    onThatDay.every(
+      (c) => !c.conflictedCastMembers.some((n) => n.userId === "dancer1"),
+    ),
+    "...so they are not reported as a conflict",
+  );
+  assert(
+    onThatDay.every((c) =>
+      c.awayCastMembers.some(
+        (a) => a.userId === "dancer1" && a.reason === "Home for the long weekend",
+      ),
+    ),
+    "...but are listed as away, with the reason",
   );
 }
 

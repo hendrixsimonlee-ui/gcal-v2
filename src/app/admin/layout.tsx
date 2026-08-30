@@ -14,6 +14,7 @@ const ADMIN_NAV: NavItem[] = [
   { href: "/admin/schedule-builder", label: "Schedule Builder" },
   { href: "/admin/attendance", label: "Attendance Review" },
   { href: "/admin/settings", label: "Settings" },
+  { href: "/admin/help", label: "How it works" },
 ];
 
 export default async function AdminLayout({

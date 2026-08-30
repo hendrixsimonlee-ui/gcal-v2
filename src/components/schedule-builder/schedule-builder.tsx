@@ -62,6 +62,34 @@ function slotRange(start: Date, end: Date): string {
   return `${timeFormatter.format(start)} – ${clockFormatter.format(end)}`;
 }
 
+type ConflictedPerson = {
+  name: string;
+  isChoreographer: boolean;
+  reasons: string[];
+};
+
+/** What to show beside a name: what they have on, and when.
+ *
+ * Returns null where there is nothing worth saying — a clash with another
+ * dance already reads as "double-booked", and a historical nudge is a hint
+ * about a weekday rather than a thing on anybody's calendar. */
+function describeNote(note: {
+  reason: string;
+  title?: string | null;
+  startIso?: string;
+  endIso?: string;
+}): string | null {
+  if (note.reason === "other-practice") return "in another dance then";
+  if (note.reason === "historically-absent") return null;
+
+  const when =
+    note.startIso && note.endIso
+      ? `${clockFormatter.format(new Date(note.startIso))}–${clockFormatter.format(new Date(note.endIso))}`
+      : null;
+  const what = note.title?.trim() || "busy";
+  return when ? `${what}, ${when}` : what;
+}
+
 export function ScheduleBuilder({
   dances,
   spaces,
@@ -127,15 +155,24 @@ export function ScheduleBuilder({
   useEffect(() => {
     if (!danceId || !spaceId) return;
     let cancelled = false;
-    getCandidateSlots(danceId, spaceId, durationMinutes, []).then(
-      (result) => {
-        if (!cancelled) setCandidates(result);
-      },
-    );
+    // Scoped to the week on screen.
+    //
+    // This used to ask for the general suggestions — the best eight anywhere
+    // in the next four weeks — and then filter them to the visible week. Slots
+    // that existed this week but didn't make that term-wide top eight simply
+    // vanished, and the panel said "nothing fits this week" when something
+    // perfectly workable did. Asking for the week directly means the list is
+    // always this week's best options, however good or bad they are.
+    getCandidateSlots(danceId, spaceId, durationMinutes, [], {
+      startIso: weekStart.toISOString(),
+      endIso: weekEnd.toISOString(),
+    }).then((result) => {
+      if (!cancelled) setCandidates(result);
+    });
     return () => {
       cancelled = true;
     };
-  }, [danceId, spaceId, durationMinutes, refreshKey]);
+  }, [danceId, spaceId, durationMinutes, refreshKey, weekStart, weekEnd]);
 
   useEffect(() => {
     if (!danceId) return;
@@ -267,7 +304,6 @@ export function ScheduleBuilder({
       ),
     [candidates, weekStart, weekEnd],
   );
-  const laterCandidateCount = candidates.length - candidatesThisWeek.length;
 
   /** The windows any room in view is actually open, as instants.
    *
@@ -436,14 +472,6 @@ export function ScheduleBuilder({
         </p>
       )}
 
-      {editingId && (
-        <PracticeEditor
-          practiceId={editingId}
-          onClose={() => setEditingId(null)}
-          onChanged={bump}
-        />
-      )}
-
       <div className="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_260px]">
         <section className="rounded-lg border border-line bg-surface p-2">
           <ScheduleCalendar
@@ -459,6 +487,21 @@ export function ScheduleBuilder({
             }}
             onDatesSet={(start, end) => setVisibleRange({ start, end })}
           />
+
+          {/* The editor sits directly under the grid, not above it.
+              Clicking a practice on the calendar used to open the panel above,
+              which pushed the calendar down the page — so the AD had to scroll
+              back up to see the slot they were editing, every time. */}
+          {editingId && (
+            <div className="mt-3">
+              <PracticeEditor
+                practiceId={editingId}
+                onClose={() => setEditingId(null)}
+                onChanged={bump}
+              />
+            </div>
+          )}
+
           {practicesThisWeek.length > 0 && (
             <ul className="mt-2 flex flex-col gap-1 border-t border-line pt-2">
               {practicesThisWeek.map((p) => (
@@ -507,17 +550,39 @@ export function ScheduleBuilder({
           </p>
           {candidatesThisWeek.length === 0 && (
             <p className="text-xs text-ink-soft">
-              {laterCandidateCount > 0
-                ? `Nothing fits this week. There ${ laterCandidateCount === 1 ? "is 1 option" : `are ${laterCandidateCount} options`
-                  } in the following weeks — use the calendar arrows to look ahead.`
-                : "No open slots at all for this room and duration. Check the room's hours, or shorten the practice."}
+              No room is open for {durationMinutes} minutes anywhere this week.
+              Every slot the cast could struggle with is still listed above —
+              an empty list here means there is nowhere to put a practice at
+              all, not that nobody can come. Check the spaces calendar for this
+              week, or shorten the practice.
             </p>
           )}
           <ul className="flex flex-col gap-2">
             {candidatesThisWeek.map((c, i) => {
-              const affected = new Set(
-                c.conflictedCastMembers.map((m) => m.userId),
-              ).size;
+              // One line per person, not one per conflict: somebody with two
+              // overlapping commitments is still one person who can't come.
+              const byPerson = new Map<string, ConflictedPerson>();
+              for (const note of c.conflictedCastMembers) {
+                const entry = byPerson.get(note.userId) ?? {
+                  name: note.name,
+                  isChoreographer: false,
+                  reasons: [] as string[],
+                };
+                if (note.reason === "choreographer-conflict") {
+                  entry.isChoreographer = true;
+                }
+                const label = describeNote(note);
+                if (label && !entry.reasons.includes(label)) {
+                  entry.reasons.push(label);
+                }
+                byPerson.set(note.userId, entry);
+              }
+              const people = Array.from(byPerson.values()).sort(
+                (a, b) =>
+                  Number(b.isChoreographer) - Number(a.isChoreographer) ||
+                  a.name.localeCompare(b.name),
+              );
+
               return (
                 <li
                   key={c.startDateTime.toISOString()}
@@ -527,11 +592,55 @@ export function ScheduleBuilder({
                     #{i + 1} {slotRange(c.startDateTime, c.endDateTime)}
                   </div>
                   <div className="text-ink-soft">{c.spaceName}</div>
-                  <div className={affected > 0 ? "text-warn" : "text-good"}>
-                    {affected > 0
-                      ? `${affected} can't make it`
-                      : "Everyone can make it"}
-                  </div>
+
+                  {/* Named, not counted. "3 can't make it" doesn't tell the AD
+                      whether to move the rehearsal; "Ashley — CHEM lab" does. */}
+                  {people.length === 0 ? (
+                    <div className="text-good">Everyone can make it</div>
+                  ) : (
+                    <>
+                      <div className="mt-0.5 font-medium text-warn">
+                        {people.length}{" "}
+                        {people.length === 1 ? "person" : "people"} can&rsquo;t
+                        make it
+                      </div>
+                      <ul className="mt-0.5 flex flex-col gap-0.5">
+                        {people.map((p) => (
+                          <li key={p.name} className="leading-snug">
+                            <span
+                              className={
+                                p.isChoreographer
+                                  ? "font-semibold text-bad"
+                                  : "font-medium text-ink"
+                              }
+                            >
+                              {p.name}
+                              {p.isChoreographer && " (choreographer)"}
+                            </span>
+                            {p.reasons.length > 0 && (
+                              <span className="text-ink-soft">
+                                {" "}
+                                — {p.reasons.join("; ")}
+                              </span>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    </>
+                  )}
+
+                  {/* Away people don't count against the slot — they miss
+                      every slot equally — but the AD still needs the real
+                      headcount before deciding to hold the rehearsal. */}
+                  {c.awayCastMembers.length > 0 && (
+                    <div className="mt-0.5 text-ink-faint">
+                      Away all week:{" "}
+                      {c.awayCastMembers
+                        .map((a) => (a.reason ? `${a.name} (${a.reason})` : a.name))
+                        .join(", ")}
+                    </div>
+                  )}
+
                   <button
                     onClick={() => applyCandidate(c)}
                     className="mt-1 rounded-lg border border-line-strong bg-surface px-2 py-1 text-xs font-medium text-ink transition-colors hover:border-accent hover:text-accent-ink"
@@ -542,11 +651,6 @@ export function ScheduleBuilder({
               );
             })}
           </ul>
-          {candidatesThisWeek.length > 0 && laterCandidateCount > 0 && (
-            <p className="mt-2 text-xs text-ink-faint">
-              {laterCandidateCount} more in later weeks.
-            </p>
-          )}
         </section>
 
         <section className="flex flex-col gap-4 rounded-lg border border-line bg-surface p-4">
