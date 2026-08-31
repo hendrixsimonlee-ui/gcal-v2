@@ -15,6 +15,7 @@ import {
 } from "@/lib/actions/spaces-calendar";
 import type { GoogleCalendarSummary } from "@/lib/google-calendar";
 import type { TermRange } from "@/lib/terms";
+import { WeekNav } from "@/components/week-nav";
 
 const dayFormatter = new Intl.DateTimeFormat("en-US", {
   timeZone: "UTC",
@@ -46,15 +47,15 @@ export function SpacesCalendarPanel({
   terms,
   weekStartIso,
   weekLabel,
-  prevWeek,
-  nextWeek,
+  weekStartKey,
+  todayKey,
 }: {
   calendarName: string | null;
   terms: TermRange[];
   weekStartIso: string;
   weekLabel: string;
-  prevWeek: string;
-  nextWeek: string;
+  weekStartKey: string;
+  todayKey: string;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -120,7 +121,14 @@ export function SpacesCalendarPanel({
   }
 
   return (
-    <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+    <>
+      <WeekNav
+        basePath="/admin/spaces"
+        weekStartKey={weekStartKey}
+        weekLabel={weekLabel}
+        todayKey={todayKey}
+      />
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
       <div className="flex min-w-0 flex-1 flex-col gap-4">
         <section className="flex flex-col gap-3 rounded-lg border border-line bg-surface p-4">
           <div>
@@ -318,24 +326,10 @@ export function SpacesCalendarPanel({
         </section>
 
         <section className="rounded-lg border border-line bg-surface p-4">
-          <div className="mb-3 flex flex-wrap items-center gap-3">
+          <div className="mb-3">
             <h2 className="text-sm font-semibold text-ink">
               Week of {weekLabel}
             </h2>
-            <div className="ml-auto flex items-center gap-2">
-              <a
-                href={`/admin/spaces?week=${prevWeek}`}
-                className="rounded-lg border border-line-strong px-2 py-1 text-sm text-ink-soft hover:bg-surface-3"
-              >
-                ←
-              </a>
-              <a
-                href={`/admin/spaces?week=${nextWeek}`}
-                className="rounded-lg border border-line-strong px-2 py-1 text-sm text-ink-soft hover:bg-surface-3"
-              >
-                →
-              </a>
-            </div>
           </div>
 
           {!summary ? (
@@ -534,5 +528,6 @@ export function SpacesCalendarPanel({
         )}
       </aside>
     </div>
+    </>
   );
 }

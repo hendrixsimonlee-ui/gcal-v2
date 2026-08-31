@@ -20,7 +20,16 @@ const slotFormatter = new Intl.DateTimeFormat("en-US", {
  * anything. The AD sees what each choice costs — who can't make it — and
  * accepts or discards. Accepting creates drafts, not confirmed practices,
  * so publishing is still a deliberate act. */
-export function BuildWeek({ weekOfIso }: { weekOfIso: string }) {
+export function BuildWeek({
+  weekOfIso,
+  weekLabel,
+}: {
+  weekOfIso: string;
+  /** Named on the button itself. The button acts on the week the calendar is
+   * showing, so it says which week that is — "Build the week" next to a grid
+   * you have paged away from is the one place this can go quietly wrong. */
+  weekLabel: string;
+}) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [proposal, setProposal] = useState<BuildWeekProposal | null>(null);
@@ -81,7 +90,11 @@ export function BuildWeek({ weekOfIso }: { weekOfIso: string }) {
           disabled={isPending}
           className="rounded-lg border border-accent/50 bg-accent-soft px-3 py-1.5 text-sm font-medium text-accent-ink transition-colors hover:bg-accent hover:text-on-accent disabled:opacity-45"
         >
-          {isPending ? "Working…" : proposal ? "Try again" : "Build the week for me"}
+          {isPending
+            ? "Working…"
+            : proposal
+              ? "Try again"
+              : `Build ${weekLabel} for me`}
         </button>
 
         {/* The way to make a re-think actually change anything.
@@ -92,7 +105,7 @@ export function BuildWeek({ weekOfIso }: { weekOfIso: string }) {
           onClick={() => {
             if (
               !confirm(
-                "Clear this week's drafts and solve the whole week again?\n\n" +
+                `Clear the drafts for ${weekLabel} and solve that week again?\n\n` +
                   "Published practices are left exactly as they are — only drafts go.",
               )
             ) {
@@ -107,7 +120,8 @@ export function BuildWeek({ weekOfIso }: { weekOfIso: string }) {
         </button>
 
         <span className="text-xs text-ink-soft">
-          Builds the week shown on the calendar below. Dances ticked{" "}
+          Builds <span className="font-medium text-ink">{weekLabel}</span> —
+          the week shown on the calendar below. Dances ticked{" "}
           <span className="font-medium text-ink">First pick</span> are placed
           before the rest.
         </span>

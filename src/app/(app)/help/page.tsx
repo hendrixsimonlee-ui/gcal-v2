@@ -120,6 +120,11 @@ export default async function HelpPage() {
           Submitting doesn&rsquo;t lock anything. Remember a class on Wednesday?
           Add it. Your week stays submitted.
         </p>
+        <p>
+          To check a different week, use the date bar at the top of the page:
+          the single arrows move a week, the double arrows move a month, and
+          the date box jumps straight to any week you pick.
+        </p>
       </Section>
 
       <Section title="Step 5 · Get your rehearsals into your own calendar">

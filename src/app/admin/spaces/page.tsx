@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { SpacesCalendarPanel } from "@/components/spaces-calendar-panel";
 import { listTerms } from "@/lib/terms";
-import { addDays, formatWeekLabel, parseWeekParam, toDateParam } from "@/lib/dates";
+import { formatWeekLabel, parseWeekParam, toDateParam } from "@/lib/dates";
 
 /** Spaces is now a view of one Google calendar, not a place to manage rooms.
  *
@@ -41,8 +41,8 @@ export default async function SpacesPage({
         terms={terms}
         weekStartIso={weekStart.toISOString()}
         weekLabel={formatWeekLabel(weekStart)}
-        prevWeek={toDateParam(addDays(weekStart, -7))}
-        nextWeek={toDateParam(addDays(weekStart, 7))}
+        weekStartKey={toDateParam(weekStart)}
+        todayKey={toDateParam(new Date())}
       />
     </div>
   );

@@ -1,13 +1,13 @@
 "use client";
 
 import { useOptimistic, useTransition } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   setConflictStatus,
   setWeekConflictStatus,
 } from "@/lib/actions/conflicts";
 import { SubmissionTracker } from "@/components/submission-tracker";
+import { WeekNav } from "@/components/week-nav";
 import { APP_TIME_ZONE } from "@/lib/timezone";
 
 type Status = "NOT_REVIEWED" | "EXCUSED" | "UNEXCUSED";
@@ -51,15 +51,15 @@ export function ConflictReview({
   people,
   weekLabel,
   weekOfIso,
-  prevWeek,
-  nextWeek,
+  weekStartKey,
+  todayKey,
   awayThisWeek,
 }: {
   people: ReviewPerson[];
   weekLabel: string;
   weekOfIso: string;
-  prevWeek: string;
-  nextWeek: string;
+  weekStartKey: string;
+  todayKey: string;
   awayThisWeek: AwayWindow[];
 }) {
   const router = useRouter();
@@ -111,6 +111,25 @@ export function ConflictReview({
 
   return (
     <div className="flex flex-col gap-5">
+      <WeekNav
+        basePath="/admin/conflicts"
+        weekStartKey={weekStartKey}
+        weekLabel={weekLabel}
+        todayKey={todayKey}
+      >
+        {total === 0 ? (
+          <span className="text-ink-soft">Nothing logged this week.</span>
+        ) : outstanding === 0 ? (
+          <span className="font-medium text-good">
+            All {total} reviewed — ready to schedule
+          </span>
+        ) : (
+          <span className="font-medium text-warn">
+            {outstanding} of {total} still to review
+          </span>
+        )}
+      </WeekNav>
+
       <div>
         <h1 className="text-2xl font-semibold tracking-tight text-ink">
           Conflict Review
@@ -124,38 +143,6 @@ export function ConflictReview({
 
       <SubmissionTracker weekOfIso={weekOfIso} weekLabel={weekLabel} />
 
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-surface px-4 py-3">
-        <div className="flex items-center gap-3">
-          <Link
-            href={`/admin/conflicts?week=${prevWeek}`}
-            className="rounded-lg border border-line-strong px-2.5 py-1 text-sm text-ink-soft transition-colors hover:bg-surface-3"
-          >
-            ←
-          </Link>
-          <span className="text-sm font-medium text-ink">
-            Week of {weekLabel}
-          </span>
-          <Link
-            href={`/admin/conflicts?week=${nextWeek}`}
-            className="rounded-lg border border-line-strong px-2.5 py-1 text-sm text-ink-soft transition-colors hover:bg-surface-3"
-          >
-            →
-          </Link>
-        </div>
-        <p className="text-sm">
-          {total === 0 ? (
-            <span className="text-ink-soft">Nothing logged this week.</span>
-          ) : outstanding === 0 ? (
-            <span className="font-medium text-good">
-              All {total} reviewed — ready to schedule
-            </span>
-          ) : (
-            <span className="font-medium text-warn">
-              {outstanding} of {total} still to review
-            </span>
-          )}
-        </p>
-      </div>
 
       {awayThisWeek.length > 0 && (
         <section className="rounded-xl border border-info/35 bg-info-soft p-4">

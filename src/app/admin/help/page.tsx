@@ -271,6 +271,11 @@ export default function AdminHelpPage() {
           Weeks in the past work the same way, which is what you want when
           filling in a schedule after the fact.
         </p>
+        <p>
+          The button says which week it will act on —{" "}
+          <B>Build Sep 14 – Sep 20 for me</B> — and retitles itself as you move
+          around, so it can&rsquo;t quietly run on a week you paged away from.
+        </p>
 
         <h3 className="mt-2 font-semibold text-ink">Giving a dance first pick</h3>
         <p>
@@ -298,6 +303,35 @@ export default function AdminHelpPage() {
           from scratch. Published practices are never touched — they keep their
           rooms and the rebuild works around them.
         </p>
+      </Section>
+
+      <Section title="What the team can do on their side">
+        <p>
+          Worth knowing so you can answer it without checking, since these are
+          the two things people ask about most.
+        </p>
+        <ul>
+          <li>
+            <B>Getting rehearsals into their own calendar.</B>{" "}On My Schedule
+            there is <B>Add all to my calendar</B>, which puts every rehearsal
+            they&rsquo;re called to for the whole term into their Google
+            Calendar in one press. Safe to press again after you reschedule —
+            it updates what&rsquo;s there rather than adding duplicates, and
+            removes anything cancelled.
+          </li>
+          <li>
+            <B>The calendar permission is a separate tick-box.</B>{" "}Google&rsquo;s
+            consent screen lists each permission with its own box, unticked by
+            default, so somebody can finish signing in with no calendar access
+            at all. Their conflicts then silently never import.{" "}
+            <Nav href="/admin/dancer-calendars">Dancer Calendars</Nav> flags
+            anyone in that state as{" "}
+            <B>Didn&rsquo;t grant calendar access</B>, and the fix is for them
+            to sign out, sign back in, and tick the boxes. Worth checking that
+            screen at the start of a term rather than finding out when a
+            rehearsal lands on somebody&rsquo;s midterm.
+          </li>
+        </ul>
       </Section>
 
       <Section title="Publishing and notifications">
@@ -339,6 +373,37 @@ export default function AdminHelpPage() {
           <Nav href="/admin/attendance">Attendance Review</Nav> shows the
           cumulative picture and flags chronic absence at whatever threshold you
           set in Settings.
+        </p>
+      </Section>
+
+      <Section title="Moving between weeks">
+        <p>
+          Conflict Review, Spaces and My Conflicts all carry the same date bar,
+          pinned to the top of the page so the week you&rsquo;re looking at
+          stays visible as you scroll.
+        </p>
+        <ul>
+          <li>
+            <B>&lsaquo;</B> and <B>&rsaquo;</B> move a week;{" "}
+            <B>&lsaquo;&lsaquo;</B> and <B>&rsaquo;&rsaquo;</B> move a whole
+            month, so a week six weeks out is two clicks rather than six.
+          </li>
+          <li>
+            The <B>date box</B> jumps straight to whichever week contains the
+            date you pick — the quickest way to &ldquo;the week of the
+            showcase&rdquo;.
+          </li>
+          <li>
+            <B>This week</B> appears once you&rsquo;ve moved away, to get back.
+          </li>
+          <li>
+            Every week is a real link, so you can bookmark one or use the back
+            button.
+          </li>
+        </ul>
+        <p>
+          The Schedule Builder keeps its own calendar controls instead, since
+          its grid already has week and month views built in.
         </p>
       </Section>
 

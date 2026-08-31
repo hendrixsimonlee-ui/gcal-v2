@@ -13,7 +13,7 @@ import {
   type SidebarCastMember,
 } from "@/lib/actions/schedule";
 import type { CandidateSlot } from "@/lib/scheduling";
-import { startOfWeek } from "@/lib/dates";
+import { formatWeekLabel, startOfWeek } from "@/lib/dates";
 import {
   ScheduleCalendar,
   type PracticeEvent,
@@ -454,7 +454,10 @@ export function ScheduleBuilder({
             Reading the same weekStart the rest of the screen uses means it
             follows the calendar, forwards and backwards alike. */}
         <div className="border-t border-line pt-2">
-          <BuildWeek weekOfIso={weekStart.toISOString()} />
+          <BuildWeek
+            weekOfIso={weekStart.toISOString()}
+            weekLabel={formatWeekLabel(weekStart)}
+          />
         </div>
       </div>
 

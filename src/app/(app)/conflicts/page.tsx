@@ -1,6 +1,6 @@
-import Link from "next/link";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { WeekNav } from "@/components/week-nav";
 import { ConflictsCalendar } from "@/components/conflicts-calendar";
 import { addDays, formatWeekLabel, parseWeekParam, toDateParam } from "@/lib/dates";
 import {
@@ -35,8 +35,6 @@ export default async function MyConflictsPage({
   const userId = session!.user.id;
 
   const weekStart = parseWeekParam(week);
-  const prevWeek = toDateParam(addDays(weekStart, -7));
-  const nextWeek = toDateParam(addDays(weekStart, 7));
 
   const [me, weekConflicts, calendarConflicts, unavailabilities, submission] =
     await Promise.all([
@@ -70,6 +68,13 @@ export default async function MyConflictsPage({
 
   return (
     <div className="flex flex-col gap-8">
+      <WeekNav
+        basePath="/conflicts"
+        weekStartKey={toDateParam(weekStart)}
+        weekLabel={formatWeekLabel(weekStart)}
+        todayKey={toDateParam(new Date())}
+      />
+
       <div>
         <h1 className="text-xl font-semibold text-ink">
           My Conflicts
@@ -107,23 +112,9 @@ export default async function MyConflictsPage({
           Conflicts you have logged
         </h2>
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-3">
-            <Link
-              href={`/conflicts?week=${prevWeek}`}
-              className="rounded-lg border border-line-strong px-2 py-1 text-sm text-ink-soft hover:bg-surface-3"
-            >
-              ← Prev
-            </Link>
-            <span className="text-sm font-medium text-ink">
-              Week of {formatWeekLabel(weekStart)}
-            </span>
-            <Link
-              href={`/conflicts?week=${nextWeek}`}
-              className="rounded-lg border border-line-strong px-2 py-1 text-sm text-ink-soft hover:bg-surface-3"
-            >
-              Next →
-            </Link>
-          </div>
+          <span className="text-sm font-medium text-ink">
+            Week of {formatWeekLabel(weekStart)}
+          </span>
         </div>
 
         <div className="mb-4">

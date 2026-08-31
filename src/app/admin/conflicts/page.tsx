@@ -78,8 +78,8 @@ export default async function AdminConflictsPage({
       people={people}
       weekLabel={formatWeekLabel(weekStart)}
       weekOfIso={weekStart.toISOString()}
-      prevWeek={toDateParam(addDays(weekStart, -7))}
-      nextWeek={toDateParam(addDays(weekStart, 7))}
+      weekStartKey={toDateParam(weekStart)}
+      todayKey={toDateParam(new Date())}
       awayThisWeek={awayThisWeek.map((u) => ({
         id: u.id,
         name: u.user.name ?? u.user.email,
