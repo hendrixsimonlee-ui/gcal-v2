@@ -1,8 +1,24 @@
 import { prisma } from "@/lib/prisma";
 import { addDays } from "@/lib/dates";
+import { activeRange } from "@/lib/terms";
 import { ScheduleBuilder } from "@/components/schedule-builder/schedule-builder";
 
 export default async function ScheduleBuilderPage() {
+  // The whole term, not a window around today.
+  //
+  // This used to fetch -14 to +60 days. Build a week outside that — a term
+  // three months out, or a past week being filled in after the fact — and the
+  // drafts were written but never appeared on the grid, because the page had
+  // simply not loaded them. The AD saw an empty calendar and reasonably
+  // concluded the build had failed.
+  const { range } = await activeRange();
+  const fetchFrom = new Date(
+    Math.min(range.start.getTime(), addDays(new Date(), -30).getTime()),
+  );
+  const fetchTo = new Date(
+    Math.max(range.end.getTime(), addDays(new Date(), 120).getTime()),
+  );
+
   const [dances, spaces, practices] = await Promise.all([
     prisma.dance.findMany({
       where: { archivedAt: null },
@@ -13,7 +29,7 @@ export default async function ScheduleBuilderPage() {
       orderBy: { name: "asc" },
       include: {
         bookings: {
-          where: { date: { gte: addDays(new Date(), -14) } },
+          where: { date: { gte: fetchFrom, lte: fetchTo } },
           orderBy: [{ date: "asc" }, { startTime: "asc" }],
         },
       },
@@ -21,10 +37,7 @@ export default async function ScheduleBuilderPage() {
     prisma.practice.findMany({
       where: {
         dance: { archivedAt: null },
-        startDateTime: {
-          gte: addDays(new Date(), -14),
-          lte: addDays(new Date(), 60),
-        },
+        startDateTime: { gte: fetchFrom, lte: fetchTo },
       },
       include: {
         dance: true,

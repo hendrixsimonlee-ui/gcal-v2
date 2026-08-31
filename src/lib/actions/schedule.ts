@@ -542,6 +542,26 @@ export async function createDraftPractice(
     throw new Error("Every space is already booked for that time");
   }
 
+  // One draft per dance per week.
+  //
+  // Placing a second slot for a dance that already has an unpublished one
+  // isn't a second rehearsal — it's a change of mind. Keeping both left the
+  // week showing two times for the same piece with nothing to say which was
+  // meant, and the older one silently held its room against every later
+  // suggestion. Moving a draft is the common case, so that is what this does:
+  // the new placement replaces the old. Published practices are untouched, so
+  // a genuine second rehearsal in a week is still possible — publish the
+  // first, then place the next.
+  const weekStart = startOfWeek(start);
+  const weekEnd = new Date(weekStart.getTime() + 7 * 24 * 60 * 60 * 1000);
+  const replaced = await prisma.practice.deleteMany({
+    where: {
+      danceId,
+      status: "PROPOSED",
+      startDateTime: { gte: weekStart, lt: weekEnd },
+    },
+  });
+
   await prisma.practice.create({
     data: {
       danceId,
@@ -552,6 +572,10 @@ export async function createDraftPractice(
     },
   });
   revalidatePath("/admin/schedule-builder");
+
+  // Reported so the screen can say the draft moved rather than appearing to
+  // silently lose the old one.
+  return { replacedExistingDraft: replaced.count > 0 };
 }
 
 async function firstFreeSpace(start: Date, end: Date): Promise<string | null> {
@@ -934,6 +958,50 @@ function revalidateSchedule() {
   revalidatePath("/admin/attendance");
   revalidatePath("/schedule");
   revalidatePath("/notifications");
+}
+
+/** Throws away every unpublished practice in a week.
+ *
+ * The way out of a build you don't like. Deleting them one at a time meant
+ * opening each practice and confirming, which is enough friction that the AD
+ * ends up living with a schedule they'd rather redo.
+ *
+ * Only drafts: a published practice is something the team has been told
+ * about, and removing it is a cancellation that has to notify people, which
+ * is a different act with a different button. */
+export async function clearWeekDrafts(
+  weekOfIso: string,
+): Promise<{ deleted: number }> {
+  await requireAdmin();
+  const weekStart = startOfWeek(new Date(weekOfIso));
+  const weekEnd = new Date(weekStart.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+  const { count } = await prisma.practice.deleteMany({
+    where: {
+      status: "PROPOSED",
+      startDateTime: { gte: weekStart, lt: weekEnd },
+    },
+  });
+
+  revalidatePath("/admin/schedule-builder");
+  return { deleted: count };
+}
+
+/** Deletes one draft. Separate from deletePractice so the checklist can offer
+ * it without the confirm-and-notify machinery a published practice needs. */
+export async function deleteDraftPractice(practiceId: string): Promise<void> {
+  await requireAdmin();
+  const practice = await prisma.practice.findUniqueOrThrow({
+    where: { id: practiceId },
+    select: { status: true },
+  });
+  if (practice.status !== "PROPOSED") {
+    throw new Error(
+      "That practice has been published. Cancel it from the practice itself, so the cast can be told.",
+    );
+  }
+  await prisma.practice.delete({ where: { id: practiceId } });
+  revalidatePath("/admin/schedule-builder");
 }
 
 export async function deletePractice(practiceId: string) {

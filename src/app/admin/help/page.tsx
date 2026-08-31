@@ -400,6 +400,37 @@ export default function AdminHelpPage() {
         </ul>
       </Section>
 
+      <Section title="Getting rid of drafts">
+        <ul>
+          <li>
+            <B>One draft at a time per dance.</B>{" "}Placing a second slot for a
+            dance that already has an unpublished one replaces it rather than
+            adding another — a second placement is a change of mind, not a
+            second rehearsal. Two drafts for the same piece told you nothing
+            about which was meant, and the older one quietly held its room
+            against every later suggestion.
+          </li>
+          <li>
+            <B>The × beside a draft deletes it</B>{" "}on the spot, straight from
+            the checklist. No opening the practice first.
+          </li>
+          <li>
+            <B>Clear all drafts for this week</B>{" "}empties the week in one
+            press — the way to start a build over.
+          </li>
+          <li>
+            All three touch <em>drafts only</em>. A published practice has
+            already been announced, so removing it is a cancellation that
+            messages the cast, and that stays its own deliberate action.
+          </li>
+          <li>
+            Need a genuine second rehearsal in one week? Publish the first,
+            then place the next — publishing frees the dance to hold a new
+            draft.
+          </li>
+        </ul>
+      </Section>
+
       <Section title="Moving between weeks">
         <p>
           Conflict Review, Spaces and My Conflicts all carry the same date bar,

@@ -13,6 +13,10 @@ import {
   type WeekTrackerRow,
 } from "@/lib/actions/schedule";
 import { setDanceWeekPriority } from "@/lib/actions/build-week";
+import {
+  clearWeekDrafts,
+  deleteDraftPractice,
+} from "@/lib/actions/schedule";
 import { formatWeekLabel } from "@/lib/dates";
 import { APP_TIME_ZONE } from "@/lib/timezone";
 
@@ -305,6 +309,26 @@ export function WeekTracker({
                       {p.expectedCount}/{p.castSize} expected
                       {p.missing.length > 0 && (open ? " ▾" : " ▸")}
                     </button>
+
+                    {/* Deleting a draft used to mean opening the practice and
+                        confirming inside it. It's the most-used action on a
+                        week you're still shaping, so it lives on the row. */}
+                    {p.status === "PROPOSED" && (
+                      <button
+                        onClick={() =>
+                          run(async () => {
+                            await deleteDraftPractice(p.id);
+                            return `Removed ${row.danceName}'s draft.`;
+                          })
+                        }
+                        disabled={isPending}
+                        title="Delete this draft"
+                        aria-label={`Delete ${row.danceName}'s draft`}
+                        className="rounded-full px-1.5 py-0.5 text-xs font-medium text-ink-faint transition-colors hover:bg-bad-soft hover:text-bad disabled:opacity-45"
+                      >
+                        ×
+                      </button>
+                    )}
                   </span>
                 );
               })}
@@ -454,6 +478,34 @@ export function WeekTracker({
               : `${draftTotal} ${draftTotal === 1 ? "dance" : "dances"} in draft${ stagedTotal > 0 ? `, ${stagedTotal} changed since publishing` : ""
                 }. Everyone affected gets one message.`}
           </span>
+
+          {/* Start the week over. Only drafts go — a published practice has
+              already been announced, so removing it is a cancellation with a
+              message attached, which is a different button. */}
+          {draftTotal > 0 && (
+            <button
+              onClick={() => {
+                if (
+                  !confirm(
+                    `Delete every draft for ${formatWeekLabel(weekOf)}?\n\n` +
+                      "Published practices are left exactly as they are. Nobody is notified — drafts were never sent.",
+                  )
+                ) {
+                  return;
+                }
+                run(async () => {
+                  const { deleted } = await clearWeekDrafts(weekOfIso);
+                  return deleted === 0
+                    ? "There were no drafts to clear."
+                    : `Cleared ${deleted} draft ${deleted === 1 ? "practice" : "practices"}. The week is empty again.`;
+                });
+              }}
+              disabled={isPending}
+              className="ml-auto rounded-lg border border-bad/40 px-3 py-1.5 text-xs font-medium text-bad transition-colors hover:bg-bad-soft disabled:opacity-45"
+            >
+              Clear all drafts for this week
+            </button>
+          )}
         </div>
       )}
 
