@@ -20,6 +20,7 @@ import {
 } from "@/components/schedule-builder/schedule-calendar";
 import { WeekTracker } from "@/components/schedule-builder/week-tracker";
 import { PracticeEditor } from "@/components/schedule-builder/practice-editor";
+import { BuildWeek } from "@/components/schedule-builder/build-week";
 import { ConflictStatusBadge } from "@/components/status-badges";
 import { APP_TIME_ZONE } from "@/lib/timezone";
 
@@ -94,14 +95,10 @@ export function ScheduleBuilder({
   dances,
   spaces,
   initialPractices,
-  buildWeek,
 }: {
   dances: DanceOption[];
   spaces: SpaceOption[];
   initialPractices: PracticeEvent[];
-  /** The whole-week solver, rendered inside this screen's toolbar rather than
-   * as its own card above it. */
-  buildWeek?: React.ReactNode;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -450,7 +447,15 @@ export function ScheduleBuilder({
           </button>
         </div>
 
-        {buildWeek && <div className="border-t border-line pt-2">{buildWeek}</div>}
+        {/* Built for the week on screen, not for today's week.
+            This used to be rendered on the server and passed in, so it was
+            pinned to whatever week the page happened to load on — pressing it
+            after navigating two weeks ahead still built the current week.
+            Reading the same weekStart the rest of the screen uses means it
+            follows the calendar, forwards and backwards alike. */}
+        <div className="border-t border-line pt-2">
+          <BuildWeek weekOfIso={weekStart.toISOString()} />
+        </div>
       </div>
 
       <WeekTracker

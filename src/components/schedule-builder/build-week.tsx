@@ -26,13 +26,17 @@ export function BuildWeek({ weekOfIso }: { weekOfIso: string }) {
   const [proposal, setProposal] = useState<BuildWeekProposal | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [applied, setApplied] = useState<number | null>(null);
+  const [isRebuild, setIsRebuild] = useState(false);
 
-  function propose() {
+  function propose(rebuild = false) {
     setError(null);
     setApplied(null);
+    setIsRebuild(rebuild);
     startTransition(async () => {
       try {
-        setProposal(await proposeWeek(weekOfIso));
+        setProposal(await proposeWeek(weekOfIso, undefined, {
+          includeDrafted: rebuild,
+        }));
       } catch (e) {
         setError(e instanceof Error ? e.message : "Couldn't build the week.");
       }
@@ -43,7 +47,13 @@ export function BuildWeek({ weekOfIso }: { weekOfIso: string }) {
     if (!proposal) return;
     startTransition(async () => {
       try {
-        const { created } = await applyWeekProposal(proposal);
+        // A rebuild was solved as though this week's drafts weren't there,
+        // so accepting it has to clear them — otherwise the old draft keeps
+        // its room and half the new plan silently fails the clash check.
+        const { created } = await applyWeekProposal(
+          proposal,
+          isRebuild ? { replaceDraftsForWeekIso: weekOfIso } : {},
+        );
         setApplied(created);
         setProposal(null);
         router.refresh();
@@ -67,15 +77,39 @@ export function BuildWeek({ weekOfIso }: { weekOfIso: string }) {
     >
       <div className="flex flex-wrap items-center gap-3">
         <button
-          onClick={propose}
+          onClick={() => propose(false)}
           disabled={isPending}
           className="rounded-lg border border-accent/50 bg-accent-soft px-3 py-1.5 text-sm font-medium text-accent-ink transition-colors hover:bg-accent hover:text-on-accent disabled:opacity-45"
         >
           {isPending ? "Working…" : proposal ? "Try again" : "Build the week for me"}
         </button>
+
+        {/* The way to make a re-think actually change anything.
+            Building normally leaves placed dances alone, which is what makes
+            it safe to press twice — but it also means marking a dance as
+            first pick after you've built the week would do nothing at all. */}
+        <button
+          onClick={() => {
+            if (
+              !confirm(
+                "Clear this week's drafts and solve the whole week again?\n\n" +
+                  "Published practices are left exactly as they are — only drafts go.",
+              )
+            ) {
+              return;
+            }
+            propose(true);
+          }}
+          disabled={isPending}
+          className="text-xs font-medium text-ink-soft hover:underline disabled:opacity-45"
+        >
+          Clear drafts and rebuild
+        </button>
+
         <span className="text-xs text-ink-soft">
-          Places every dance that still needs a slot at once, fitting as many
-          people into as many practices as it can.
+          Builds the week shown on the calendar below. Dances ticked{" "}
+          <span className="font-medium text-ink">First pick</span> are placed
+          before the rest.
         </span>
       </div>
 
@@ -83,7 +117,7 @@ export function BuildWeek({ weekOfIso }: { weekOfIso: string }) {
         <p className="mt-3 text-sm font-medium text-good">
           {applied === 0
             ? "Nothing to add — those slots were taken in the meantime."
-            : `Added ${applied} draft ${applied === 1 ? "practice" : "practices"}. Review them below, then publish.`}
+            : `Added ${applied} draft ${applied === 1 ? "practice" : "practices"}${ isRebuild ? ", replacing this week's previous drafts" : ""}. Review them below, then publish.`}
         </p>
       )}
 

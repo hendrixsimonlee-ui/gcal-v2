@@ -12,6 +12,7 @@ import {
   type WeekStatus,
   type WeekTrackerRow,
 } from "@/lib/actions/schedule";
+import { setDanceWeekPriority } from "@/lib/actions/build-week";
 import { formatWeekLabel } from "@/lib/dates";
 import { APP_TIME_ZONE } from "@/lib/timezone";
 
@@ -217,6 +218,35 @@ export function WeekTracker({
               }`}
             >
               <span className="font-medium text-ink">{row.danceName}</span>
+
+              {/* Placed first when building this week.
+                  Only meaningful before the week is built, so it's offered
+                  wherever the dance still could be moved — a published week
+                  is already decided. */}
+              <label
+                className="flex items-center gap-1 text-[11px] text-ink-soft"
+                title="Give this dance first pick of slots when building this week"
+              >
+                <input
+                  type="checkbox"
+                  checked={row.isPriority}
+                  disabled={isPending}
+                  onChange={() =>
+                    run(async () => {
+                      await setDanceWeekPriority(
+                        row.danceId,
+                        weekOfIso,
+                        !row.isPriority,
+                      );
+                      return row.isPriority
+                        ? `${row.danceName} is no longer first in line this week.`
+                        : `${row.danceName} will be placed first when you build this week.`;
+                    })
+                  }
+                  className="h-3.5 w-3.5 accent-accent"
+                />
+                First pick
+              </label>
               <span
                 className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${style.className}`}
               >

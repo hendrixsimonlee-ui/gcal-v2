@@ -1,6 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { addDays, startOfWeek } from "@/lib/dates";
-import { BuildWeek } from "@/components/schedule-builder/build-week";
+import { addDays } from "@/lib/dates";
 import { ScheduleBuilder } from "@/components/schedule-builder/schedule-builder";
 
 export default async function ScheduleBuilderPage() {
@@ -64,7 +63,6 @@ export default async function ScheduleBuilderPage() {
         </p>
       </div>
       <ScheduleBuilder
-      buildWeek={<BuildWeek weekOfIso={startOfWeek(new Date()).toISOString()} />}
       dances={dances.map((d) => ({
         id: d.id,
         name: d.name,

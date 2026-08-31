@@ -69,6 +69,9 @@ export type DanceToPlace = {
   /** Ranked slots from the existing per-dance engine. Hard constraints have
    * already been applied, so anything in here is legal on its own. */
   candidates: CandidateSlot[];
+  /** The AD marked this dance as the one that matters most this week, so it
+   * picks its slot before everything else. */
+  priority?: boolean;
 };
 
 export type AttendanceHistory = {
@@ -181,9 +184,21 @@ export function solveWeek(input: OptimizerInput): OptimizerResult {
   const deficitWeight = input.deficitWeight ?? DEFAULT_DEFICIT_WEIGHT;
   const { history } = input;
 
-  // Most constrained first. Cast size breaks ties: a big dance is harder to
-  // fit later, so give it the earlier pick.
+  // Priority first, then most constrained.
+  //
+  // Most-constrained-first is the right default: the dance with the fewest
+  // workable times is the one that can most easily end up with nothing, so it
+  // should pick before a dance that has five options. But it optimises for
+  // "everything gets placed", and sometimes the AD knows something the data
+  // doesn't — a piece going into a showcase, a week where one dance has to
+  // have everybody there. A dance marked priority picks first regardless of
+  // how many options it has; the rest keep the usual ordering among
+  // themselves. Cast size breaks ties within each group, since a big dance is
+  // harder to fit later.
   const ordered = [...input.dances].sort((a, b) => {
+    if (Boolean(a.priority) !== Boolean(b.priority)) {
+      return a.priority ? -1 : 1;
+    }
     if (a.candidates.length !== b.candidates.length) {
       return a.candidates.length - b.candidates.length;
     }

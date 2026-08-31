@@ -246,6 +246,9 @@ export interface WeekTrackerRow {
   /** Set when this week was cancelled after being published and the cast
    * still hasn't been told. */
   pendingCancellation: number;
+  /** Marked to be placed first when building this week. Per week, so it
+   * stops applying on its own once the week has passed. */
+  isPriority: boolean;
   practices: {
     id: string;
     startDateTime: Date;
@@ -268,7 +271,7 @@ export async function getWeekTracker(
   const weekOf = startOfWeek(new Date(weekOfIso));
   const weekEnd = new Date(weekOf.getTime() + 7 * 24 * 60 * 60 * 1000);
 
-  const [dances, practices, weeksOff] = await Promise.all([
+  const [dances, practices, weeksOff, priorities] = await Promise.all([
     prisma.dance.findMany({
       where: { archivedAt: null },
       orderBy: { name: "asc" },
@@ -283,9 +286,14 @@ export async function getWeekTracker(
       include: { space: { select: { name: true } } },
     }),
     prisma.danceWeekOff.findMany({ where: { weekOf } }),
+    prisma.danceWeekPriority.findMany({
+      where: { weekOf },
+      select: { danceId: true },
+    }),
   ]);
 
   const offIds = new Set(weeksOff.map((w) => w.danceId));
+  const priorityIds = new Set(priorities.map((p) => p.danceId));
   const pendingCancelById = new Map(
     weeksOff
       .filter((w) => w.pendingCancellationNotice)
@@ -310,6 +318,7 @@ export async function getWeekTracker(
       status,
       pendingChanges: mine.filter((p) => p.pendingAnnouncement).length,
       pendingCancellation: pendingCancelById.get(dance.id) ?? 0,
+      isPriority: priorityIds.has(dance.id),
       practices: mine.map((p) => ({
         id: p.id,
         startDateTime: p.startDateTime,

@@ -258,7 +258,45 @@ export default function AdminHelpPage() {
         </p>
         <p>
           Everything it produces is a <B>draft</B>. Nobody is told anything
-          until you publish.
+          until you publish. The proposal itself isn&rsquo;t saved — it lives
+          in the page until you press <B>Add these as drafts</B>, and those
+          drafts then persist through refreshes and sign-outs like anything
+          else.
+        </p>
+
+        <h3 className="mt-2 font-semibold text-ink">Which week it builds</h3>
+        <p>
+          The week the calendar is showing — not today&rsquo;s week. Page
+          forward three weeks and press the button and you get that week.
+          Weeks in the past work the same way, which is what you want when
+          filling in a schedule after the fact.
+        </p>
+
+        <h3 className="mt-2 font-semibold text-ink">Giving a dance first pick</h3>
+        <p>
+          Each dance in the week checklist has a <B>First pick</B> box. Ticked,
+          that dance chooses its slot before all the others, so it gets the
+          best time available and everyone else works around it. Use it for
+          the week a piece has to have full attendance.
+        </p>
+        <p>
+          It applies to <B>that week only</B> and clears itself as the week
+          passes, so a preference set in September can&rsquo;t quietly skew
+          December.
+        </p>
+
+        <h3 className="mt-2 font-semibold text-ink">Building a week twice</h3>
+        <p>
+          Pressing the button again is safe: dances already placed are left
+          alone and only the gaps get filled. That also means ticking First
+          pick <em>after</em> you&rsquo;ve built a week changes nothing on its
+          own, because there is nothing left to place.
+        </p>
+        <p>
+          <B>Clear drafts and rebuild</B> is the way to make it reconsider. It
+          throws away this week&rsquo;s drafts and solves the whole week again
+          from scratch. Published practices are never touched — they keep their
+          rooms and the rebuild works around them.
         </p>
       </Section>
 

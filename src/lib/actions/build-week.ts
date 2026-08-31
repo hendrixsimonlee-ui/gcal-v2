@@ -79,6 +79,16 @@ async function missRates(danceIds: string[]) {
 export async function proposeWeek(
   weekOfIso: string,
   danceIds?: string[],
+  options: {
+    /** Reconsider dances whose only practices this week are drafts.
+     *
+     * The default leaves anything already placed alone, which is what makes
+     * the button safe to press twice. But it also means a week you've already
+     * built can't be re-solved — so marking a dance as priority afterwards
+     * would change nothing. This lets the AD ask for a genuine rebuild;
+     * published practices are still never touched. */
+    includeDrafted?: boolean;
+  } = {},
 ): Promise<BuildWeekProposal> {
   await requireAdmin();
 
@@ -89,10 +99,11 @@ export async function proposeWeek(
     where: {
       archivedAt: null,
       ...(danceIds ? { id: { in: danceIds } } : {}),
-      // A dance already placed this week is left alone.
-      practices: {
-        none: { startDateTime: { gte: weekStart, lt: weekEnd } },
-      },
+      // A dance already placed this week is left alone — unless the AD asked
+      // for a rebuild, in which case only *published* practices hold it back.
+      practices: options.includeDrafted
+        ? { none: { startDateTime: { gte: weekStart, lt: weekEnd }, status: "CONFIRMED" } }
+        : { none: { startDateTime: { gte: weekStart, lt: weekEnd } } },
       // Nor is one the AD has marked off this week.
       weeksOff: { none: { weekOf: weekStart } },
     },
@@ -107,6 +118,13 @@ export async function proposeWeek(
   }
 
   const settings = await getAttendanceSettings();
+
+  // Which dances the AD wants to come first this week.
+  const priorities = await prisma.danceWeekPriority.findMany({
+    where: { weekOf: weekStart, danceId: { in: dances.map((d) => d.id) } },
+    select: { danceId: true },
+  });
+  const priorityIds = new Set(priorities.map((p) => p.danceId));
 
   // Candidates come from the existing per-dance engine, so the solver
   // inherits every hard constraint it already enforces.
@@ -137,6 +155,7 @@ export async function proposeWeek(
         role: m.role,
       })),
       candidates,
+      priority: priorityIds.has(dance.id),
     });
   }
 
@@ -179,8 +198,31 @@ export async function proposeWeek(
  * the team calendar. */
 export async function applyWeekProposal(
   proposal: BuildWeekProposal,
-): Promise<{ created: number }> {
+  options: {
+    /** Clear this week's drafts for the dances being placed, first.
+     *
+     * Only ever drafts, and only for dances in this proposal. A published
+     * practice is something the team has already been told about, so it is
+     * never removed by a rebuild — it holds its room and the rebuild works
+     * around it. */
+    replaceDraftsForWeekIso?: string;
+  } = {},
+): Promise<{ created: number; replaced: number }> {
   await requireAdmin();
+
+  let replaced = 0;
+  if (options.replaceDraftsForWeekIso) {
+    const weekStart = startOfWeek(new Date(options.replaceDraftsForWeekIso));
+    const weekEnd = addDays(weekStart, 7);
+    const { count } = await prisma.practice.deleteMany({
+      where: {
+        status: "PROPOSED",
+        danceId: { in: proposal.placements.map((p) => p.danceId) },
+        startDateTime: { gte: weekStart, lt: weekEnd },
+      },
+    });
+    replaced = count;
+  }
 
   let created = 0;
   for (const placement of proposal.placements) {
@@ -212,5 +254,26 @@ export async function applyWeekProposal(
   }
 
   revalidatePath("/admin/schedule-builder");
-  return { created };
+  return { created, replaced };
+}
+
+/** Marks (or unmarks) a dance as the one to place first, for one week. */
+export async function setDanceWeekPriority(
+  danceId: string,
+  weekOfIso: string,
+  priority: boolean,
+): Promise<void> {
+  const admin = await requireAdmin();
+  const weekOf = startOfWeek(new Date(weekOfIso));
+
+  if (priority) {
+    await prisma.danceWeekPriority.upsert({
+      where: { danceId_weekOf: { danceId, weekOf } },
+      update: { setById: admin.id },
+      create: { danceId, weekOf, setById: admin.id },
+    });
+  } else {
+    await prisma.danceWeekPriority.deleteMany({ where: { danceId, weekOf } });
+  }
+  revalidatePath("/admin/schedule-builder");
 }

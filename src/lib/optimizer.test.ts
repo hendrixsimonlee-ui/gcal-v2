@@ -319,6 +319,63 @@ function dance(
   );
 }
 
+
+// --- priority: the AD overrides most-constrained-first ----------------------
+// Most-constrained-first is right by default, but sometimes the AD knows
+// something the data doesn't. A dance marked priority picks before everything
+// else, even when another dance has fewer options and would normally go first.
+{
+  const rigid = dance("Rigid", ["c", "d"], [slot(0, "studio")]);
+  const wanted: DanceToPlace = {
+    ...dance("Wanted", ["a", "b"], [slot(0, "studio"), slot(2, "studio")]),
+    priority: true,
+  };
+
+  const result = solveWeek({ dances: [rigid, wanted] });
+  const wantedPlacement = result.placements.find((p) => p.danceId === "Wanted");
+  assertEqual(
+    wantedPlacement?.slot.startDateTime.getTime(),
+    slot(0, "studio").startDateTime.getTime(),
+    "a priority dance takes the contested slot first",
+  );
+  assertEqual(
+    result.unplaced[0]?.danceId,
+    "Rigid",
+    "...even though the other dance had fewer options and would normally win",
+  );
+}
+
+// Without the flag, the same pair resolves the usual way.
+{
+  const rigid = dance("Rigid", ["c", "d"], [slot(0, "studio")]);
+  const wanted = dance("Wanted", ["a", "b"], [slot(0, "studio"), slot(2, "studio")]);
+  const result = solveWeek({ dances: [rigid, wanted] });
+  assertEqual(result.placements.length, 2, "unflagged, both still get placed");
+  assertEqual(
+    result.placements.find((p) => p.danceId === "Rigid")?.slot.startDateTime.getTime(),
+    slot(0, "studio").startDateTime.getTime(),
+    "...with the constrained dance keeping its only option",
+  );
+}
+
+// Two priority dances still sort sensibly against each other.
+{
+  const a: DanceToPlace = {
+    ...dance("BothA", ["a"], [slot(0, "studio"), slot(2, "studio")]),
+    priority: true,
+  };
+  const b: DanceToPlace = {
+    ...dance("BothB", ["b"], [slot(0, "studio")]),
+    priority: true,
+  };
+  const result = solveWeek({ dances: [a, b] });
+  assertEqual(
+    result.placements.length,
+    2,
+    "two priority dances are ordered among themselves, not fought over",
+  );
+}
+
 if (failures > 0) {
   console.error(`\n${failures} optimizer test(s) failed`);
   process.exit(1);

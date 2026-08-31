@@ -125,6 +125,7 @@ model User {
   notifications       Notification[]
   conflictSubmissions ConflictSubmission[]
   conflictSubmissionsMadeForOthers ConflictSubmission[] @relation("ConflictSubmissionSubmitter")
+  danceWeekPrioritiesSet DanceWeekPriority[] @relation("DanceWeekPrioritySetter")
   practiceCalendarExports PracticeCalendarExport[]
   exclusionsAuthored  WeeklyExclusion[]           @relation("ExclusionAuthor")
   weeksReviewed       AttendanceWeekReview[]      @relation("WeekReviewer")
@@ -153,6 +154,7 @@ model Dance {
   practices     Practice[]
   exclusions    WeeklyExclusion[]
   weeksOff      DanceWeekOff[]
+  weekPriorities DanceWeekPriority[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -637,4 +639,34 @@ model PracticeCalendarExport {
 
   @@unique([userId, practiceId])
   @@index([practiceId])
+}
+
+/// "This week, get this dance the best slot."
+///
+/// Normally the solver goes most-constrained-first: the dance with the fewest
+/// workable times picks first, because it is the one that can most easily end
+/// up with nothing. That is the right default and the wrong answer when the
+/// AD knows something the data doesn't — a piece going into a showcase, a
+/// week where one dance has to have full attendance.
+///
+/// Priority jumps that queue for one week only. Deliberately not a permanent
+/// flag on the dance: a preference set in September that quietly skews
+/// December is worse than no feature, and a per-week row simply stops
+/// applying the moment the week passes.
+model DanceWeekPriority {
+  id String @id @default(cuid())
+
+  danceId String
+  dance   Dance  @relation(fields: [danceId], references: [id], onDelete: Cascade)
+
+  weekOf DateTime @db.Date
+
+  /// Who asked for it, so an unexpected schedule can be traced back.
+  setById String?
+  setBy   User?   @relation("DanceWeekPrioritySetter", fields: [setById], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@unique([danceId, weekOf])
+  @@index([weekOf])
 }
