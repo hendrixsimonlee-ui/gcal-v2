@@ -232,3 +232,43 @@ time {
 .fc .fc-button:disabled {
   opacity: 0.45;
 }
+
+/* Draft vs published practices on the Schedule Builder grid.
+ *
+ * These have to be tellable apart at a glance and across the room, because
+ * publishing is the step that notifies forty people — mistaking a draft for a
+ * published practice is how somebody gets told about a rehearsal that isn't
+ * happening, and mistaking a published one for a draft is how a change goes
+ * out unannounced.
+ *
+ * A published practice is a solid block of its dance's colour. A draft keeps
+ * that colour, so you can still see which dance it belongs to, but is hatched
+ * with diagonal stripes and outlined with a heavy dashed border. Hatching
+ * survives being small, being glanced at, and being looked at by someone who
+ * can't easily distinguish the colours. */
+.fc .padt-draft {
+  border-style: dashed !important;
+  border-width: 2px !important;
+  background-image: repeating-linear-gradient(
+    45deg,
+    rgba(255, 255, 255, 0.6) 0,
+    rgba(255, 255, 255, 0.6) 5px,
+    transparent 5px,
+    transparent 11px
+  );
+}
+
+.fc .padt-published {
+  border-width: 1px;
+}
+
+/* The same hatch for the legend swatch, which isn't inside .fc. */
+.padt-draft:not(.fc-event) {
+  background-image: repeating-linear-gradient(
+    45deg,
+    rgba(255, 255, 255, 0.7) 0,
+    rgba(255, 255, 255, 0.7) 2px,
+    transparent 2px,
+    transparent 4px
+  );
+}

@@ -23,12 +23,21 @@ const slotFormatter = new Intl.DateTimeFormat("en-US", {
 export function BuildWeek({
   weekOfIso,
   weekLabel,
+  onApplied,
 }: {
   weekOfIso: string;
   /** Named on the button itself. The button acts on the week the calendar is
    * showing, so it says which week that is — "Build the week" next to a grid
    * you have paged away from is the one place this can go quietly wrong. */
   weekLabel: string;
+  /** Called once drafts have been written.
+   *
+   * router.refresh() re-renders the server tree, which is enough for the
+   * calendar and the practice list because those come from server props. The
+   * week checklist doesn't: it fetches its own rows in an effect, so it
+   * carried on showing the week as empty until the page was reloaded by hand.
+   * The parent owns the key that invalidates it. */
+  onApplied?: () => void;
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -65,6 +74,7 @@ export function BuildWeek({
         );
         setApplied(created);
         setProposal(null);
+        onApplied?.();
         router.refresh();
       } catch (e) {
         setError(e instanceof Error ? e.message : "Couldn't save the drafts.");

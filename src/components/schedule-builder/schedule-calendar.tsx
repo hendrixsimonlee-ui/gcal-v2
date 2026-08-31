@@ -1,6 +1,7 @@
 "use client";
 
 import FullCalendar from "@fullcalendar/react";
+import { useEffect, useRef } from "react";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import interactionPlugin from "@fullcalendar/interaction";
@@ -61,6 +62,7 @@ export function ScheduleCalendar({
   onEventMove,
   onEventClick,
   onDatesSet,
+  gotoDateKey,
 }: {
   practices: PracticeEvent[];
   candidates: CandidateSlot[];
@@ -73,6 +75,10 @@ export function ScheduleCalendar({
     startTime: string;
     endTime: string;
   }[];
+  /** "YYYY-MM-DD" to jump to. The grid owns which week is showing, so a date
+   * picker outside it has to ask rather than set state — changing this sends
+   * the calendar to that date's week. */
+  gotoDateKey?: string;
   /** Only used to word the legend, so "space is free" reads correctly whether
    * one room or all of them are in view. */
   legendSpaceCount: number;
@@ -92,7 +98,12 @@ export function ScheduleCalendar({
       end: p.endDateTime,
       backgroundColor: color,
       borderColor: color,
-      classNames: p.status === "PROPOSED" ? ["opacity-60", "border-dashed"] : [],
+      // A draft is hatched and dash-bordered; a published practice is a solid
+      // block. Fading it instead (what this did before) reads as "less
+      // important" rather than "not final", and made the text harder to read
+      // into the bargain — the one state you most need to notice was the one
+      // that stood out least.
+      classNames: p.status === "PROPOSED" ? ["padt-draft"] : ["padt-published"],
       extendedProps: {
         status: p.status,
         spaceName: p.spaceName,
@@ -139,6 +150,16 @@ export function ScheduleCalendar({
   const { slotMinTime, slotMaxTime, scrollTime } =
     visibleTimeRange(datedAvailability);
 
+  const calendarRef = useRef<FullCalendar | null>(null);
+
+  // Jump the grid when something outside it asks. FullCalendar owns the
+  // visible range, so this is the only way for a date picker sitting above
+  // the calendar to move it.
+  useEffect(() => {
+    if (!gotoDateKey) return;
+    calendarRef.current?.getApi().gotoDate(gotoDateKey);
+  }, [gotoDateKey]);
+
   return (
     <>
       <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 px-1 text-xs text-ink-soft">
@@ -154,12 +175,21 @@ export function ScheduleCalendar({
           <span className="inline-block h-2.5 w-2.5 rounded-sm border border-dashed border-accent" />
           Suggested slot
         </span>
+        <span className="flex items-center gap-1.5">
+          <span className="padt-draft inline-block h-2.5 w-2.5 rounded-sm border-2 border-dashed border-ink-faint bg-ink-faint" />
+          Draft — nobody told yet
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="inline-block h-2.5 w-2.5 rounded-sm bg-ink-faint" />
+          Published
+        </span>
         <span className="ml-auto">
           Drag on shaded time to place a practice, drag a practice to move it,
           or click one to change its room, time or cast.
         </span>
       </div>
     <FullCalendar
+      ref={calendarRef}
       plugins={[timeGridPlugin, dayGridPlugin, interactionPlugin]}
       initialView="timeGridWeek"
       // Monday-first, matching the Monday-based weeks the rest of the app keys
@@ -260,9 +290,15 @@ function renderEventContent(arg: EventContentArg) {
 
   return (
     <div className="overflow-hidden px-1 text-xs leading-tight">
+      {/* The badge leads, so a narrow block truncates the dance name rather
+          than the one word that says this isn't real yet. */}
       <div className="truncate font-semibold">
+        {status === "PROPOSED" && (
+          <span className="mr-1 rounded-sm bg-white/90 px-1 text-[9px] font-bold uppercase tracking-wide text-black/80">
+            Draft
+          </span>
+        )}
         {String(arg.event.extendedProps.danceName ?? arg.event.title)}
-        {status === "PROPOSED" && <span className="ml-1 font-normal italic">draft</span>}
       </div>
       <div className="truncate tabular-nums opacity-90">{range}</div>
       {arg.event.extendedProps.spaceName ? (

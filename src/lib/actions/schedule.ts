@@ -258,6 +258,18 @@ export interface WeekTrackerRow {
     status: "PROPOSED" | "CONFIRMED";
     pendingAnnouncement: boolean;
     pendingChangeNote: string | null;
+    /** Who is expected at this practice, worked out the same way the
+     * scheduler does: the cast, minus anyone with a conflict over it and
+     * anyone away. Shown on the checklist so the AD can see the cost of a
+     * slot without opening it. */
+    castSize: number;
+    expectedCount: number;
+    missing: {
+      name: string;
+      role: "DANCER" | "CHOREOGRAPHER";
+      /** What they have on, or why they're out. */
+      reason: string;
+    }[];
   }[];
 }
 
@@ -271,7 +283,15 @@ export async function getWeekTracker(
   const weekOf = startOfWeek(new Date(weekOfIso));
   const weekEnd = new Date(weekOf.getTime() + 7 * 24 * 60 * 60 * 1000);
 
-  const [dances, practices, weeksOff, priorities] = await Promise.all([
+  const [
+    dances,
+    practices,
+    weeksOff,
+    priorities,
+    memberships,
+    conflicts,
+    unavailabilities,
+  ] = await Promise.all([
     prisma.dance.findMany({
       where: { archivedAt: null },
       orderBy: { name: "asc" },
@@ -290,10 +310,104 @@ export async function getWeekTracker(
       where: { weekOf },
       select: { danceId: true },
     }),
+    // Everything needed to say who can make each practice. Fetched for the
+    // whole week at once rather than per practice, so this stays one round
+    // trip however many dances are on.
+    prisma.danceMembership.findMany({
+      where: { dance: { archivedAt: null } },
+      include: { user: { select: { id: true, name: true, email: true } } },
+    }),
+    prisma.conflict.findMany({
+      where: { startDateTime: { lt: weekEnd }, endDateTime: { gt: weekOf } },
+      select: {
+        userId: true,
+        startDateTime: true,
+        endDateTime: true,
+        title: true,
+        status: true,
+      },
+    }),
+    prisma.unavailability.findMany({
+      where: { startDate: { lt: weekEnd }, endDate: { gte: weekOf } },
+      select: { userId: true, startDate: true, endDate: true, reason: true },
+    }),
   ]);
 
   const offIds = new Set(weeksOff.map((w) => w.danceId));
   const priorityIds = new Set(priorities.map((p) => p.danceId));
+
+  // Who is expected at a practice: the cast, minus anyone whose conflict
+  // overlaps it and anyone away across it. Deliberately the same reading the
+  // scheduler uses when it ranks slots, so the checklist can't disagree with
+  // the suggestion that produced the practice.
+  const castByDance = new Map<string, typeof memberships>();
+  for (const m of memberships) {
+    const list = castByDance.get(m.danceId) ?? [];
+    list.push(m);
+    castByDance.set(m.danceId, list);
+  }
+  const overlaps = (aS: Date, aE: Date, bS: Date, bE: Date) =>
+    aS < bE && bS < aE;
+
+  function outlookFor(practice: { danceId: string; startDateTime: Date; endDateTime: Date }) {
+    const cast = castByDance.get(practice.danceId) ?? [];
+    const missing: WeekTrackerRow["practices"][number]["missing"] = [];
+
+    for (const member of cast) {
+      const away = unavailabilities.find(
+        (u) =>
+          u.userId === member.userId &&
+          overlaps(
+            practice.startDateTime,
+            practice.endDateTime,
+            u.startDate,
+            new Date(u.endDate.getTime() + 24 * 60 * 60 * 1000),
+          ),
+      );
+      if (away) {
+        missing.push({
+          name: member.user.name ?? member.user.email,
+          role: member.role,
+          reason: away.reason ? `Away — ${away.reason}` : "Away",
+        });
+        continue;
+      }
+
+      const clash = conflicts.find(
+        (c) =>
+          c.userId === member.userId &&
+          overlaps(
+            practice.startDateTime,
+            practice.endDateTime,
+            c.startDateTime,
+            c.endDateTime,
+          ),
+      );
+      if (clash) {
+        missing.push({
+          name: member.user.name ?? member.user.email,
+          role: member.role,
+          reason:
+            (clash.title?.trim() || "Busy") +
+            (clash.status === "EXCUSED" ? " (excused)" : ""),
+        });
+      }
+    }
+
+    // Choreographers first, then alphabetical: a missing choreographer is the
+    // one that changes whether the rehearsal is worth holding.
+    missing.sort(
+      (a, b) =>
+        Number(b.role === "CHOREOGRAPHER") - Number(a.role === "CHOREOGRAPHER") ||
+        a.name.localeCompare(b.name),
+    );
+
+    return {
+      castSize: cast.length,
+      expectedCount: cast.length - missing.length,
+      missing,
+    };
+  }
   const pendingCancelById = new Map(
     weeksOff
       .filter((w) => w.pendingCancellationNotice)
@@ -328,6 +442,7 @@ export async function getWeekTracker(
         status: p.status,
         pendingAnnouncement: p.pendingAnnouncement,
         pendingChangeNote: p.pendingChangeNote,
+        ...outlookFor(p),
       })),
     };
   });

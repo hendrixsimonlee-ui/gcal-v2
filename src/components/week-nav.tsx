@@ -19,13 +19,19 @@ import { useRouter } from "next/navigation";
  */
 export function WeekNav({
   basePath,
+  onNavigate,
   weekStartKey,
   weekLabel,
   todayKey,
   children,
 }: {
-  /** Where the week parameter is applied, e.g. "/admin/conflicts". */
-  basePath: string;
+  /** Where the week parameter is applied, e.g. "/admin/conflicts". Omit when
+   * passing `onNavigate`. */
+  basePath?: string;
+  /** Used instead of links when the week lives in client state rather than the
+   * URL — the Schedule Builder, whose FullCalendar grid owns the visible
+   * range. Receives the "YYYY-MM-DD" to move to. */
+  onNavigate?: (dateKey: string) => void;
   /** The week being shown, as "YYYY-MM-DD". */
   weekStartKey: string;
   /** "Aug 3 – Aug 9", already formatted in the app's timezone. */
@@ -39,6 +45,12 @@ export function WeekNav({
 }) {
   const router = useRouter();
   const href = (key: string) => `${basePath}?week=${key}`;
+  const nav = (key: string) =>
+    onNavigate ? { onClick: () => onNavigate(key) } : { href: href(key) };
+  const go = (key: string) => {
+    if (onNavigate) onNavigate(key);
+    else router.push(href(key));
+  };
   const isThisWeek = shiftDays(weekStartKey, 0) === weekOf(todayKey);
 
   return (
@@ -47,10 +59,10 @@ export function WeekNav({
     // scrolling back up to answer.
     <div className="sticky top-0 z-20 -mx-1 mb-3 rounded-xl border border-line bg-surface/95 px-3 py-2 backdrop-blur supports-[backdrop-filter]:bg-surface/80">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
-        <Step href={href(shiftMonths(weekStartKey, -1))} label="Back a month">
+        <Step {...nav(shiftMonths(weekStartKey, -1))} label="Back a month">
           ‹‹
         </Step>
-        <Step href={href(shiftDays(weekStartKey, -7))} label="Back a week">
+        <Step {...nav(shiftDays(weekStartKey, -7))} label="Back a week">
           ‹
         </Step>
 
@@ -58,20 +70,21 @@ export function WeekNav({
           {weekLabel}
         </span>
 
-        <Step href={href(shiftDays(weekStartKey, 7))} label="Forward a week">
+        <Step {...nav(shiftDays(weekStartKey, 7))} label="Forward a week">
           ›
         </Step>
-        <Step href={href(shiftMonths(weekStartKey, 1))} label="Forward a month">
+        <Step {...nav(shiftMonths(weekStartKey, 1))} label="Forward a month">
           ››
         </Step>
 
         {!isThisWeek && (
-          <Link
-            href={href(todayKey)}
+          <button
+            type="button"
+            onClick={() => go(todayKey)}
             className="rounded-lg border border-line-strong px-2 py-1 text-xs font-medium text-ink-soft transition-colors hover:bg-surface-3"
           >
             This week
-          </Link>
+          </button>
         )}
 
         {/* Any date jumps to its week, so "the week of the showcase" is one
@@ -82,7 +95,7 @@ export function WeekNav({
             type="date"
             value={weekStartKey}
             onChange={(e) => {
-              if (e.target.value) router.push(href(e.target.value));
+              if (e.target.value) go(e.target.value);
             }}
             className="rounded-lg border border-line-strong bg-surface px-2 py-1 text-xs text-ink"
           />
@@ -94,24 +107,33 @@ export function WeekNav({
   );
 }
 
+const STEP_CLASS =
+  "rounded-lg border border-line-strong px-2.5 py-1 text-sm leading-none text-ink-soft transition-colors hover:bg-surface-3";
+
 function Step({
   href,
+  onClick,
   label,
   children,
 }: {
-  href: string;
+  href?: string;
+  onClick?: () => void;
   label: string;
   children: React.ReactNode;
 }) {
+  // A real URL stays a link, so middle-click and the back button work. Client
+  // state gets a button, because there is no address to point at.
+  if (href) {
+    return (
+      <Link href={href} aria-label={label} title={label} className={STEP_CLASS}>
+        {children}
+      </Link>
+    );
+  }
   return (
-    <Link
-      href={href}
-      aria-label={label}
-      title={label}
-      className="rounded-lg border border-line-strong px-2.5 py-1 text-sm leading-none text-ink-soft transition-colors hover:bg-surface-3"
-    >
+    <button type="button" onClick={onClick} aria-label={label} title={label} className={STEP_CLASS}>
       {children}
-    </Link>
+    </button>
   );
 }
 

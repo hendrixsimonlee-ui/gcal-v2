@@ -13,7 +13,8 @@ import {
   type SidebarCastMember,
 } from "@/lib/actions/schedule";
 import type { CandidateSlot } from "@/lib/scheduling";
-import { formatWeekLabel, startOfWeek } from "@/lib/dates";
+import { formatWeekLabel, startOfWeek, toDateParam } from "@/lib/dates";
+import { WeekNav } from "@/components/week-nav";
 import {
   ScheduleCalendar,
   type PracticeEvent,
@@ -118,6 +119,9 @@ export function ScheduleBuilder({
   // them. Every mutation bumps this so the list reflects the new practices
   // (a fresh draft holds its room, so it must drop out of the suggestions).
   const [refreshKey, setRefreshKey] = useState(0);
+  // What the date bar has asked the grid to show. The grid still owns the
+  // visible range — this is only the request.
+  const [gotoDateKey, setGotoDateKey] = useState<string | undefined>();
   const [visibleRange, setVisibleRange] = useState<{ start: Date; end: Date }>(
     () => {
       const start = startOfWeek(new Date());
@@ -457,9 +461,17 @@ export function ScheduleBuilder({
           <BuildWeek
             weekOfIso={weekStart.toISOString()}
             weekLabel={formatWeekLabel(weekStart)}
+            onApplied={bump}
           />
         </div>
       </div>
+
+      <WeekNav
+        weekStartKey={toDateParam(weekStart)}
+        weekLabel={formatWeekLabel(weekStart)}
+        todayKey={toDateParam(new Date())}
+        onNavigate={setGotoDateKey}
+      />
 
       <WeekTracker
         weekOf={weekStart}
@@ -493,6 +505,7 @@ export function ScheduleBuilder({
               setHint(null);
               setEditingId(id);
             }}
+            gotoDateKey={gotoDateKey}
             onDatesSet={(start, end) => setVisibleRange({ start, end })}
           />
 

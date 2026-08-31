@@ -70,6 +70,9 @@ export function WeekTracker({
 }) {
   const router = useRouter();
   const [rows, setRows] = useState<WeekTrackerRow[]>([]);
+  const [expandedPracticeId, setExpandedPracticeId] = useState<string | null>(
+    null,
+  );
   const [isPending, startTransition] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -275,6 +278,37 @@ export function WeekTracker({
                       .join("   |   ")}
               </span>
 
+              {/* Expected turnout, and who's missing, without leaving the
+                  checklist. A headcount answers "is this worth holding?";
+                  the names answer "can I move it so it isn't a problem?" —
+                  so the count is always visible and the names are one click
+                  away rather than on another screen. */}
+              {row.practices.map((p) => {
+                const short = p.expectedCount < p.castSize;
+                const open = expandedPracticeId === p.id;
+                return (
+                  <span key={`att-${p.id}`} className="flex items-center gap-1">
+                    <button
+                      onClick={() =>
+                        setExpandedPracticeId(open ? null : p.id)
+                      }
+                      className={`rounded-full px-2 py-0.5 text-[11px] font-medium transition-colors ${ short
+                          ? "bg-warn-soft text-warn hover:bg-warn/20"
+                          : "bg-good-soft text-good hover:bg-good/20"
+                      }`}
+                      title={
+                        short
+                          ? "Show who can't make it"
+                          : "Everyone in the cast can make it"
+                      }
+                    >
+                      {p.expectedCount}/{p.castSize} expected
+                      {p.missing.length > 0 && (open ? " ▾" : " ▸")}
+                    </button>
+                  </span>
+                );
+              })}
+
               <span className="ml-auto flex items-center gap-3">
                 <button
                   onClick={() => {
@@ -355,6 +389,51 @@ export function WeekTracker({
                   </select>
                 </label>
               </span>
+
+              {row.practices.some((p) => p.id === expandedPracticeId) && (
+                <div className="w-full">
+                  {row.practices
+                    .filter((p) => p.id === expandedPracticeId)
+                    .map((p) => (
+                      <div
+                        key={`exp-${p.id}`}
+                        className="mt-1 rounded-lg bg-surface px-3 py-2"
+                      >
+                        <p className="text-xs font-medium text-ink">
+                          {timeRange(p.startDateTime, p.endDateTime)} ·{" "}
+                          {p.expectedCount} of {p.castSize} expected
+                        </p>
+                        {p.missing.length === 0 ? (
+                          <p className="mt-0.5 text-xs text-good">
+                            Everyone in the cast can make it.
+                          </p>
+                        ) : (
+                          <ul className="mt-1 flex flex-col gap-0.5">
+                            {p.missing.map((m) => (
+                              <li key={m.name} className="text-xs leading-snug">
+                                <span
+                                  className={
+                                    m.role === "CHOREOGRAPHER"
+                                      ? "font-semibold text-bad"
+                                      : "font-medium text-ink"
+                                  }
+                                >
+                                  {m.name}
+                                  {m.role === "CHOREOGRAPHER" &&
+                                    " (choreographer)"}
+                                </span>
+                                <span className="text-ink-soft">
+                                  {" "}
+                                  — {m.reason}
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    ))}
+                </div>
+              )}
             </li>
           );
         })}

@@ -376,6 +376,30 @@ export default function AdminHelpPage() {
         </p>
       </Section>
 
+      <Section title="Reading the Schedule Builder">
+        <ul>
+          <li>
+            <B>Drafts are hatched with diagonal stripes and a dashed
+            border</B>{" "}and carry a DRAFT badge; published practices are
+            solid blocks. Both keep their dance&rsquo;s colour. Publishing is
+            what notifies people, so the difference has to be visible at a
+            glance — mistaking one for the other is how somebody gets told
+            about a rehearsal that isn&rsquo;t happening.
+          </li>
+          <li>
+            <B>Each dance in the checklist shows expected turnout</B>{" "}—
+            &ldquo;8/8 expected&rdquo;. Green means the whole cast can make it,
+            amber means somebody can&rsquo;t. Click it to see who and why,
+            without leaving the page. Choreographers are listed first, since a
+            missing one changes whether the rehearsal is worth holding.
+          </li>
+          <li>
+            The builder has the same date bar as the other screens, plus
+            FullCalendar&rsquo;s own week and month views.
+          </li>
+        </ul>
+      </Section>
+
       <Section title="Moving between weeks">
         <p>
           Conflict Review, Spaces and My Conflicts all carry the same date bar,
@@ -402,8 +426,8 @@ export default function AdminHelpPage() {
           </li>
         </ul>
         <p>
-          The Schedule Builder keeps its own calendar controls instead, since
-          its grid already has week and month views built in.
+          The Schedule Builder has the same bar, and its grid keeps
+          FullCalendar&rsquo;s own week and month views as well.
         </p>
       </Section>
 
