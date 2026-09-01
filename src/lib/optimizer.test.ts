@@ -295,9 +295,10 @@ function dance(
 
   const noSlots = solveWeek({ dances: [dance("Stuck", ["a"], [])] });
   assertEqual(noSlots.unplaced.length, 1, "a dance with no slots is unplaced");
+  assertEqual(noSlots.unplaced[0].cause, "no-slots", "…and says which kind of stuck");
   assert(
-    noSlots.unplaced[0].reason.includes("No slot works"),
-    "…and says why",
+    noSlots.unplaced[0].reason.includes("No room is booked"),
+    "…in a sentence naming what to go and change",
   );
 }
 
@@ -457,6 +458,59 @@ function booked(spaceId: string, startHour: number, minutes: number) {
     people.placements[0]?.slot.startDateTime.getTime(),
     slot(0, "studio").startDateTime.getTime(),
     "packing the room never beats having people in it",
+  );
+}
+
+// --- saying *which* kind of stuck ------------------------------------------
+// One generic "every workable slot clashes with another dance" told the AD
+// nothing and read as a bug, because opening that same dance on its own often
+// showed workable times. Each dead end has a different fix, so each says so.
+{
+  // Held by a First pick dance: the fix is to untick First pick.
+  const rigid = dance("Rigid", ["c", "d"], [slot(0, "studio")]);
+  const wanted: DanceToPlace = {
+    ...dance("Wanted", ["a", "b"], [slot(0, "studio"), slot(2, "studio")]),
+    priority: true,
+  };
+  const result = solveWeek({ dances: [rigid, wanted] });
+  assertEqual(result.unplaced[0]?.cause, "blocked-by-first-pick", "a First pick blocker is named as such");
+  assert(
+    result.unplaced[0].reason.includes("Wanted") &&
+      result.unplaced[0].reason.includes("Untick First pick"),
+    "…and the message says which dance to untick",
+  );
+  assertEqual(
+    JSON.stringify(result.unplaced[0].blockingDanceNames),
+    JSON.stringify(["Wanted"]),
+    "…and the blocker is reported separately for the UI",
+  );
+}
+{
+  // The room is taken and its occupant has nowhere else to go.
+  const held = dance("Held", ["x"], [slot(0, "studio")]);
+  const other = dance("Other", ["y"], [slot(0, "studio")]);
+  const result = solveWeek({ dances: [held, other] });
+  assertEqual(result.unplaced[0]?.cause, "room-taken", "a room clash is called a room clash");
+}
+{
+  // The one that looks like a bug and isn't: the times are free, but this
+  // dance's own people are in another dance then. Those slots still appear on
+  // the dance's own page, marked — the builder can't use them.
+  const bhangra = dance("Bhangra", ["maya"], [slot(0, "studio")]);
+  const scholar = dance("Scholar", ["maya"], [slot(0, "annex")]);
+  const result = solveWeek({ dances: [bhangra, scholar] });
+  assertEqual(
+    result.unplaced[0]?.cause,
+    "cast-double-booked",
+    "shared dancers in another room is its own diagnosis",
+  );
+  assert(
+    result.unplaced[0].reason.includes("two rooms at once"),
+    "…and the message explains why the dance's own page still offers it",
+  );
+  assert(
+    result.unplaced[0].reason.includes("Bhangra"),
+    "…and names the dance they're in",
   );
 }
 

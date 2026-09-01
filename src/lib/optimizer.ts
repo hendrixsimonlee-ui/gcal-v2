@@ -145,10 +145,37 @@ export type Placement = {
   missingUserIds: string[];
 };
 
+/** Why a dance ended up with no time, in a form the AD can act on.
+ *
+ * One generic "every workable slot clashes with another dance" was the worst
+ * kind of message: it told the AD nothing about what to change, and it read
+ * as a bug whenever opening that dance on its own showed workable times. Each
+ * of these has a different fix, so each says so. */
+export type UnplacedCause =
+  /** No legal slot at all — no room booked long enough, or every open hour is
+   * already taken by a practice. */
+  | "no-slots"
+  /** Every option sits in a room another dance is using, and that dance has
+   * nowhere else to go. */
+  | "room-taken"
+  /** Every option overlaps a practice this dance's own people are already in.
+   * These *do* show on the dance's own page, marked, because the AD may still
+   * want to see them — but nobody can be in two rooms at once. */
+  | "cast-double-booked"
+  /** The one dance in the way is marked First pick, so it wasn't moved. */
+  | "blocked-by-first-pick"
+  /** Two or more dances are in the way everywhere, and only one is ever
+   * moved. */
+  | "too-tangled";
+
 export type Unplaced = {
   danceId: string;
   danceName: string;
   reason: string;
+  cause: UnplacedCause;
+  /** The dances standing in the way, so the AD knows what to go and look at
+   * rather than hunting for it. */
+  blockingDanceNames: string[];
 };
 
 export type OptimizerResult = {
@@ -315,14 +342,19 @@ export function solveWeek(input: OptimizerInput): OptimizerResult {
 
   const placed: { dance: DanceToPlace; slot: CandidateSlot }[] = [];
   const unplaced: Unplaced[] = [];
+  const byDanceId = new Map(ordered.map((d) => [d.danceId, d]));
 
   for (const dance of ordered) {
     if (dance.candidates.length === 0) {
       unplaced.push({
         danceId: dance.danceId,
         danceName: dance.danceName,
+        cause: "no-slots",
+        blockingDanceNames: [],
+        // Deliberately not "a choreographer isn't available": choreographers
+        // are a weight now, not a filter, so they can no longer empty a week.
         reason:
-          "No slot works — the room isn't free, or a choreographer isn't available at any open time.",
+          "Nowhere to put it. No room is booked for long enough this week, or every open hour is already taken by a practice.",
       });
       continue;
     }
@@ -357,14 +389,22 @@ export function solveWeek(input: OptimizerInput): OptimizerResult {
       unplaced.push({
         danceId: dance.danceId,
         danceName: dance.danceName,
-        reason:
-          "Every workable slot clashes with another dance already placed — same room, or shared dancers. Moving the other dance out of the way was tried too, and there was nowhere for it to go.",
+        // Filled in properly once the rescue pass has had its go — until
+        // then there is no telling which of the several quite different
+        // things went wrong.
+        cause: "too-tangled",
+        blockingDanceNames: [],
+        reason: "",
       });
   }
 
   // Coverage beats attendance: rescue what greedy left behind, even at a cost.
   const rescued = rescueUnplacedByDisplacement(placed, unplaced, ordered);
-  const stillUnplaced = unplaced.filter((u) => !rescued.has(u.danceId));
+  const stillUnplaced = unplaced
+    .filter((u) => !rescued.has(u.danceId))
+    .map((u) =>
+      u.reason === "" ? diagnose(u, byDanceId.get(u.danceId)!, placed) : u,
+    );
 
   improveBySwapping(placed, occupied, history, deficitWeight);
 
@@ -399,6 +439,70 @@ export function solveWeek(input: OptimizerInput): OptimizerResult {
       0,
     ),
   };
+}
+
+/** Works out *which* kind of stuck a dance is, once the rescue pass has
+ * failed, and says so in a sentence naming the thing to change.
+ *
+ * The four are genuinely different problems with genuinely different fixes,
+ * and the AD can't tell them apart from the schedule. In particular
+ * `cast-double-booked` is the one that looks like a bug and isn't: those
+ * times show on the dance's own page — marked, because the AD may still want
+ * to see them — while the builder can't use them, since nobody can be in two
+ * rooms at once. Saying that out loud is the difference between "the tool is
+ * broken" and "of course, Maya's in Bhangra then". */
+function diagnose(
+  entry: Unplaced,
+  dance: DanceToPlace,
+  placed: { dance: DanceToPlace; slot: CandidateSlot }[],
+): Unplaced {
+  const blockingNames = new Set<string>();
+  let sawFirstPickBlocker: string | null = null;
+  let everySlotTangled = true;
+  let sawRoomClash = false;
+  let sawCastClash = false;
+
+  for (const slot of dance.candidates) {
+    const proposal = { dance, slot };
+    const blockers = placed.filter((p) => !compatible(p, proposal));
+    if (blockers.length === 0) continue;
+    if (blockers.length === 1) everySlotTangled = false;
+
+    for (const blocker of blockers) {
+      blockingNames.add(blocker.dance.danceName);
+      if (blocker.slot.spaceId === slot.spaceId) sawRoomClash = true;
+      else sawCastClash = true;
+    }
+
+    if (blockers.length === 1 && blockers[0].dance.priority) {
+      sawFirstPickBlocker ??= blockers[0].dance.danceName;
+    }
+  }
+
+  const names = Array.from(blockingNames).sort();
+  const list = names.join(", ");
+
+  let cause: UnplacedCause;
+  let reason: string;
+
+  if (sawFirstPickBlocker) {
+    cause = "blocked-by-first-pick";
+    reason = `The only time that works is held by ${sawFirstPickBlocker}, which you marked First pick — so it wasn't asked to move. Untick First pick on ${sawFirstPickBlocker} and rebuild to let them swap.`;
+  } else if (everySlotTangled) {
+    cause = "too-tangled";
+    reason = `Every open time has two or more dances in the way (${list}), and only one is ever moved aside. Tick First pick on this dance and rebuild so it chooses before the others.`;
+  } else if (sawCastClash && !sawRoomClash) {
+    cause = "cast-double-booked";
+    reason = `Every open time overlaps a practice its own dancers are already in (${list}). Those times still show on this dance's own page with the clash marked, but nobody can be in two rooms at once, so the builder can't use them.`;
+  } else if (sawRoomClash && !sawCastClash) {
+    cause = "room-taken";
+    reason = `Every open time is in a room ${list} is using, and there is nowhere else for ${names.length === 1 ? "it" : "them"} to go this week.`;
+  } else {
+    cause = "too-tangled";
+    reason = `Every open time clashes with a dance already placed (${list}) — same room, or dancers in both — and the dance in the way had nowhere else to go.`;
+  }
+
+  return { ...entry, cause, reason, blockingDanceNames: names };
 }
 
 /** Second chance for dances greedy couldn't fit: ask someone to move.

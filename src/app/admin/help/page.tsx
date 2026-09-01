@@ -305,8 +305,94 @@ export default function AdminHelpPage() {
         </p>
         <p>
           If a dance is still listed as unplaced afterwards, it now genuinely
-          means there was nowhere for it — the builder already tried moving
-          things out of its way.
+          means there was nowhere for it — the builder already searched every
+          slot in the week and already tried moving things out of its way.
+        </p>
+
+        <h3 className="mt-2 font-semibold text-ink">
+          The four reasons a dance can still come back unplaced
+        </h3>
+        <p>
+          Each one has a different fix, so the builder names which one it hit
+          next to the dance. In order of how often you&rsquo;ll see them:
+        </p>
+        <table className="my-1 w-full border-collapse text-left">
+          <tbody className="[&_td]:py-1 [&_td]:pr-3 [&_td]:align-top [&_tr]:border-b [&_tr]:border-line/60">
+            <tr>
+              <td>
+                <B>Its dancers are in another practice then</B>
+              </td>
+              <td>
+                Nobody can be in two rooms at once. Move or delete the other
+                practice, or leave this dance for next week.
+              </td>
+            </tr>
+            <tr>
+              <td>
+                <B>The room is taken</B>
+              </td>
+              <td>
+                Another dance holds every room this one could use, and has
+                nowhere else to go. Book more room time, or shorten the
+                practice.
+              </td>
+            </tr>
+            <tr>
+              <td>
+                <B>Two or more dances are in the way</B>
+              </td>
+              <td>
+                The builder only ever moves one aside. Tick First pick on this
+                dance and rebuild so it chooses before the others.
+              </td>
+            </tr>
+            <tr>
+              <td>
+                <B>Blocked by a First pick dance</B>
+              </td>
+              <td>
+                A dance you flagged is holding the only workable time, and
+                flagged dances are never moved. Untick it and rebuild.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <p>
+          A fifth message, <B>&ldquo;nowhere to put it&rdquo;</B>, means there
+          was no legal slot at all — no room booked long enough that week, or
+          every open hour already taken. Check the spaces calendar.
+        </p>
+
+        <h3 className="mt-2 font-semibold text-ink">
+          Why a dance can look schedulable on its own page but not here
+        </h3>
+        <p>
+          This is the one that looks like a bug and isn&rsquo;t, so it&rsquo;s
+          worth knowing before somebody asks you.
+        </p>
+        <p>
+          <B>Best times this week</B> and <B>Build the week</B> treat one thing
+          differently on purpose. If some of a dance&rsquo;s cast are in
+          another dance&rsquo;s practice at 7pm, the suggestion list still
+          shows you 7pm — with the clash marked and those people named —
+          because you may well decide to hold the rehearsal without them. The
+          week builder can&rsquo;t use that time at all, because it is placing
+          both practices and can&rsquo;t put the same person in two rooms.
+        </p>
+        <p>
+          So a dance can be listed as unplaced while its own page offers
+          several times that look fine. Those slots are tagged{" "}
+          <B>&ldquo;Build the week can&rsquo;t use this one&rdquo;</B> in the
+          suggestion list, and the unplaced message says the same thing from
+          the other side. If you want the rehearsal anyway, press{" "}
+          <B>Use this slot</B> — the builder is deferring to you, not
+          overruling you.
+        </p>
+        <p>
+          The tell: look at <em>why</em> people are missing. &ldquo;In another
+          dance then&rdquo; is a hard clash the builder must refuse. A logged
+          conflict like &ldquo;CHEM 101 lab&rdquo; is not — the builder will
+          happily use that time if it&rsquo;s the best one going.
         </p>
 
         <h3 className="mt-2 font-semibold text-ink">

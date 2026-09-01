@@ -198,14 +198,28 @@ export function BuildWeek({
               <h3 className="text-sm font-semibold text-warn">
                 Couldn&rsquo;t place {proposal.unplaced.length}
               </h3>
-              <ul className="mt-1 flex flex-col gap-1">
+              <p className="mt-0.5 text-xs text-warn/85">
+                The builder searches every legal slot in the week and will move
+                one dance out of the way to fit another in, so these are real
+                dead ends rather than a short list it gave up on.
+              </p>
+              <ul className="mt-1.5 flex flex-col gap-1.5">
                 {proposal.unplaced.map((u) => (
-                  <li
-                    key={u.danceId}
-                    className="text-xs text-warn"
-                  >
+                  <li key={u.danceId} className="text-xs text-warn">
                     <span className="font-medium">{u.danceName}</span> —{" "}
                     {u.reason}
+                    {/* The one that reads as a bug. Say it plainly, next to
+                        the dance it happened to, or the AD goes to the
+                        dance's own page, sees those very times offered, and
+                        concludes the builder is broken. */}
+                    {u.cause === "cast-double-booked" && (
+                      <span className="mt-0.5 block text-warn/80">
+                        This is why {u.danceName} can look schedulable on its
+                        own page and not here: that page shows a clashing time
+                        with the clash marked so you can judge it, and the
+                        builder treats it as impossible.
+                      </span>
+                    )}
                   </li>
                 ))}
               </ul>
