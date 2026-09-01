@@ -1,5 +1,7 @@
 import {
   buildHistory,
+  MAX_COMPACTNESS_ADJUSTMENT,
+  MIN_MEMBER_WEIGHT,
   solveWeek,
   type DanceToPlace,
   type OptimizerInput,
@@ -660,6 +662,114 @@ function booked(spaceId: string, startHour: number, minutes: number) {
   assert(
     placedMore + attendedMore > 0,
     `searching finds a better week sometimes (${placedMore} placed more, ${attendedMore} better attended, of 120)`,
+  );
+}
+
+// --- room packing must never cost a person ----------------------------------
+// This one shipped broken. Each slot's packing adjustment was clamped to ±1,
+// which is a *swing* of 2 between the best-packed and worst-packed option —
+// and a person is worth 1. So the builder drafted a snugly-packed time with
+// somebody missing over a time the whole cast was free, which is exactly what
+// the AD reported. What has to stay under 1 is the swing, not the clamp.
+{
+  const everyoneFree = slot(0, "studio");                    // 12:00–13:30
+  const oneMissing = slot(4, "annex", ["c"]);                // 16:00–17:30
+
+  const result = solveWeek({
+    dances: [dance("Solo", ["a", "b", "c"], [everyoneFree, oneMissing])],
+    occupied: [
+      // Worst possible packing for the good slot: strand a gap on both sides
+      // and again beyond, enough to saturate the clamp rather than land just
+      // inside it. A test that only *nearly* reaches the limit passes on a
+      // broken clamp by luck, which is how this shipped in the first place.
+      booked("studio", -1.5, 60), //  10:30–11:30
+      booked("studio", 2, 60), //     14:00–15:00
+      booked("studio", -3.5, 60), //  08:30–09:30 (30 before the 10:30 one)
+      booked("studio", 3.5, 60), //   15:30–16:30 (30 after the 14:00 one)
+      // Best possible packing for the bad one: flush all the way along.
+      booked("annex", 2.5, 90), //    14:30–16:00
+      booked("annex", 5.5, 60), //    17:30–18:30
+      booked("annex", 1, 90), //      13:00–14:30
+      booked("annex", 6.5, 60), //    18:30–19:30
+    ],
+  });
+
+  assertEqual(
+    result.placements[0]?.slot.startDateTime.getTime(),
+    everyoneFree.startDateTime.getTime(),
+    "a time the whole cast is free for beats a snugly-packed one they aren't",
+  );
+  assertEqual(
+    result.placements[0]?.expectedCount,
+    3,
+    "…so nobody is left out to tidy up the room",
+  );
+
+  // And the invariant itself, so it can't drift back. What matters is the
+  // swing between the best- and worst-packed slot, not the size of either.
+  assert(
+    2 * MAX_COMPACTNESS_ADJUSTMENT < MIN_MEMBER_WEIGHT,
+    `the whole packing swing (${2 * MAX_COMPACTNESS_ADJUSTMENT}) stays under one person (${MIN_MEMBER_WEIGHT})`,
+  );
+}
+
+// --- the slot goes to whoever gets the most out of it -----------------------
+// Swapping only helps when two dances can each use the other's time. The case
+// it missed: a slot where one dance would have everybody is sitting under a
+// dance that merely quite likes it and has somewhere else just as good. There
+// is nothing to swap — the second dance's alternative is empty, not occupied —
+// so without this the slot stays with whoever was placed first, which is an
+// accident of ordering rather than a decision.
+{
+  // Fine has fewer options so it is placed first and takes noon, which is the
+  // one time NeedsIt would have its whole cast.
+  const fine = dance("Fine", ["e", "f"], [slot(0, "studio"), slot(4, "studio")]);
+  const needsIt = dance("NeedsIt", ["a", "b", "c", "d"], [
+    slot(0, "studio"),
+    slot(2, "studio", ["a"]),
+    slot(6, "studio", ["a"]),
+  ]);
+
+  // maxRuns 1 pins this to the single canonical run, so it tests the
+  // reallocation pass rather than a lucky reshuffle finding the same answer.
+  const result = solveWeek({ dances: [fine, needsIt], maxRuns: 1 });
+  const gotIt = result.placements.find((p) => p.danceId === "NeedsIt");
+  assertEqual(
+    gotIt?.slot.startDateTime.getTime(),
+    slot(0, "studio").startDateTime.getTime(),
+    "the dance that gets full attendance from a slot ends up with it",
+  );
+  assertEqual(gotIt?.expectedCount, 4, "…with its whole cast");
+  assertEqual(
+    result.placements.find((p) => p.danceId === "Fine")?.expectedCount,
+    2,
+    "…and the dance that moved is no worse off",
+  );
+  assertEqual(result.placements.length, 2, "…and both are still placed");
+}
+{
+  // The other half of that rule: a dance with a mild preference must not
+  // evict one that would lose more than the mover gains.
+  const loser = dance("Loser", ["l1", "l2", "l3", "l4", "l5"], [
+    slot(0, "studio"),
+    slot(4, "studio", ["l1", "l2"]),
+  ]);
+  const nudger = dance("Nudger", ["g1", "g2"], [
+    slot(0, "studio"),
+    slot(2, "studio", ["g1"]),
+    slot(6, "studio", ["g1"]),
+  ]);
+
+  const result = solveWeek({ dances: [loser, nudger], maxRuns: 1 });
+  assertEqual(
+    result.placements.find((p) => p.danceId === "Loser")?.slot.startDateTime.getTime(),
+    slot(0, "studio").startDateTime.getTime(),
+    "a dance is not shunted aside when it would lose more than the mover gains",
+  );
+  assertEqual(
+    result.placements.find((p) => p.danceId === "Loser")?.expectedCount,
+    5,
+    "…so the bigger cast keeps its full turnout",
   );
 }
 

@@ -34,6 +34,14 @@
  *    than as a penalty score, so the numbers mean something to the AD: "11 of
  *    14" is legible in a way that "score 6" is not.
  *
+ *    And a slot ends up with **whichever dance gets the most out of it**, not
+ *    whichever was placed first. Swapping two dances only helps when each can
+ *    use the other's time; the common case is a slot where one dance would
+ *    have its whole cast sitting under a dance that merely quite likes it and
+ *    has somewhere else just as good. That is a move, not a swap, so there is
+ *    a pass for it — and it only fires when the pair comes out ahead, so
+ *    nothing is shunted somewhere worse to suit a dance that gains less.
+ *
  * 5. **Someone who has already missed this dance counts for more.** Their
  *    presence is weighted up, so when the solver has to disappoint somebody
  *    it disappoints whoever has been present all term rather than the person
@@ -45,7 +53,10 @@
  *    number of booked hours, and a 30-minute hole between two rehearsals is
  *    time nobody can use. Slots that sit flush against a neighbour are
  *    preferred slightly; slots that strand a short gap are avoided slightly.
- *    Deliberately under one person's worth, so it only settles near-ties.
+ *    The *swing* between best- and worst-packed stays under one person's
+ *    attendance, so this only ever settles ties — see
+ *    `MAX_COMPACTNESS_ADJUSTMENT`, where getting that wrong once already made
+ *    the builder pick a snug slot over a slot the whole cast was free for.
  *
  * 7. **Ties break toward the earlier slot**, so a week fills from the front
  *    and the AD isn't left with everything on Sunday night.
@@ -92,13 +103,27 @@ const MAX_IMPROVEMENT_PASSES = 6;
 export const STRANDED_GAP_MINUTES = 45;
 
 /** Sitting flush against a neighbour is worth a little; stranding a short gap
- * costs a little. Both stay well under 1, which is one person's attendance,
- * so packing a room can never outrank actually having people there — it only
- * decides between options that were otherwise level. */
-const FLUSH_BONUS = 0.25;
-const STRANDED_GAP_PENALTY = 0.5;
-/** Whatever the arrangement, the whole compactness term stays inside ±1. */
-const MAX_COMPACTNESS_ADJUSTMENT = 1;
+ * costs a little.
+ *
+ * What matters is not how big either one is but the **swing between them**:
+ * the most a slot can gain minus the most another can lose. A person is worth
+ * at least 1 (`memberWeight` only ever scales attendance up), so if the swing
+ * reaches 1 the tidier room starts beating the better-attended time.
+ *
+ * That is exactly what went wrong the first time: clamping each slot to ±1
+ * gave a swing of 2, so a flush slot missing somebody could beat a slot where
+ * the whole cast was free. The clamp is now ±0.4 — a swing of 0.8, safely
+ * under a person — so full attendance always wins and packing only settles
+ * ties. `MAX_COMPACTNESS_ADJUSTMENT` must stay below 0.5 for that to hold. */
+const FLUSH_BONUS = 0.2;
+const STRANDED_GAP_PENALTY = 0.3;
+export const MAX_COMPACTNESS_ADJUSTMENT = 0.4;
+
+/** The least a person's attendance can ever be worth. `memberWeight` starts
+ * here and only ever scales up, so this is the floor the packing swing has to
+ * stay under. Exported so the test can assert the relationship rather than
+ * trusting a comment — that is what failed last time. */
+export const MIN_MEMBER_WEIGHT = 1;
 
 /** How many slots the displacement rescue will look through per dance. Big
  * enough to cover a week at 30-minute increments across every room, small
@@ -529,7 +554,14 @@ function attemptWeek(
 
   // Coverage beats attendance: rescue what greedy left behind, even at a cost.
   const rescued = rescueUnplacedByDisplacement(placed, unplaced, ordered);
-  improveBySwapping(placed, occupied, history, deficitWeight);
+
+  // Then tidy up: a slot should end up with whichever dance gets the most out
+  // of it, not whichever dance happened to be placed first.
+  for (let pass = 0; pass < MAX_IMPROVEMENT_PASSES; pass++) {
+    const swapped = improveBySwapping(placed, occupied, history, deficitWeight);
+    const moved = improveByReallocation(placed, history, deficitWeight);
+    if (!swapped && !moved) break;
+  }
 
   return {
     placed,
@@ -808,11 +840,12 @@ function relocateAll(
  * that would each be better off in the other's slot. Repeatedly try every
  * pair and keep any swap that raises the weighted total. */
 function improveBySwapping(
-  placed: { dance: DanceToPlace; slot: CandidateSlot }[],
+  placed: Entry[],
   occupied: OccupiedInterval[],
   history: AttendanceHistory | undefined,
   deficitWeight: number,
-): void {
+): boolean {
+  let everImproved = false;
   for (let pass = 0; pass < MAX_IMPROVEMENT_PASSES; pass++) {
     let improved = false;
 
@@ -861,12 +894,122 @@ function improveBySwapping(
           placed[i] = swappedA;
           placed[j] = swappedB;
           improved = true;
+          everImproved = true;
         }
       }
     }
 
-    if (!improved) return;
+    if (!improved) break;
   }
+  return everImproved;
+}
+
+/** Gives each slot to the dance that gets the most out of it.
+ *
+ * Swapping only helps when two dances can each use the other's time. The case
+ * it misses is the one the AD kept spotting: a slot where one dance would
+ * have full attendance is sitting under a dance that merely *quite likes* it
+ * and has somewhere else perfectly good to go. Nothing to swap — the second
+ * dance's alternative is empty, not occupied — so the slot stays with
+ * whoever was placed first, which is an accident of ordering rather than a
+ * decision.
+ *
+ * So: for every placed dance, look at the times it would rather have. If one
+ * is free, take it. If exactly one other dance is in the way and that dance
+ * can move somewhere else, move it — but only when the two of them together
+ * come out ahead. A dance is never shunted somewhere worse unless the dance
+ * taking its place gains more than it loses, and a First pick dance is never
+ * shunted at all.
+ *
+ * Returns whether anything changed, so the caller knows to run another pass. */
+function improveByReallocation(
+  placed: Entry[],
+  history: AttendanceHistory | undefined,
+  deficitWeight: number,
+): boolean {
+  let everImproved = false;
+
+  for (let i = 0; i < placed.length; i++) {
+    const current = placed[i];
+    const currentValue = slotValue(
+      current.dance,
+      current.slot,
+      history,
+      deficitWeight,
+    );
+
+    for (const wanted of current.dance.candidates.slice(0, MAX_DISPLACEMENT_SCAN)) {
+      // Only chase times that are genuinely better for this dance. Attendance
+      // alone here: a move that merely tidies the rooms is the swap pass's
+      // job, and chasing those would let this loop churn.
+      const gain =
+        slotValue(current.dance, wanted, history, deficitWeight) - currentValue;
+      if (gain <= 0) continue;
+
+      const proposal: Entry = { dance: current.dance, slot: wanted };
+      const blockers: number[] = [];
+      for (let k = 0; k < placed.length; k++) {
+        if (k === i) continue;
+        if (!compatible(placed[k], proposal)) blockers.push(k);
+        if (blockers.length > 1) break;
+      }
+
+      if (blockers.length === 0) {
+        // Free all along — the dance simply hadn't been offered it, because
+        // whatever held it when this dance was placed has since moved.
+        placed[i] = proposal;
+        everImproved = true;
+        break;
+      }
+
+      if (blockers.length > 1) continue;
+      const other = blockers[0];
+      if (placed[other].dance.priority) continue;
+
+      const displaced = placed[other];
+      const displacedValue = slotValue(
+        displaced.dance,
+        displaced.slot,
+        history,
+        deficitWeight,
+      );
+
+      let moved = false;
+      for (const alternative of displaced.dance.candidates.slice(
+        0,
+        MAX_CHAIN_SCAN,
+      )) {
+        const relocated: Entry = { dance: displaced.dance, slot: alternative };
+        if (!compatible(relocated, proposal)) continue;
+        if (
+          !placed.every(
+            (p, k) => k === i || k === other || compatible(p, relocated),
+          )
+        )
+          continue;
+
+        // The trade has to be worth it for the pair, not just for the dance
+        // doing the asking. This is what stops a dance with a mild preference
+        // evicting one that would lose more than it gains.
+        const cost =
+          displacedValue -
+          slotValue(displaced.dance, alternative, history, deficitWeight);
+        if (gain - cost <= 0) continue;
+
+        placed[i] = proposal;
+        placed[other] = relocated;
+        moved = true;
+        break;
+      }
+
+      if (moved) {
+        everImproved = true;
+        break;
+      }
+    }
+  }
+
+  return everImproved;
 }
 
 function sameSlot(a: CandidateSlot, b: CandidateSlot): boolean {

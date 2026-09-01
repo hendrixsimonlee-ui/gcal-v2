@@ -265,8 +265,13 @@ export default function AdminHelpPage() {
             improves
           </li>
           <li>
-            <B>Does all of that several times from different starting
-            orders</B> and keeps the best week it found
+            <B>Hands each slot to the dance that gets the most out of it</B> —
+            if a time would give one dance its whole cast and the dance sitting
+            on it has somewhere else just as good, they trade
+          </li>
+          <li>
+            <B>Does all of that several times from different starting orders</B>{" "}
+            and keeps the best week it found
           </li>
         </ol>
         <p>
@@ -309,6 +314,26 @@ export default function AdminHelpPage() {
           If a dance is still listed as unplaced afterwards, it now genuinely
           means there was nowhere for it — the builder already searched every
           slot in the week and already tried moving things out of its way.
+        </p>
+
+        <h3 className="mt-2 font-semibold text-ink">
+          Who gets a contested slot
+        </h3>
+        <p>
+          A time goes to <B>whichever dance gets the most out of it</B>, not
+          whichever happened to be placed first. If 7pm Tuesday would give one
+          dance its whole cast, and the dance currently sitting on it is just
+          as happy at 8:30, they trade.
+        </p>
+        <p>
+          The trade only happens when the two of them come out ahead together.
+          A dance that would gain one person can&rsquo;t push aside a dance
+          that would lose three — so the bigger loss always wins the argument,
+          and nothing gets shunted somewhere worse to suit a dance that gains
+          less.
+        </p>
+        <p>
+          A dance marked <B>First pick</B> is never the one asked to trade.
         </p>
 
         <h3 className="mt-2 font-semibold text-ink">
@@ -425,6 +450,14 @@ export default function AdminHelpPage() {
           dance then&rdquo; is a hard clash the builder must refuse. A logged
           conflict like &ldquo;CHEM 101 lab&rdquo; is not — the builder will
           happily use that time if it&rsquo;s the best one going.
+        </p>
+        <p>
+          <B>Check the Minutes box too.</B> The suggestion list uses whatever
+          length is in that box; Build the week always uses the dance&rsquo;s
+          saved length. Type 60 into it for a 90-minute dance and you&rsquo;ll
+          see times that don&rsquo;t exist at 90, which looks like the builder
+          missing them. Switching dances resets it automatically, and a warning
+          appears next to the box whenever the two differ.
         </p>
 
         <h3 className="mt-2 font-semibold text-ink">
