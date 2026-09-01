@@ -192,6 +192,8 @@ export function ScheduleBuilder({
     };
   }, [danceId, visibleRange, weekStart]);
 
+  const selectedDance = dances.find((d) => d.id === danceId);
+
   /** Switching dances also pulls in that piece's usual practice length, so
    * the AD isn't retyping the duration for every dance in the tracker. */
   function selectDance(nextDanceId: string) {
@@ -431,6 +433,23 @@ export function ScheduleBuilder({
               className="w-20 rounded-lg border border-line-strong bg-surface px-2 py-1 text-sm tabular-nums"
             />
           </label>
+
+          {/* Comparing this list against Build the week only means anything if
+              both are looking for the same length of practice. Typing a
+              shorter one here turns up times that don't exist at the dance's
+              real length, which reads as the builder having missed them. */}
+          {selectedDance &&
+            durationMinutes !== selectedDance.defaultDurationMinutes && (
+              <span className="rounded border border-warn/35 bg-warn-soft px-1.5 py-1 text-xs leading-snug text-warn">
+                These suggestions are for {durationMinutes} minutes, but{" "}
+                {selectedDance.name} is normally{" "}
+                {selectedDance.defaultDurationMinutes}.{" "}
+                <span className="font-medium">
+                  Build the week uses {selectedDance.defaultDurationMinutes}
+                </span>
+                , so the two lists won&rsquo;t match until you set this back.
+              </span>
+            )}
 
           <span className="text-xs text-ink-soft">
             {allDrafts.length === 0
