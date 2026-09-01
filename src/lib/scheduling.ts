@@ -161,8 +161,20 @@ export interface CandidateSlot {
   noChoreographerAvailable: boolean;
 }
 
-const UNEXCUSED_CONFLICT_POINTS = 2;
-const EXCUSED_CONFLICT_POINTS = 1;
+/** An absence is an absence.
+ *
+ * Excused conflicts used to cost half what unexcused ones did, which made the
+ * ranking hard to read: two slots with the same three people missing could
+ * score differently, and explaining why meant explaining a distinction that
+ * doesn't change who is standing in the room. Excused or not, that person
+ * isn't at the rehearsal, so the slot costs the same.
+ *
+ * The distinction is still recorded and still shown beside each name — the AD
+ * reviews conflicts and that judgement matters for attendance records. It
+ * just no longer moves the scheduling ranking. The week builder never made
+ * the distinction in the first place; it only ever counted who could come, so
+ * this brings the two views into line rather than changing the builder. */
+const CONFLICT_POINTS = 2;
 const OTHER_PRACTICE_POINTS = 2;
 /** Deliberately below a real logged conflict: history is a hint, not
  * evidence, so it breaks ties without overriding what people actually told
@@ -420,14 +432,13 @@ export function generateCandidateSlots(input: SchedulingInput): CandidateSlot[] 
           overlaps(start, end, c.startDateTime, c.endDateTime),
       );
       for (const conflict of memberConflicts) {
-        const points = conflict.isExcused
-          ? EXCUSED_CONFLICT_POINTS
-          : UNEXCUSED_CONFLICT_POINTS;
-        score += points;
+        score += CONFLICT_POINTS;
         conflictedCastMembers.push({
           userId: member.userId,
           name: member.name,
-          points,
+          points: CONFLICT_POINTS,
+          // Still recorded and still shown — the AD's review matters for
+          // attendance. It just doesn't change what the slot costs.
           reason: conflict.isExcused ? "excused-conflict" : "unexcused-conflict",
           // What they actually have on. A count tells the AD how many can't
           // come; the title and time tell them whether it's worth moving.
