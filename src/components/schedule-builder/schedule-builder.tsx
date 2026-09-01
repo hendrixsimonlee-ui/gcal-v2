@@ -567,7 +567,9 @@ export function ScheduleBuilder({
           <h2 className="text-sm font-semibold text-ink">Best times this week</h2>
           <p className="mb-2 mt-0.5 text-xs text-ink-soft">
             Ranked by how much of the cast can make it. Only slots in the week
-            you&rsquo;re looking at.
+            you&rsquo;re looking at. Top 8 —{" "}
+            <span className="font-medium text-ink">Build the week</span>{" "}
+            searches every slot, not just these.
           </p>
           {candidatesThisWeek.length === 0 && (
             <p className="text-xs text-ink-soft">
@@ -603,6 +605,23 @@ export function ScheduleBuilder({
                   Number(b.isChoreographer) - Number(a.isChoreographer) ||
                   a.name.localeCompare(b.name),
               );
+
+              // This list and "Build the week" disagree about these slots, on
+              // purpose, and the disagreement looks exactly like a bug.
+              //
+              // Here a clash with another dance is shown and weighted, so the
+              // AD can see the least-bad option and decide. The week builder
+              // treats it as impossible, because nobody can be in two rooms
+              // at once. Without this line, a dance the builder refused to
+              // place shows several apparently fine times on its own page and
+              // the whole thing looks broken.
+              const doubleBooked = Array.from(
+                new Set(
+                  c.conflictedCastMembers
+                    .filter((n) => n.reason === "other-practice")
+                    .map((n) => n.name),
+                ),
+              ).sort();
 
               return (
                 <li
@@ -659,6 +678,19 @@ export function ScheduleBuilder({
                       {c.awayCastMembers
                         .map((a) => (a.reason ? `${a.name} (${a.reason})` : a.name))
                         .join(", ")}
+                    </div>
+                  )}
+
+                  {doubleBooked.length > 0 && (
+                    <div className="mt-1 rounded border border-warn/35 bg-warn-soft px-1.5 py-1 leading-snug text-warn">
+                      <span className="font-medium">
+                        Build the week can&rsquo;t use this one.
+                      </span>{" "}
+                      {doubleBooked.join(", ")}{" "}
+                      {doubleBooked.length === 1 ? "is" : "are"} in another
+                      dance&rsquo;s practice at this time, and nobody can be in
+                      two rooms at once. You can still book it here if
+                      you&rsquo;d rather have the rehearsal without them.
                     </div>
                   )}
 

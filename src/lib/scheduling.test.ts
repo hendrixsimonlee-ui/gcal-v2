@@ -627,6 +627,79 @@ function overlapsWindow(
   );
 }
 
+// --- the short list is for the AD's eyes, not for the solver ----------------
+//
+// Eight suggestions, two a day, keeps the panel readable. Handing the same
+// eight to build-the-week was the bug: it places dances one after another,
+// each placement kills slots for the dances still to come, and a dance whose
+// eight had all been taken came back as "every workable slot clashes with
+// another dance" while dozens of times it was never shown sat free. Opening
+// that dance on its own recomputed from scratch and offered several — which
+// is exactly what the AD kept seeing.
+{
+  const twoRooms: SchedulingInput = {
+    ...base,
+    spaces: [
+      base.spaces[0],
+      {
+        spaceId: "space2",
+        spaceName: "Studio B",
+        bookings: weeklyBookings(dayOfWeek, "18:00", "21:00"),
+        existingPractices: [],
+      },
+    ],
+  };
+
+  const shortList = generateCandidateSlots(twoRooms);
+  assert(shortList.length <= 8, "the AD's list stays at eight suggestions");
+
+  const everything = generateCandidateSlots({
+    ...twoRooms,
+    maxCandidates: 2000,
+    maxCandidatesPerDay: 400,
+  });
+  assert(
+    everything.length > shortList.length,
+    "asking for the lot returns far more than the panel shows",
+  );
+  assert(
+    everything.every((slot) =>
+      everything.filter(
+        (other) =>
+          other.startDateTime.getTime() === slot.startDateTime.getTime() &&
+          other.spaceId === slot.spaceId,
+      ).length === 1,
+    ),
+    "...with no slot repeated",
+  );
+
+  // Both rooms are free on the same evening at the same times. Collapsing
+  // those to one option is what left the solver with nothing to fall back on
+  // once the first room was taken.
+  const firstStart = everything[0].startDateTime.getTime();
+  const roomsAtThatMoment = new Set(
+    everything
+      .filter((s) => s.startDateTime.getTime() === firstStart)
+      .map((s) => s.spaceId),
+  );
+  assert(
+    roomsAtThatMoment.size === 2,
+    "two rooms free at the same moment are two separate options",
+  );
+
+  // The per-day cap is the other half of the display trim: without lifting it
+  // the full list would still be two slots a day.
+  const perDay = new Map<string, number>();
+  for (const slot of everything) {
+    const key = appDateKey(slot.startDateTime);
+    perDay.set(key, (perDay.get(key) ?? 0) + 1);
+  }
+  assert(
+    Math.max(...perDay.values()) > 2,
+    "and the two-a-day spread is lifted too",
+  );
+}
+
 if (process.exitCode) {
   console.error("\nSome scheduling algorithm tests FAILED");
 } else {

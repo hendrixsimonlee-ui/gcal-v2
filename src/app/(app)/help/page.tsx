@@ -217,6 +217,14 @@ export default async function HelpPage() {
             is why writing what it actually is (&ldquo;CHEM 101 lab&rdquo;)
             helps more than leaving it blank.
           </li>
+          <li>
+            <B>Every dance getting a rehearsal comes first.</B>{" "}A dance with no
+            practice doesn&rsquo;t rehearse at all, so if fitting one more
+            dance in means your practice lands at a time one or two people
+            can&rsquo;t make, that&rsquo;s the trade the scheduler takes. Your
+            conflict is still recorded and still visible to the AD — you
+            aren&rsquo;t marked absent for something you told them about.
+          </li>
         </ul>
       </Section>
 
