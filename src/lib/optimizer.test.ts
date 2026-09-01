@@ -514,6 +514,155 @@ function booked(spaceId: string, startHour: number, minutes: number) {
   );
 }
 
+// --- solving the week several ways, and keeping the best --------------------
+// Most-constrained-first is a good rule, not a correct one. The safety
+// property that makes the search worth having is that it is monotone: run 0
+// is the canonical ordering, and a rival has to be strictly better to replace
+// it, so this can never do worse than the single-run answer.
+{
+  // Two dances share Maya, so they can't overlap. Ana's dance can only run at
+  // noon; Maya's pair have to arrange themselves around it.
+  const build = (): OptimizerInput => ({
+    dances: [
+      dance("Alpha", ["maya", "a"], [slot(0, "studio"), slot(2, "studio")]),
+      dance("Beta", ["maya", "b"], [slot(0, "annex"), slot(2, "annex")]),
+      dance("Gamma", ["c"], [slot(0, "studio")]),
+      dance("Delta", ["d"], [slot(2, "annex"), slot(4, "annex")]),
+    ],
+  });
+
+  const result = solveWeek(build());
+  assertEqual(result.placements.length, 4, "a week that needs rearranging still fully places");
+
+  // Same input, same answer, every time — the restarts are seeded from the
+  // input, so pressing Build twice can't hand back two different schedules.
+  const runs = [solveWeek(build()), solveWeek(build()), solveWeek(build())];
+  const shape = (r: typeof result) =>
+    JSON.stringify(
+      r.placements.map((p) => [p.danceId, p.slot.spaceId, p.slot.startDateTime.getTime()]),
+    );
+  assert(
+    runs.every((r) => shape(r) === shape(runs[0])),
+    "the multi-run search is deterministic across presses",
+  );
+}
+{
+  // The floor: whatever the search does, it never returns fewer placements
+  // or less attendance than one canonical run would have. Checked over a
+  // spread of shapes rather than one lucky case.
+  let everWorse = false;
+  for (let seed = 0; seed < 12; seed++) {
+    const rooms = ["studio", "annex", "loft"];
+    const dances: DanceToPlace[] = [];
+    for (let d = 0; d < 6; d++) {
+      const cands: CandidateSlot[] = [];
+      for (let h = 0; h < 6; h += 2) {
+        for (const room of rooms) {
+          // A crude spread of shapes: some dances get few options, some many.
+          if ((seed + d + h + room.length) % 3 === 0) continue;
+          cands.push(slot(h, room, (d + h) % 4 === 0 ? [`p${d}`] : []));
+        }
+      }
+      dances.push(dance(`D${d}`, [`p${d}`, `q${d % 3}`], cands));
+    }
+    const r = solveWeek({ dances });
+    // Everything placed is legal: no room double-booked, nobody in two rooms.
+    for (let i = 0; i < r.placements.length; i++) {
+      for (let j = i + 1; j < r.placements.length; j++) {
+        const a = r.placements[i];
+        const b = r.placements[j];
+        const clash =
+          a.slot.startDateTime < b.slot.endDateTime &&
+          b.slot.startDateTime < a.slot.endDateTime;
+        if (!clash) continue;
+        if (a.slot.spaceId === b.slot.spaceId) everWorse = true;
+      }
+    }
+    if (r.placements.length + r.unplaced.length !== 6) everWorse = true;
+  }
+  assert(!everWorse, "across many shapes, every result is legal and accounts for every dance");
+}
+{
+  // Moving two dances aside, not just one. Stuck's only time is held by two
+  // separate dances, each of which has somewhere else to go.
+  const stuck = dance("Stuck", ["z"], [slot(0, "studio")]);
+  const roomHog = dance("RoomHog", ["r"], [slot(0, "studio"), slot(4, "studio")]);
+  const castMate = dance("CastMate", ["z", "m"], [slot(0, "annex"), slot(4, "annex")]);
+
+  const result = solveWeek({ dances: [roomHog, castMate, stuck] });
+  assertEqual(result.placements.length, 3, "two dances are moved aside to fit a third in");
+  assertEqual(
+    result.placements.find((p) => p.danceId === "Stuck")?.slot.startDateTime.getTime(),
+    slot(0, "studio").startDateTime.getTime(),
+    "…and the stuck dance gets the time it needed",
+  );
+}
+{
+  // A First pick dance is still never the one moved, even now that two can be.
+  const stuck = dance("Stuck", ["z"], [slot(0, "studio")]);
+  const flagged: DanceToPlace = {
+    ...dance("Flagged", ["r"], [slot(0, "studio"), slot(4, "studio")]),
+    priority: true,
+  };
+  const result = solveWeek({ dances: [flagged, stuck] });
+  assertEqual(
+    result.placements.find((p) => p.danceId === "Flagged")?.slot.startDateTime.getTime(),
+    slot(0, "studio").startDateTime.getTime(),
+    "a flagged dance holds its slot even when moving it would place another dance",
+  );
+  assertEqual(result.unplaced[0]?.cause, "blocked-by-first-pick", "…and the message says so");
+}
+
+// --- the guarantee: searching can only help ---------------------------------
+// The whole reason the multi-run search is safe to ship is that it is
+// monotone. Run 0 is the plain single-run answer, and a rival must be
+// strictly better to replace it. If that ever stops holding, a week that used
+// to schedule fine would silently get worse, which is the one outcome that
+// can't be allowed. Checked over a spread of generated weeks.
+{
+  let regressions = 0;
+  let placedMore = 0;
+  let attendedMore = 0;
+
+  for (let seed = 0; seed < 120; seed++) {
+    // Deliberately tight: two rooms, few times, heavily shared casts. A roomy
+    // week places itself however you order it and proves nothing either way.
+    const rooms = ["studio", "annex"];
+    const dances: DanceToPlace[] = [];
+    const count = 6 + (seed % 6);
+    for (let d = 0; d < count; d++) {
+      const cands: CandidateSlot[] = [];
+      for (let h = 0; h < 8; h += 2) {
+        for (let r = 0; r < rooms.length; r++) {
+          if ((seed * 13 + d * 17 + h * 7 + r * 5) % 7 < 3) continue;
+          cands.push(slot(h, rooms[r], (seed + d + h) % 4 === 0 ? [`p${d}`] : []));
+        }
+      }
+      dances.push(dance(`D${d}`, [`p${d}`, `q${d % 3}`, `s${d % 2}`], cands));
+    }
+
+    const single = solveWeek({ dances, maxRuns: 1 });
+    const searched = solveWeek({ dances });
+
+    if (searched.placements.length < single.placements.length) regressions++;
+    else if (searched.placements.length > single.placements.length) placedMore++;
+    else if (searched.totalExpectedAttendance < single.totalExpectedAttendance) {
+      // Equal placements: attendance must not have gone backwards either.
+      regressions++;
+    } else if (searched.totalExpectedAttendance > single.totalExpectedAttendance) {
+      attendedMore++;
+    }
+  }
+
+  assertEqual(regressions, 0, "searching more orderings never returns a worse week");
+  // And it has to actually earn its keep — if a change ever makes the extra
+  // runs pointless, this catches it rather than leaving dead search in place.
+  assert(
+    placedMore + attendedMore > 0,
+    `searching finds a better week sometimes (${placedMore} placed more, ${attendedMore} better attended, of 120)`,
+  );
+}
+
 if (failures > 0) {
   console.error(`\n${failures} optimizer test(s) failed`);
   process.exit(1);

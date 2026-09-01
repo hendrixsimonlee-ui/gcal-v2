@@ -256,13 +256,17 @@ export default function AdminHelpPage() {
             room, or dancers shared between the two dances
           </li>
           <li>
-            <B>Goes back for anything it couldn&rsquo;t fit</B> and asks a
-            dance already placed to move over, if that dance has somewhere else
+            <B>Goes back for anything it couldn&rsquo;t fit</B> and asks up to
+            two dances already placed to move over, if they have somewhere else
             to go
           </li>
           <li>
             Then tries swapping pairs of placements to see if the total turnout
             improves
+          </li>
+          <li>
+            <B>Does all of that several times from different starting
+            orders</B> and keeps the best week it found
           </li>
         </ol>
         <p>
@@ -297,16 +301,44 @@ export default function AdminHelpPage() {
           never the one asked to shift.
         </p>
         <p>
-          It only ever moves <em>one</em> dance to make room. Chaining three
-          moves together would occasionally squeeze in one more rehearsal and
-          would leave you unable to explain to a choreographer why their
-          practice moved, so it stops at the version you can explain in a
-          sentence.
+          It will move <B>up to two</B> dances to make room. Three would cost
+          more time than it buys and would leave you unable to explain to a
+          choreographer why their practice moved, so it stops there.
         </p>
         <p>
           If a dance is still listed as unplaced afterwards, it now genuinely
           means there was nowhere for it — the builder already searched every
           slot in the week and already tried moving things out of its way.
+        </p>
+
+        <h3 className="mt-2 font-semibold text-ink">
+          It solves the week several times and keeps the best
+        </h3>
+        <p>
+          Placing most-constrained-first is a good rule, not a perfect one — it
+          can back itself into a corner that a different starting order walks
+          straight past. So the builder solves the whole week{" "}
+          <B>up to 12 times over</B> from different orders and keeps whichever
+          result comes out best: more dances placed wins first, and if two are
+          level on that, more people expected wins.
+        </p>
+        <p>
+          <B>This can only help, never hurt.</B> The first run is always the
+          normal ordering, and another run has to be <em>strictly</em> better
+          to replace it. If none of them beat it, you get the same answer you
+          would have got anyway.
+        </p>
+        <p>
+          <B>Pressing Build twice gives the same schedule.</B> The extra runs
+          vary how the builder searches, not what it decides, so the same week
+          with the same conflicts always comes out the same. If the answer
+          changes, something in the data changed — a new conflict, a published
+          practice, a First pick tick.
+        </p>
+        <p>
+          It stops early once every dance has a time, and it has a time limit,
+          so the button stays quick. On a normal week it&rsquo;s a fraction of
+          a second.
         </p>
 
         <h3 className="mt-2 font-semibold text-ink">
@@ -339,11 +371,11 @@ export default function AdminHelpPage() {
             </tr>
             <tr>
               <td>
-                <B>Two or more dances are in the way</B>
+                <B>Three or more dances are in the way</B>
               </td>
               <td>
-                The builder only ever moves one aside. Tick First pick on this
-                dance and rebuild so it chooses before the others.
+                It moves at most two aside. Tick First pick on this dance and
+                rebuild so it chooses before the others.
               </td>
             </tr>
             <tr>

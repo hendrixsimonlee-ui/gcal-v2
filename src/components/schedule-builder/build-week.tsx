@@ -199,9 +199,10 @@ export function BuildWeek({
                 Couldn&rsquo;t place {proposal.unplaced.length}
               </h3>
               <p className="mt-0.5 text-xs text-warn/85">
-                The builder searches every legal slot in the week and will move
-                one dance out of the way to fit another in, so these are real
-                dead ends rather than a short list it gave up on.
+                The builder searches every legal slot, solves the week several
+                different ways and keeps the best, and will move up to two
+                dances out of the way to fit another in. So these are real dead
+                ends, not a short list it gave up on.
               </p>
               <ul className="mt-1.5 flex flex-col gap-1.5">
                 {proposal.unplaced.map((u) => (
