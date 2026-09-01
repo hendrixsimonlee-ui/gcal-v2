@@ -773,6 +773,70 @@ function booked(spaceId: string, startHour: number, minutes: number) {
   );
 }
 
+// --- choreographers ---------------------------------------------------------
+// "In no world is it allowed to produce a draft where the choreographer is not
+// present." Slots with none are filtered out in scheduling.ts before the
+// solver sees them, so the guarantee holds at the source — the solver only
+// ever moves dances between slots that were already legal. What belongs here
+// is the other half of the rule: as many as possible should be there.
+{
+  const withChoreo = (id: string, cast: string[], choreos: string[], cands: CandidateSlot[]): DanceToPlace => ({
+    danceId: id,
+    danceName: id,
+    cast: [
+      ...choreos.map((userId) => ({ userId, role: "CHOREOGRAPHER" as const })),
+      ...cast.map((userId) => ({ userId, role: "DANCER" as const })),
+    ],
+    candidates: cands,
+  });
+
+  // Same headcount either way: one slot loses a dancer, the other loses a
+  // choreographer. The one that keeps the choreographer wins.
+  const result = solveWeek({
+    dances: [
+      withChoreo("Piece", ["d1", "d2"], ["ch1", "ch2"], [
+        slot(0, "studio", ["ch1"]),
+        slot(2, "studio", ["d1"]),
+      ]),
+    ],
+    maxRuns: 1,
+  });
+  assertEqual(
+    result.placements[0]?.slot.startDateTime.getTime(),
+    slot(2, "studio", ["d1"]).startDateTime.getTime(),
+    "with the same headcount, the slot keeping the choreographer wins",
+  );
+}
+{
+  // …but it is a preference, not a veto. Two dancers still outweigh one
+  // choreographer, because the rehearsal is for the cast.
+  const result = solveWeek({
+    dances: [
+      {
+        danceId: "Piece",
+        danceName: "Piece",
+        cast: [
+          { userId: "ch1", role: "CHOREOGRAPHER" as const },
+          { userId: "ch2", role: "CHOREOGRAPHER" as const },
+          { userId: "d1", role: "DANCER" as const },
+          { userId: "d2", role: "DANCER" as const },
+          { userId: "d3", role: "DANCER" as const },
+        ],
+        candidates: [
+          slot(0, "studio", ["ch1"]), //        loses one choreographer
+          slot(2, "studio", ["d1", "d2"]), //   loses two dancers
+        ],
+      },
+    ],
+    maxRuns: 1,
+  });
+  assertEqual(
+    result.placements[0]?.slot.startDateTime.getTime(),
+    slot(0, "studio", ["ch1"]).startDateTime.getTime(),
+    "…but two dancers still outweigh one choreographer",
+  );
+}
+
 if (failures > 0) {
   console.error(`\n${failures} optimizer test(s) failed`);
   process.exit(1);

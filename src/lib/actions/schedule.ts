@@ -58,6 +58,11 @@ export async function getCandidateSlots(
    * was never shown sat free — which is exactly why opening that same dance
    * on its own immediately offered several. */
   limits?: { maxCandidates: number; maxCandidatesPerDay: number },
+  /** Only for working out *why* a dance has no slots. Lifting the
+   * choreographer rule turns "no room booked" and "no choreographer can make
+   * any open time" from the same empty list into two distinguishable answers.
+   * Never pass this when the result will be scheduled from. */
+  options?: { requireChoreographer?: boolean },
 ): Promise<CandidateSlot[]> {
   await requireAdmin();
 
@@ -172,6 +177,7 @@ export async function getCandidateSlots(
     windowEnd: window ? new Date(window.endIso) : undefined,
     maxCandidates: limits?.maxCandidates,
     maxCandidatesPerDay: limits?.maxCandidatesPerDay,
+    requireChoreographer: options?.requireChoreographer,
   });
 }
 

@@ -164,6 +164,28 @@ export async function proposeWeek(
         maxCandidatesPerDay: SOLVER_MAX_CANDIDATES_PER_DAY,
       },
     );
+    // Nothing at all? Find out which kind of nothing before reporting it.
+    //
+    // "No room is booked this week" and "no choreographer can make any of the
+    // open times" are the same empty list here but completely different jobs
+    // for the AD — book more room time, versus talk to the choreographers or
+    // excuse them for the week. Re-running with the choreographer rule lifted
+    // tells the two apart. The result is used only for the message; it never
+    // reaches the solver, so no practice can be drafted from it.
+    let blockedByChoreographerGap = false;
+    if (candidates.length === 0) {
+      const withoutTheRule = await getCandidateSlots(
+        dance.id,
+        ANY_SPACE,
+        dance.defaultDurationMinutes ?? 90,
+        [],
+        { startIso: weekStart.toISOString(), endIso: weekEnd.toISOString() },
+        { maxCandidates: 1, maxCandidatesPerDay: 1 },
+        { requireChoreographer: false },
+      );
+      blockedByChoreographerGap = withoutTheRule.length > 0;
+    }
+
     toPlace.push({
       danceId: dance.id,
       danceName: dance.name,
@@ -173,6 +195,7 @@ export async function proposeWeek(
       })),
       candidates,
       priority: priorityIds.has(dance.id),
+      blockedByChoreographerGap,
     });
   }
 

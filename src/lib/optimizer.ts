@@ -91,6 +91,20 @@ export const DEFAULT_DEFICIT_WEIGHT = 1.0;
  * ordinary life, not a pattern worth reshaping the schedule around. */
 const DEFICIT_FLOOR = 0.2;
 
+/** A choreographer in the room is worth more than a dancer in the room.
+ *
+ * Having none at all is refused outright before the solver ever sees the slot
+ * (see `requireChoreographer` in scheduling.ts). This is the other half of the
+ * AD's rule — *as many as possible* should be there — and it was missing: the
+ * per-dance list already charged 3 for a missing choreographer against 2 for
+ * a dancer, but the week solver counted every head the same, so it would
+ * happily trade a choreographer for a dancer.
+ *
+ * Kept at 1.5 rather than something larger: two dancers should still outweigh
+ * one choreographer, because a rehearsal is for the cast. It tips the choice
+ * when the headcount is close, which is where it belongs. */
+const CHOREOGRAPHER_WEIGHT = 1.5;
+
 /** Cap on improvement passes, so a pathological input can't spin. */
 const MAX_IMPROVEMENT_PASSES = 6;
 
@@ -173,6 +187,11 @@ export type DanceToPlace = {
   /** The AD marked this dance as the one that matters most this week, so it
    * picks its slot before everything else. */
   priority?: boolean;
+  /** Set by the caller when a dance has no candidates *because* every open
+   * time was refused for having no choreographer. Both look like an empty
+   * list from here, and they need completely different messages — one means
+   * book more room time, the other means talk to the choreographers. */
+  blockedByChoreographerGap?: boolean;
 };
 
 export type AttendanceHistory = {
@@ -225,6 +244,9 @@ export type UnplacedCause =
   /** No legal slot at all — no room booked long enough, or every open hour is
    * already taken by a practice. */
   | "no-slots"
+  /** There were open times, but no choreographer could make any of them. A
+   * practice nobody can lead isn't offered, so the dance has nothing left. */
+  | "no-choreographer"
   /** Every option sits in a room another dance is using, and that dance has
    * nowhere else to go. */
   | "room-taken"
@@ -303,8 +325,17 @@ function slotValue(
   deficitWeight: number,
 ): number {
   let value = 0;
-  for (const userId of attendeesFor(dance, slot)) {
-    value += memberWeight(userId, dance.danceId, history, deficitWeight);
+  const attendees = attendeesFor(dance, slot);
+  for (const member of dance.cast) {
+    if (!attendees.has(member.userId)) continue;
+    const weight = memberWeight(
+      member.userId,
+      dance.danceId,
+      history,
+      deficitWeight,
+    );
+    value +=
+      member.role === "CHOREOGRAPHER" ? weight * CHOREOGRAPHER_WEIGHT : weight;
   }
   return value;
 }
@@ -503,12 +534,11 @@ function attemptWeek(
       unplaced.push({
         danceId: dance.danceId,
         danceName: dance.danceName,
-        cause: "no-slots",
+        cause: dance.blockedByChoreographerGap ? "no-choreographer" : "no-slots",
         blockingDanceNames: [],
-        // Deliberately not "a choreographer isn't available": choreographers
-        // are a weight now, not a filter, so they can no longer empty a week.
-        reason:
-          "Nowhere to put it. No room is booked for long enough this week, or every open hour is already taken by a practice.",
+        reason: dance.blockedByChoreographerGap
+          ? "There are open times this week, but no choreographer for this dance can make any of them. A practice with nobody to run it is never drafted, so this one needs a choreographer to free something up — or excuse them for the week if it should go ahead without them."
+          : "Nowhere to put it. No room is booked for long enough this week, or every open hour is already taken by a practice.",
       });
       continue;
     }
