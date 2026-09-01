@@ -221,6 +221,17 @@ export default function AdminHelpPage() {
           per day (so one evening doesn&rsquo;t fill the list in 30-minute
           strips), top 8 shown.
         </p>
+        <p>
+          Those two numbers — 8 and 2 a day — are only about keeping the list
+          on screen readable.{" "}
+          <B>Build the week works from every legal slot, not the top 8.</B> It
+          has to: it places dances one after another, and each one it places
+          takes options away from the dances still to come. This is what used
+          to make a dance come back as{" "}
+          <em>&ldquo;every workable slot clashes with another dance&rdquo;</em>{" "}
+          when opening that same dance on its own showed you several perfectly
+          good times.
+        </p>
       </Section>
 
       <Section title="Build the week — placing every dance at once">
@@ -245,6 +256,11 @@ export default function AdminHelpPage() {
             room, or dancers shared between the two dances
           </li>
           <li>
+            <B>Goes back for anything it couldn&rsquo;t fit</B> and asks a
+            dance already placed to move over, if that dance has somewhere else
+            to go
+          </li>
+          <li>
             Then tries swapping pairs of placements to see if the total turnout
             improves
           </li>
@@ -262,6 +278,56 @@ export default function AdminHelpPage() {
           in the page until you press <B>Add these as drafts</B>, and those
           drafts then persist through refreshes and sign-outs like anything
           else.
+        </p>
+
+        <h3 className="mt-2 font-semibold text-ink">
+          Every dance getting a time beats everyone making every time
+        </h3>
+        <p>
+          A dance with no rehearsal rehearses not at all. A dance at a time two
+          people can&rsquo;t make still rehearses. So when the builder runs out
+          of room for a dance, it doesn&rsquo;t give up — it looks at whichever
+          dance is in the way and checks whether that one has anywhere else to
+          go. If it does, it moves, and both dances end up on the schedule.
+        </p>
+        <p>
+          <B>The dance that moves may land somewhere slightly worse for its
+          own cast</B>, and that is on purpose. If you&rsquo;d rather it
+          didn&rsquo;t move, tick First pick on it: a dance with First pick is
+          never the one asked to shift.
+        </p>
+        <p>
+          It only ever moves <em>one</em> dance to make room. Chaining three
+          moves together would occasionally squeeze in one more rehearsal and
+          would leave you unable to explain to a choreographer why their
+          practice moved, so it stops at the version you can explain in a
+          sentence.
+        </p>
+        <p>
+          If a dance is still listed as unplaced afterwards, it now genuinely
+          means there was nowhere for it — the builder already tried moving
+          things out of its way.
+        </p>
+
+        <h3 className="mt-2 font-semibold text-ink">
+          Packing rooms — no stranded half-hours
+        </h3>
+        <p>
+          The club has a fixed number of booked hours, and a 30-minute hole
+          between two rehearsals in the same room is time nobody can use.
+          So when two slots are otherwise level, the builder prefers the one
+          that starts exactly when the previous practice ends, and avoids one
+          that would leave a gap of <B>45 minutes or less</B>. A longer gap is
+          fine — you can still book into it.
+        </p>
+        <p>
+          It counts practices already in the room too, published ones and
+          drafts alike, not just what it&rsquo;s placing this run.
+        </p>
+        <p>
+          This is a tie-breaker and nothing more —{" "}
+          <B>it is worth less than one person&rsquo;s attendance</B>, so a
+          tidier room can never beat a time more of the cast can actually make.
         </p>
 
         <h3 className="mt-2 font-semibold text-ink">Which week it builds</h3>
@@ -283,6 +349,12 @@ export default function AdminHelpPage() {
           that dance chooses its slot before all the others, so it gets the
           best time available and everyone else works around it. Use it for
           the week a piece has to have full attendance.
+        </p>
+        <p>
+          It does one more thing: a First pick dance is{" "}
+          <B>never the one moved aside</B> when the builder is trying to fit a
+          leftover dance in. Everything else can be asked to shift; this one
+          keeps the slot it chose.
         </p>
         <p>
           It applies to <B>that week only</B> and clears itself as the week

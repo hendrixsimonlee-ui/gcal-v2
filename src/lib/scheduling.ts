@@ -95,6 +95,21 @@ export interface SchedulingInput {
    * the same dances by hand worked fine. */
   windowStart?: Date;
   windowEnd?: Date;
+  /** How many slots to return, and how many per day.
+   *
+   * The defaults exist to keep the AD's suggestion list readable — eight
+   * options, at most two a day, so one evening doesn't fill the panel in
+   * 30-minute strips. They are a *display* concern.
+   *
+   * The week solver must not inherit them. It needs every legal slot: it
+   * places dances one after another, and each placement invalidates slots for
+   * the dances still to come. Given only the top eight, a dance whose eight
+   * all get taken is reported as having nowhere to go, while dozens of
+   * workable slots it was never shown sit free — which is exactly what
+   * happened, and why opening that dance on its own immediately offered
+   * several perfectly good times. */
+  maxCandidates?: number;
+  maxCandidatesPerDay?: number;
 }
 
 export interface CastConflictNote {
@@ -477,31 +492,38 @@ export function generateCandidateSlots(input: SchedulingInput): CandidateSlot[] 
   // De-duping by start time also collapses the same time across rooms; since
   // the list is score-sorted, the room that survives is the best-scoring one
   // for that moment, which is what "any space" should surface.
-  const seenStarts = new Set<number>();
+  const maxCandidates = input.maxCandidates ?? MAX_CANDIDATES;
+  const maxPerDay = input.maxCandidatesPerDay ?? MAX_CANDIDATES_PER_DAY;
+
+  const seenStarts = new Set<string>();
   const perDayCount = new Map<string, number>();
   const picked: CandidateSlot[] = [];
   const overflow: CandidateSlot[] = [];
 
   for (const slot of scored) {
-    const startKey = slot.startDateTime.getTime();
+    // Two rooms free at the same moment are two different options, so slots
+    // are deduped on start *and* room rather than start alone. Deduping on
+    // start threw away the alternative room, which for the solver is often
+    // the only slot that still works once the first is taken.
+    const startKey = `${slot.startDateTime.getTime()}:${slot.spaceId}`;
     if (seenStarts.has(startKey)) continue;
     seenStarts.add(startKey);
 
     const dayKey = dateKey(slot.startDateTime);
     const used = perDayCount.get(dayKey) ?? 0;
-    if (used >= MAX_CANDIDATES_PER_DAY) {
+    if (used >= maxPerDay) {
       overflow.push(slot);
       continue;
     }
     perDayCount.set(dayKey, used + 1);
     picked.push(slot);
-    if (picked.length >= MAX_CANDIDATES) break;
+    if (picked.length >= maxCandidates) break;
   }
 
   // If spreading left us short (e.g. the space is only open one day a week),
   // backfill from the slots the per-day cap held back.
   for (const slot of overflow) {
-    if (picked.length >= MAX_CANDIDATES) break;
+    if (picked.length >= maxCandidates) break;
     picked.push(slot);
   }
 

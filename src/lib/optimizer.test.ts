@@ -376,6 +376,90 @@ function dance(
   );
 }
 
+
+// --- coverage beats attendance ---------------------------------------------
+// The AD's rule: a dance with no rehearsal at all is worse than a rehearsal
+// two people can't make. Greedy stops as soon as a dance has no free slot, so
+// anything left over gets a second pass in which a dance already placed is
+// asked to move — accepted even when the move costs attendance.
+{
+  // Pat picks the studio at noon, Quinn the annex at noon, and Stuck — which
+  // can only use one of those two rooms at noon — is left with nothing.
+  const pat = dance("Pat", ["p1", "p2"], [
+    slot(0, "studio"),
+    slot(3, "studio", ["p2"]), // Pat's fallback costs Pat a dancer
+  ]);
+  const quinn = dance("Quinn", ["q"], [slot(0, "annex"), slot(3, "annex")]);
+  const stuck = dance("Stuck", ["z"], [slot(0, "studio"), slot(0, "annex")]);
+
+  const result = solveWeek({ dances: [pat, quinn, stuck] });
+  assertEqual(result.placements.length, 3, "the dance greedy gave up on gets rescued");
+  assertEqual(result.unplaced.length, 0, "so nothing is reported as unschedulable");
+  assert(
+    result.placements.some((p) => p.danceId === "Stuck"),
+    "and it is specifically the stranded dance that got a time",
+  );
+}
+
+// --- packing rooms: no stranded half-hours ----------------------------------
+// The club only has so many booked hours. Half an hour between two rehearsals
+// is a room being paid for and not used.
+function booked(spaceId: string, startHour: number, minutes: number) {
+  const startDateTime = new Date(Date.UTC(2026, 8, 14, 12, 0, 0));
+  startDateTime.setUTCMinutes(startDateTime.getUTCMinutes() + startHour * 60);
+  return {
+    spaceId,
+    startDateTime,
+    endDateTime: new Date(startDateTime.getTime() + minutes * 60000),
+  };
+}
+{
+  // Nothing to choose between these on attendance, and the earlier one would
+  // normally win — but it butts straight up against a practice already in the
+  // room, so it wins by more.
+  const flush = solveWeek({
+    dances: [dance("Solo", ["a"], [slot(0, "studio"), slot(2, "studio")])],
+    // 15:30–17:00, i.e. starting exactly when the 14:00 slot ends.
+    occupied: [booked("studio", 3.5, 90)],
+  });
+  assertEqual(
+    flush.placements[0]?.slot.startDateTime.getTime(),
+    slot(2, "studio").startDateTime.getTime(),
+    "a slot that sits flush against an existing practice is preferred",
+  );
+}
+{
+  // 14:00 would leave exactly 30 minutes after the noon practice — dead time.
+  // 16:00 leaves a real gap somebody could still book into.
+  const gap = solveWeek({
+    dances: [dance("Solo", ["a"], [slot(2, "studio"), slot(4, "studio")])],
+    occupied: [booked("studio", 0, 90)],
+  });
+  assertEqual(
+    gap.placements[0]?.slot.startDateTime.getTime(),
+    slot(4, "studio").startDateTime.getTime(),
+    "a slot that would strand half an hour of a booked room is avoided",
+  );
+}
+{
+  // …but tidiness never outranks people. The flush slot here costs two
+  // dancers, so the one that leaves a gap wins.
+  const people = solveWeek({
+    dances: [
+      dance("Trio", ["a", "b", "c"], [
+        slot(0, "studio"),
+        slot(2, "studio", ["b", "c"]),
+      ]),
+    ],
+    occupied: [booked("studio", 3.5, 90)],
+  });
+  assertEqual(
+    people.placements[0]?.slot.startDateTime.getTime(),
+    slot(0, "studio").startDateTime.getTime(),
+    "packing the room never beats having people in it",
+  );
+}
+
 if (failures > 0) {
   console.error(`\n${failures} optimizer test(s) failed`);
   process.exit(1);

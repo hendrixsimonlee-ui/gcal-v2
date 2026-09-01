@@ -47,6 +47,17 @@ export async function getCandidateSlots(
   /** Restrict the search to one window — what build-the-week needs. Omitted
    * for the AD's own browsing, which searches forward from now as before. */
   window?: { startIso: string; endIso: string },
+  /** How many slots to return. Omitted for the AD's suggestion panel, which
+   * wants a short readable list.
+   *
+   * Build-the-week passes the lot. The short list is a display choice, and
+   * the solver must not inherit it: it places dances one after another, and
+   * every placement kills slots for the dances still to come. Handed only the
+   * top eight, a dance whose eight all got taken came back as "every workable
+   * slot clashes with another dance" while dozens of perfectly good times it
+   * was never shown sat free — which is exactly why opening that same dance
+   * on its own immediately offered several. */
+  limits?: { maxCandidates: number; maxCandidatesPerDay: number },
 ): Promise<CandidateSlot[]> {
   await requireAdmin();
 
@@ -159,6 +170,8 @@ export async function getCandidateSlots(
     slotIncrementMinutes: SLOT_INCREMENT_MINUTES,
     windowStart: window ? new Date(window.startIso) : undefined,
     windowEnd: window ? new Date(window.endIso) : undefined,
+    maxCandidates: limits?.maxCandidates,
+    maxCandidatesPerDay: limits?.maxCandidatesPerDay,
   });
 }
 

@@ -21,6 +21,13 @@ import {
   type Placement,
   type Unplaced,
 } from "@/lib/optimizer";
+
+/** Effectively "every slot", with a ceiling so a misconfigured space can't
+ * make the solver chew through an unbounded list. A week of 30-minute starts
+ * across every room the club has comes to a few hundred; these are far above
+ * that and far above the eight the AD's suggestion panel shows. */
+const SOLVER_MAX_CANDIDATES = 2000;
+const SOLVER_MAX_CANDIDATES_PER_DAY = 400;
 import { getCandidateSlots } from "@/lib/actions/schedule";
 import { getAttendanceSettings } from "@/lib/actions/attendance";
 
@@ -140,12 +147,22 @@ export async function proposeWeek(
     // dance then came back unplaced and the week looked unschedulable — while
     // placing the same dances by hand worked, since by hand the AD could see
     // all four weeks at once.
+    //
+    // And ask for all of them, not the eight the suggestion panel shows. The
+    // solver places dances one after another, so each placement removes slots
+    // from the dances still to come; given only eight to start with, a dance
+    // whose eight all got taken was reported as having nowhere to go while
+    // dozens of workable times it had never been shown sat free.
     const candidates = await getCandidateSlots(
       dance.id,
       ANY_SPACE,
       dance.defaultDurationMinutes ?? 90,
       [],
       { startIso: weekStart.toISOString(), endIso: weekEnd.toISOString() },
+      {
+        maxCandidates: SOLVER_MAX_CANDIDATES,
+        maxCandidatesPerDay: SOLVER_MAX_CANDIDATES_PER_DAY,
+      },
     );
     toPlace.push({
       danceId: dance.id,
@@ -167,11 +184,34 @@ export async function proposeWeek(
     ),
   );
 
+  // What's already in the rooms this week. The solver can't touch these —
+  // candidates were filtered against them already — but it packs new
+  // practices up against them, so a published 6pm rehearsal makes 4:30 and
+  // 7:30 better places to put the next one than 5:00, which would strand
+  // half an hour of a room the club is paying for either way.
+  //
+  // A practice with no room yet is skipped: it isn't holding any of the
+  // club's booked hours, so it can't be stranding a gap in them.
+  const occupiedRows = await prisma.practice.findMany({
+    where: {
+      startDateTime: { gte: weekStart, lt: weekEnd },
+      spaceId: { not: null },
+      dance: { archivedAt: null },
+    },
+    select: { spaceId: true, startDateTime: true, endDateTime: true },
+  });
+  const occupied = occupiedRows.map((p) => ({
+    spaceId: p.spaceId as string,
+    startDateTime: p.startDateTime,
+    endDateTime: p.endDateTime,
+  }));
+
   const result = solveWeek({
     dances: toPlace,
     history: settings.useHistoricalWeighting
       ? buildHistory(await missRates(dances.map((d) => d.id)))
       : undefined,
+    occupied,
   });
 
   return {
