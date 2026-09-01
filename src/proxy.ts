@@ -22,6 +22,6 @@ export const config = {
   matcher: [
     // The logo has to stay reachable signed-out — it's on the sign-in page,
     // and a phone fetches it for the home-screen icon without a session.
-    "/((?!api/auth|api/dev-login|_next/static|_next/image|favicon.ico|manifest.webmanifest|sw.js|icon\\.png).*)",
+    "/((?!api/auth|api/cron|api/dev-login|_next/static|_next/image|favicon.ico|manifest.webmanifest|sw.js|icon\\.png).*)",
   ],
 };
