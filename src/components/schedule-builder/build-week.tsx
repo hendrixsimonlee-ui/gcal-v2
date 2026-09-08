@@ -202,7 +202,8 @@ export function BuildWeek({
                 The builder searches every legal slot, solves the week several
                 different ways and keeps the best, and will move up to two
                 dances out of the way to fit another in. So these are real dead
-                ends, not a short list it gave up on.
+                ends, not a short list it gave up on. It will never fill one by
+                drafting a practice with no choreographer there.
               </p>
               <ul className="mt-1.5 flex flex-col gap-1.5">
                 {proposal.unplaced.map((u) => (
@@ -213,6 +214,13 @@ export function BuildWeek({
                         the dance it happened to, or the AD goes to the
                         dance's own page, sees those very times offered, and
                         concludes the builder is broken. */}
+                    {u.cause === "no-choreographer" && (
+                      <span className="mt-0.5 block text-warn/80">
+                        If this dance should go ahead without them this week,
+                        excuse the choreographer on the week tracker — that
+                        lifts the rule for this week only.
+                      </span>
+                    )}
                     {u.cause === "cast-double-booked" && (
                       <span className="mt-0.5 block text-warn/80">
                         This is why {u.danceName} can look schedulable on its

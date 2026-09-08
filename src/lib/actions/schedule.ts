@@ -58,6 +58,11 @@ export async function getCandidateSlots(
    * was never shown sat free — which is exactly why opening that same dance
    * on its own immediately offered several. */
   limits?: { maxCandidates: number; maxCandidatesPerDay: number },
+  /** Only for working out *why* a dance has no slots. Lifting the
+   * choreographer rule turns "no room booked" and "no choreographer can make
+   * any open time" from the same empty list into two distinguishable answers.
+   * Never pass this when the result will be scheduled from. */
+  options?: { requireChoreographer?: boolean },
 ): Promise<CandidateSlot[]> {
   await requireAdmin();
 
@@ -172,6 +177,7 @@ export async function getCandidateSlots(
     windowEnd: window ? new Date(window.endIso) : undefined,
     maxCandidates: limits?.maxCandidates,
     maxCandidatesPerDay: limits?.maxCandidatesPerDay,
+    requireChoreographer: options?.requireChoreographer,
   });
 }
 
@@ -304,6 +310,7 @@ export async function getWeekTracker(
     memberships,
     conflicts,
     unavailabilities,
+    exclusions,
   ] = await Promise.all([
     prisma.dance.findMany({
       where: { archivedAt: null },
@@ -344,15 +351,30 @@ export async function getWeekTracker(
       where: { startDate: { lt: weekEnd }, endDate: { gte: weekOf } },
       select: { userId: true, startDate: true, endDate: true, reason: true },
     }),
+    // Anyone the AD took out of a dance for this week. The scheduler already
+    // leaves them out of its headcount; without this the checklist counted
+    // them, and the two numbers disagreed.
+    prisma.weeklyExclusion.findMany({
+      where: { weekOf },
+      select: { danceId: true, userId: true, reason: true },
+    }),
   ]);
 
   const offIds = new Set(weeksOff.map((w) => w.danceId));
   const priorityIds = new Set(priorities.map((p) => p.danceId));
+  const excludedThisWeek = new Map<string, string | null>();
+  for (const e of exclusions) {
+    excludedThisWeek.set(`${e.danceId}:${e.userId}`, e.reason ?? null);
+  }
 
   // Who is expected at a practice: the cast, minus anyone whose conflict
-  // overlaps it and anyone away across it. Deliberately the same reading the
-  // scheduler uses when it ranks slots, so the checklist can't disagree with
-  // the suggestion that produced the practice.
+  // overlaps it, anyone away across it, and anyone taken out of the week.
+  //
+  // This has to be the same reading the scheduler uses when it ranks slots,
+  // or the checklist contradicts the proposal that produced the practice —
+  // which it did: the proposal counted away and excluded people as attending,
+  // so it reported everyone expected at every practice and the number only
+  // corrected itself once the drafts loaded here.
   const castByDance = new Map<string, typeof memberships>();
   for (const m of memberships) {
     const list = castByDance.get(m.danceId) ?? [];
@@ -367,6 +389,20 @@ export async function getWeekTracker(
     const missing: WeekTrackerRow["practices"][number]["missing"] = [];
 
     for (const member of cast) {
+      // Taken out of this dance for the week — the AD already decided they
+      // aren't coming, so they are absent, and named as such rather than
+      // looking like an ordinary clash.
+      const exclusionKey = `${practice.danceId}:${member.userId}`;
+      if (excludedThisWeek.has(exclusionKey)) {
+        const reason = excludedThisWeek.get(exclusionKey);
+        missing.push({
+          name: member.user.name ?? member.user.email,
+          role: member.role,
+          reason: reason ? `Out this week — ${reason}` : "Out this week",
+        });
+        continue;
+      }
+
       const away = unavailabilities.find(
         (u) =>
           u.userId === member.userId &&

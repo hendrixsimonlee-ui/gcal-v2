@@ -105,7 +105,12 @@ function overlapsWindow(
 }
 
 // Test 2: with only one choreographer, their conflict means nobody can run
-// the rehearsal — so the slot must lose to any alternative, without vanishing.
+// the rehearsal — so the slot is refused outright.
+//
+// This used to be a very heavy weight instead: offered last rather than
+// withheld, so the AD could see the least-bad option and decide. In practice
+// that meant the builder sometimes drafted a practice nobody could lead and
+// the AD had to spot it. A rehearsal with nobody to run it isn't a rehearsal.
 {
   const conflictStart = minutesIntoAppDay(nextMonday, 1080);
   const conflictEnd = minutesIntoAppDay(nextMonday, 1260);
@@ -127,24 +132,29 @@ function overlapsWindow(
     overlapsWindow(c, conflictStart, conflictEnd),
   );
   assert(
-    clashing.length > 0,
-    "a choreographer's conflict still leaves the slot on offer",
+    clashing.length === 0,
+    "the only choreographer being busy removes the slot entirely",
   );
   assert(
-    clashing.every((c) => c.noChoreographerAvailable),
-    "...flagged as having nobody to run it, since this dance has one choreographer",
+    result.every((c) => !c.noChoreographerAvailable),
+    "...so no slot is ever returned with nobody to run it",
+  );
+  assert(
+    result.length > 0,
+    "...while the times they can make are still offered",
   );
 
-  const clean = result.filter(
-    (c) => !overlapsWindow(c, conflictStart, conflictEnd),
+  // Switched off, the same input keeps those slots — which is the only way
+  // build-the-week can tell "no room this week" apart from "no choreographer
+  // can make any of the open times" when reporting why a dance didn't fit.
+  const relaxed = generateCandidateSlots({
+    ...input,
+    requireChoreographer: false,
+  });
+  assert(
+    relaxed.some((c) => overlapsWindow(c, conflictStart, conflictEnd)),
+    "...and the diagnostic switch brings them back for reporting only",
   );
-  if (clean.length > 0) {
-    assert(
-      Math.max(...clean.map((c) => c.score)) <
-        Math.min(...clashing.map((c) => c.score)),
-      "...and sorts below every slot somebody can run",
-    );
-  }
 }
 
 // Test 2b: three choreographers, one busy. The other two can run it, so this
@@ -219,16 +229,58 @@ function overlapsWindow(
     (c) => !overlapsWindow(c, conflictStart, conflictEnd),
   );
 
-  assert(clashing.length > 0, "all choreographers busy: the slot is still offered");
   assert(
-    clashing.every((c) => c.noChoreographerAvailable),
-    "...flagged as having nobody to run it",
+    clashing.length === 0,
+    "all three choreographers busy: the slot is refused, not ranked last",
+  );
+  assert(clean.length > 0, "...and the rest of the week is still offered");
+  assert(
+    result.every((c) => c.choreographersMissing < 3),
+    "...so every slot returned has somebody who can run it",
+  );
+}
+
+// Test 2d: one of three busy is an ordinary slot, because two can still run
+// it — "at least one present" is the rule, not "all present". It costs a
+// little, so the builder still prefers having all three.
+{
+  const conflictStart = minutesIntoAppDay(nextMonday, 1080);
+  const conflictEnd = minutesIntoAppDay(nextMonday, 1260);
+  const oneBusy = {
+    ...base,
+    castMembers: [
+      { userId: "choreo1", name: "Choreo One", role: "CHOREOGRAPHER" as const },
+      { userId: "choreo2", name: "Choreo Two", role: "CHOREOGRAPHER" as const },
+      { userId: "choreo3", name: "Choreo Three", role: "CHOREOGRAPHER" as const },
+      { userId: "dancer1", name: "Dancer One", role: "DANCER" as const },
+    ],
+    conflicts: [
+      {
+        id: "c1",
+        userId: "choreo1",
+        startDateTime: conflictStart,
+        endDateTime: conflictEnd,
+        isExcused: false,
+      },
+    ],
+  };
+  const result = generateCandidateSlots(oneBusy);
+  const clashing = result.filter((c) =>
+    overlapsWindow(c, conflictStart, conflictEnd),
+  );
+  const clean = result.filter(
+    (c) => !overlapsWindow(c, conflictStart, conflictEnd),
+  );
+  assert(clashing.length > 0, "one choreographer of three busy: still offered");
+  assert(
+    clashing.every((c) => c.choreographersMissing === 1),
+    "...with the one who can't make it recorded",
   );
   if (clean.length > 0) {
     assert(
-      Math.max(...clean.map((c) => c.score)) <
+      Math.min(...clean.map((c) => c.score)) <
         Math.min(...clashing.map((c) => c.score)),
-      "...and ranks below every slot that has a choreographer",
+      "...but a slot all three can make still scores better",
     );
   }
 }
