@@ -296,24 +296,41 @@ function memberWeight(
   return 1 + deficitWeight * excess;
 }
 
-/** Who we expect at this slot.
+/** Who we actually expect in the room at this slot.
  *
- * Only genuine unavailability counts as missing — a logged conflict, or a
- * practice for another dance at the same time. The engine also flags people
- * as `historically-absent`, but that is a guess about behaviour rather than
- * a statement that they can't come, and treating it as an absence here would
- * be perverse: it would push the solver away from including exactly the
- * people the fairness weighting exists to include. It stays a tie-breaker in
- * the per-dance ranking, which is where it belongs. */
+ * Two lists to read, not one, and missing the second was a real bug: the
+ * proposal told the AD everyone was expected at every practice, and the
+ * number only corrected itself once the drafts landed in the week checklist.
+ *
+ * - `conflictedCastMembers` — logged conflicts and clashes with another
+ *   dance. Obviously absent.
+ * - `awayCastMembers` and `excludedCastMembers` — out of town for the whole
+ *   slot, or taken out of this dance's week by the AD. Just as absent, but
+ *   held in separate lists on purpose: they miss every slot of the week
+ *   equally, so charging them would make every option look worse without
+ *   changing which one wins. That reasoning is about *ranking*. Reading it as
+ *   "not absent" counted them into the headcount the AD was shown.
+ *
+ * Counting them here is safe for ranking too: it lowers every slot for that
+ * dance by the same amount, so the order within a dance is untouched.
+ *
+ * The one flag deliberately ignored is `historically-absent`. That is a guess
+ * about behaviour rather than a statement that somebody can't come, and
+ * treating it as an absence would push the solver away from including exactly
+ * the people the fairness weighting exists to include. It stays a tie-breaker
+ * in the per-dance ranking, which is where it belongs. */
 function attendeesFor(dance: DanceToPlace, slot: CandidateSlot): Set<string> {
-  const conflicted = new Set(
+  const absent = new Set(
     slot.conflictedCastMembers
       .filter((c) => c.reason !== "historically-absent")
       .map((c) => c.userId),
   );
+  for (const person of slot.awayCastMembers) absent.add(person.userId);
+  for (const person of slot.excludedCastMembers) absent.add(person.userId);
+
   const present = new Set<string>();
   for (const member of dance.cast) {
-    if (!conflicted.has(member.userId)) present.add(member.userId);
+    if (!absent.has(member.userId)) present.add(member.userId);
   }
   return present;
 }

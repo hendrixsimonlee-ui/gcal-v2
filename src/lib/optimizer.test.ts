@@ -46,6 +46,7 @@ function slot(
       reason: "unexcused-conflict" as const,
     })),
     awayCastMembers: [],
+    excludedCastMembers: [],
     choreographersMissing: 0,
     noChoreographerAvailable: false,
   };
@@ -834,6 +835,68 @@ function booked(spaceId: string, startHour: number, minutes: number) {
     result.placements[0]?.slot.startDateTime.getTime(),
     slot(0, "studio", ["ch1"]).startDateTime.getTime(),
     "…but two dancers still outweigh one choreographer",
+  );
+}
+
+// --- the headcount the AD is shown must be the real one --------------------
+// "Build the week said everyone was expected at every practice, then the
+// checklist showed the true number once the drafts loaded."
+//
+// People who are away are deliberately kept out of `conflictedCastMembers` —
+// they miss every slot equally, so scoring them would only make every option
+// look bad without changing which one wins. But the proposal read that list
+// as "everyone who can't come", so an away dancer was quietly counted as
+// attending. The week checklist counts them missing, which is why the number
+// changed the moment the drafts landed.
+{
+  const away = slot(0, "studio");
+  away.awayCastMembers = [
+    { userId: "b", name: "b", role: "DANCER", reason: "Home for fall break" },
+  ];
+
+  const result = solveWeek({
+    dances: [dance("Piece", ["a", "b", "c"], [away])],
+    maxRuns: 1,
+  });
+
+  assertEqual(
+    result.placements[0]?.expectedCount,
+    2,
+    "someone away is not counted as attending",
+  );
+  assertEqual(
+    result.placements[0]?.castSize,
+    3,
+    "...while the cast size still counts them",
+  );
+  assert(
+    result.placements[0]?.missingUserIds.includes("b"),
+    "...and they are named among the people missing",
+  );
+  assertEqual(
+    result.totalExpectedAttendance,
+    2,
+    "...so the week's total headcount is the real one",
+  );
+}
+{
+  // Being away must not change which slot wins, though — that is why they were
+  // set aside in the first place. Away in both, conflicted in one.
+  const early = slot(0, "studio", ["c"]);
+  const late = slot(2, "studio");
+  for (const s of [early, late]) {
+    s.awayCastMembers = [
+      { userId: "b", name: "b", role: "DANCER", reason: "Abroad" },
+    ];
+  }
+  const result = solveWeek({
+    dances: [dance("Piece", ["a", "b", "c"], [early, late])],
+    maxRuns: 1,
+  });
+  assertEqual(
+    result.placements[0]?.slot.startDateTime.getTime(),
+    late.startDateTime.getTime(),
+    "an away dancer misses every slot equally, so the choice is unaffected",
   );
 }
 

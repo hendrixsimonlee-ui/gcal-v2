@@ -164,6 +164,11 @@ export interface CandidateSlot {
   conflictedCastMembers: CastConflictNote[];
   /** Away for this slot, and deliberately not counted against it. */
   awayCastMembers: AwayCastMember[];
+  /** Taken out of this dance's week by the AD. Like the away list, these are
+   * held apart from the scoring — the AD has already decided they're not
+   * coming, so charging for them would drag every slot equally — but they are
+   * absent, and the headcount shown to the AD has to say so. */
+  excludedCastMembers: AwayCastMember[];
   /** How many choreographers can't make it. One of three missing is a normal
    * slot; the UI shows it without alarm. */
   choreographersMissing: number;
@@ -433,9 +438,22 @@ export function generateCandidateSlots(input: SchedulingInput): CandidateSlot[] 
 
     // Soft score: everyone else's conflicts and other-dance practices.
     const choreographerIds = new Set(choreographers.map((c) => c.userId));
+    const excludedCastMembers: AwayCastMember[] = [];
 
     for (const member of castMembers) {
-      if (ignoredUserIds.has(member.userId)) continue;
+      if (ignoredUserIds.has(member.userId)) {
+        // Not scored — the AD took them out of the week, so they'd cost every
+        // slot the same — but recorded, so the headcount can leave them out.
+        if (!awayUserIds.has(member.userId)) {
+          excludedCastMembers.push({
+            userId: member.userId,
+            name: member.name,
+            role: member.role,
+            reason: null,
+          });
+        }
+        continue;
+      }
       // A choreographer excused for this week is fully exempt, not just
       // from the hard mandatory-attendance requirement — their conflict
       // shouldn't count against the ranking either.
@@ -506,6 +524,7 @@ export function generateCandidateSlots(input: SchedulingInput): CandidateSlot[] 
       score,
       conflictedCastMembers,
       awayCastMembers,
+      excludedCastMembers,
       choreographersMissing,
       noChoreographerAvailable: noChoreographerLeft,
     };
