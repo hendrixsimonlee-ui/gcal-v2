@@ -3,13 +3,16 @@ import {
   updateAttendanceSettings,
 } from "@/lib/actions/attendance";
 import { TeamCalendarLink } from "@/components/team-calendar-link";
+import { ConflictNudgeSchedule } from "@/components/conflict-nudge-schedule";
+import { getConflictNudgeSchedule } from "@/lib/actions/notifications";
 import { TermsManager } from "@/components/terms-manager";
 import { listTerms } from "@/lib/terms";
 
 export default async function AdminSettingsPage() {
-  const [settings, terms] = await Promise.all([
+  const [settings, terms, nudge] = await Promise.all([
     getAttendanceSettings(),
     listTerms(),
+    getConflictNudgeSchedule(),
   ]);
 
   return (
@@ -25,6 +28,13 @@ export default async function AdminSettingsPage() {
       </div>
 
       <TermsManager terms={terms} />
+
+      <ConflictNudgeSchedule
+        enabled={nudge.enabled}
+        weekday={nudge.weekday}
+        hour={nudge.hour}
+        minute={nudge.minute}
+      />
 
       <form
         action={updateAttendanceSettings}

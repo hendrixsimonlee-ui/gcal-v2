@@ -57,7 +57,7 @@ export function PersonAttendanceRow({
         {danceName}
       </span>
       {danceArchived && (
-        <span className="rounded-full bg-surface-3 px-2 py-0.5 text-[10px] font-medium text-ink-soft">
+        <span className="rounded bg-surface-3 px-2 py-0.5 text-[10px] font-medium text-ink-soft">
           archived
         </span>
       )}

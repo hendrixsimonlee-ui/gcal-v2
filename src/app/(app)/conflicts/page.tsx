@@ -12,6 +12,7 @@ import { ConflictCalendarSync } from "@/components/conflict-calendar-sync";
 import { ConflictStatusBadge } from "@/components/status-badges";
 import { SubmitWeekButton } from "@/components/submit-week-button";
 import { APP_TIME_ZONE } from "@/lib/timezone";
+import { calendarDateFormatter } from "@/lib/dates";
 
 const timeFormatter = new Intl.DateTimeFormat("en-US", {
   timeZone: APP_TIME_ZONE,
@@ -19,8 +20,9 @@ const timeFormatter = new Intl.DateTimeFormat("en-US", {
   hour: "numeric",
   minute: "2-digit",
 });
-const dateFormatter = new Intl.DateTimeFormat("en-US", {
-  timeZone: APP_TIME_ZONE,
+// Out-of-town windows are `@db.Date` columns — a bare calendar day, handed
+// back at UTC midnight. Reading them in Eastern showed the day before.
+const dateFormatter = calendarDateFormatter({
   month: "short",
   day: "numeric",
 });

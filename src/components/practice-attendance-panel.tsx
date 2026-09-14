@@ -285,7 +285,7 @@ export function PracticeAttendancePanel({
               className="flex flex-wrap items-start gap-x-2 rounded-lg bg-surface-2 px-3 py-2 text-sm bg-surface/60"
             >
               {note.subjectName && (
-                <span className="rounded-full bg-surface-3 px-2 py-0.5 text-[11px] font-medium text-ink-soft">
+                <span className="rounded bg-surface-3 px-2 py-0.5 text-[11px] font-medium text-ink-soft">
                   {note.subjectName}
                 </span>
               )}
@@ -383,7 +383,7 @@ function Group({
               {row.name}
             </span>
             {row.role === "CHOREOGRAPHER" && (
-              <span className="rounded-full bg-accent-soft px-2 py-0.5 text-[10px] font-medium text-accent-ink">
+              <span className="rounded bg-accent-soft px-2 py-0.5 text-[10px] font-medium text-accent-ink">
                 Choreographer
               </span>
             )}

@@ -106,7 +106,7 @@ It prints a public key and a private key. Paste them into Vercel as
 `mailto:` followed by your email.
 
 If you skip this, everything still works — people just get notifications
-inside the app and by email instead of on their lock screen.
+inside the app instead of on their lock screen.
 
 > **Worth knowing:** on an iPhone, a web app can only send notifications
 > once it's been **added to the home screen**. That's Apple's rule, not a
@@ -208,20 +208,22 @@ attendance whenever they want. You only lose the automatic nudges.
 
 ---
 
-## Optional — email notifications
+## Push notifications
 
-Without this, people still get notifications inside the app (the bell icon).
-Email is extra.
+The app sends no email. Push is the only channel that reaches anyone who
+isn't already looking at the app, so this is worth doing.
 
-1. Sign up at [resend.com](https://resend.com) and verify a domain, or use
-   their test sending address to start.
-2. Create an API key.
-3. In Vercel: **Settings → Environment Variables**, add `RESEND_API_KEY` and
-   `EMAIL_FROM` (e.g. `PADT Calendar <scheduler@yourdomain.edu>`), then
-   redeploy.
+1. Run `npx web-push generate-vapid-keys`.
+2. In Vercel: **Settings → Environment Variables**, add `VAPID_PUBLIC_KEY`,
+   `VAPID_PRIVATE_KEY` and `VAPID_SUBJECT` (`mailto:you@yourdomain.edu`),
+   then redeploy.
 
-If email is misconfigured the app carries on and logs the problem — it never
-blocks you from publishing a schedule.
+Without these every push is a silent no-op — people still get notifications
+inside the app, but only when they open it.
+
+On iPhone, push only works once somebody has added the app to their home
+screen. Safari won't deliver it to a plain browser tab. The app tells them
+this on the schedule screen.
 
 ---
 

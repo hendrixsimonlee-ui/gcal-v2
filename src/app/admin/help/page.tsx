@@ -17,6 +17,24 @@ export default function AdminHelpPage() {
         </p>
       </div>
 
+      {/* Same handbook as the dancer page links to; its second half is this
+          screen's content in full, including every number the scheduler
+          uses. Shareable, so exec can read it without an admin account. */}
+      <a
+        href="https://claude.ai/artifact/DKDUEU9wjpKChdsh4DA5Uv"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex flex-col gap-0.5 rounded-lg border border-accent/40 bg-accent-soft px-4 py-3 no-underline transition-colors hover:border-accent"
+      >
+        <span className="text-sm font-semibold text-accent-ink">
+          The full handbook &rarr;
+        </span>
+        <span className="text-xs text-ink-soft">
+          The complete write-up, dancer half and AD half, in one shareable
+          page. Send it to exec rather than explaining the scheduler again.
+        </span>
+      </a>
+
       <Section title="The shape of the whole thing">
         <ol>
           <li>
@@ -86,10 +104,13 @@ export default function AdminHelpPage() {
         </p>
         <p>
           On <Nav href="/admin/conflicts">Conflict Review</Nav> you mark each
-          one <B>excused</B>{" "}or <B>unexcused</B>. Both still count against a
-          time; excused just counts less. Anything you haven&rsquo;t reviewed is
-          treated as unexcused, so unreviewed conflicts never quietly make a
-          slot look better than it is.
+          one <B>excused</B>{" "}or <B>unexcused</B>.{" "}
+          <B>Both count the same against a time</B>{" "}— an absence is an
+          absence, and whether you excused it doesn&rsquo;t change who is
+          standing in the room. The mark is still worth making: it&rsquo;s what
+          attendance records go on, and it tells you at a glance whether a
+          clash is a lab or something soft. Anything unreviewed counts too, so
+          it can never quietly make a slot look better than it is.
         </p>
         <p>
           <B>Submitting</B>{" "}is how somebody says &ldquo;I&rsquo;ve looked at
@@ -126,12 +147,18 @@ export default function AdminHelpPage() {
         <h3 className="mt-2 font-semibold text-ink">
           Step 2 — Throw out the impossible ones
         </h3>
-        <p>Only two things make a slot impossible:</p>
+        <p>Three things make a slot impossible:</p>
         <ul>
           <li>The room isn&rsquo;t yours for the whole window</li>
           <li>
             Another dance is already in that room then — drafts included, since
             a draft holds its room
+          </li>
+          <li>
+            <B>No choreographer for this dance can make it.</B>{" "}A rehearsal
+            with nobody to run it isn&rsquo;t a rehearsal. One of three being
+            busy is fine; all of them is not. (Unless you&rsquo;ve excused them
+            for the week — see Step 4.)
           </li>
         </ul>
         <p>
@@ -170,7 +197,7 @@ export default function AdminHelpPage() {
             </tr>
             <tr>
               <td>Dancer has an excused conflict</td>
-              <td className="tabular-nums">1</td>
+              <td className="tabular-nums">2</td>
             </tr>
             <tr>
               <td>Dancer is called to another dance at the same time</td>
@@ -191,28 +218,37 @@ export default function AdminHelpPage() {
               <td>
                 <B>No choreographer at all can make it</B>
               </td>
-              <td className="tabular-nums">
-                <B>10 × cast size + 50</B>
+              <td>
+                <B>Refused</B>
               </td>
             </tr>
           </tbody>
         </table>
         <p>
-          That last row is the important one. For a 12-person dance it&rsquo;s
-          170 points — more than the entire cast could ever add up to. So a slot
-          with nobody to run the rehearsal always loses to any slot that has
-          somebody, however many dancers are missing from it. It scales with
-          cast size so it works the same for a dance of 6 and a dance of 25.
+          <B>A time no choreographer can make is never offered and never
+          drafted.</B>{" "}A rehearsal with nobody to run it isn&rsquo;t a
+          rehearsal, so it isn&rsquo;t a score at all — it&rsquo;s a refusal,
+          alongside &ldquo;the room isn&rsquo;t ours&rdquo; and
+          &ldquo;another dance is already in it&rdquo;.
         </p>
         <p>
-          But one choreographer out of three being busy costs only 3, roughly a
-          dancer and a half. If two of them can still run it, that&rsquo;s a
-          perfectly ordinary slot and it&rsquo;s treated as one.
+          <B>At least one is enough.</B>{" "}One choreographer out of three being
+          busy costs 3, roughly a dancer and a half. If the other two can run
+          it, that&rsquo;s an ordinary slot and it&rsquo;s treated as one — but
+          a time all three can make still beats it, so the builder gathers as
+          many as it can.
         </p>
         <p>
-          <B>And a leaderless slot is still shown.</B>{" "}It sits at the bottom of
-          the list, labelled. The app never tells you a week can&rsquo;t be
-          scheduled — it shows you the least-bad option and lets you decide.
+          <B>One exception, and you control it.</B>{" "}If every choreographer for
+          a dance is excused for the week or away, the rule lifts — you&rsquo;ve
+          already decided the dance runs without them, and refusing every slot
+          would just make it unschedulable. Use the week tracker&rsquo;s excuse
+          if you want a practice to go ahead leaderless.
+        </p>
+        <p>
+          If that leaves a dance with nowhere to go, it says so in plain words —{" "}
+          <em>&ldquo;there are open times, but no choreographer can make any of
+          them&rdquo;</em>{" "}— rather than blaming the rooms.
         </p>
 
         <h3 className="mt-2 font-semibold text-ink">Step 5 — Rank</h3>
@@ -576,6 +612,150 @@ export default function AdminHelpPage() {
         <p>
           This is deliberate. An earlier, chattier version notified on every
           change and the team stopped reading any of it.
+        </p>
+      </Section>
+
+      <Section title="The shared Google Calendar">
+        <p>
+          Separate from the one you read rooms off. This is the calendar the
+          whole team subscribes to, with every published practice on it.
+        </p>
+        <h3 className="mt-2 font-semibold text-ink">Setting it up, once</h3>
+        <p>
+          <Nav href="/admin/settings">Settings</Nav> →{" "}
+          <B>Shared team calendar</B>{" "}→ <B>Link the team calendar</B>, then
+          pick it from the list. Make it a calendar owned by the{" "}
+          <em>club account</em>{" "}and shared with you, not your personal one —
+          that way it outlives you handing the role over.
+        </p>
+        <p>
+          <B>Until you link one, nothing reaches Google.</B>{" "}The app still
+          works and people still get told in the app — but the shared calendar
+          stays empty, and until now it did that without saying so.
+        </p>
+
+        <h3 className="mt-2 font-semibold text-ink">How practices get there</h3>
+        <p>
+          <B>Publishing puts them there automatically.</B>{" "}You don&rsquo;t
+          have to do anything. Move a published practice and the calendar
+          follows immediately — the calendar is a reference, so it updates even
+          though the <em>announcement</em>{" "}waits for you.
+        </p>
+        <p>
+          <B>Drafts never go on it</B>, by design. Forty people read that
+          calendar, and a draft is a time you haven&rsquo;t committed to.
+        </p>
+
+        <h3 className="mt-2 font-semibold text-ink">
+          Checking it actually worked
+        </h3>
+        <p>
+          On the Schedule Builder, under Build the week, there&rsquo;s{" "}
+          <B>Send Sep 14 – Sep 20 to Google Calendar</B>. It pushes that
+          week&rsquo;s published practices again and tells you the number that
+          landed — &ldquo;6 of 6 practices sent to PADT Practices&rdquo;.
+        </p>
+        <p>
+          Press it whenever you want to be sure, after a week where something
+          looked off, or the first time you link the calendar. It&rsquo;s safe
+          to press twice: each practice remembers its own event, so a second
+          send updates the same entries rather than doubling them up.
+        </p>
+        <p>
+          If it says practices <B>couldn&rsquo;t be written</B>, your Google
+          sign-in has usually expired or the calendar stopped being shared with
+          you. Sign out, sign back in, tick the calendar boxes, and send again.
+        </p>
+      </Section>
+
+      <Section title="What the app sends, and when">
+        <p>
+          <B>Push notifications only — there is no email.</B>{" "}Forty students
+          don&rsquo;t read club email, so it was taken out. That makes
+          it worth telling people to add the app to their home screen:
+          without that, Apple won&rsquo;t deliver push and they only see
+          things when they open the app.
+        </p>
+        <table className="my-1 w-full border-collapse text-left">
+          <thead>
+            <tr className="border-b border-line">
+              <th className="py-1 pr-3 font-medium text-ink">Message</th>
+              <th className="py-1 pr-3 font-medium text-ink">Who gets it</th>
+              <th className="py-1 font-medium text-ink">What sets it off</th>
+            </tr>
+          </thead>
+          <tbody className="[&_td]:py-1 [&_td]:pr-3 [&_td]:align-top [&_tr]:border-b [&_tr]:border-line/60">
+            <tr>
+              <td>Schedule published</td>
+              <td>Everyone in a practice you published</td>
+              <td>
+                <B>You press Publish.</B> Nothing before that.
+              </td>
+            </tr>
+            <tr>
+              <td>Something changed</td>
+              <td>Only the people affected</td>
+              <td>
+                You publish an edit. Moving a practice five times still sends
+                one message.
+              </td>
+            </tr>
+            <tr>
+              <td>Practice cancelled</td>
+              <td>That dance&rsquo;s cast</td>
+              <td>You delete a published practice</td>
+            </tr>
+            <tr>
+              <td>A week is off</td>
+              <td>That dance&rsquo;s cast</td>
+              <td>You press announce. Marking the week off does nothing.</td>
+            </tr>
+            <tr>
+              <td>
+                <B>Starts in 15 minutes</B>
+              </td>
+              <td>The cast, minus anyone known to be missing</td>
+              <td>Automatic, 15 minutes before the start</td>
+            </tr>
+            <tr>
+              <td>Check in</td>
+              <td>The cast, minus anyone known to be missing</td>
+              <td>Automatic, as the practice starts</td>
+            </tr>
+            <tr>
+              <td>Confirm attendance</td>
+              <td>
+                <B>Choreographers only</B>
+              </td>
+              <td>Automatic, as the practice ends</td>
+            </tr>
+            <tr>
+              <td>Conflicts are due</td>
+              <td>Only people who haven&rsquo;t submitted</td>
+              <td>You press Nudge — or on the weekly schedule you set</td>
+            </tr>
+          </tbody>
+        </table>
+        <p>
+          <B>Drafts never notify anybody.</B>{" "}Build a week, move things
+          around, delete and rebuild it — the team sees none of it until you
+          publish.
+        </p>
+
+        <h3 className="mt-2 font-semibold text-ink">
+          The weekly conflicts reminder
+        </h3>
+        <p>
+          The only message that goes out without you pressing anything, so
+          it&rsquo;s off until you switch it on in{" "}
+          <Nav href="/admin/settings">Settings</Nav>. Pick a day and a time
+          and it goes to everyone who hasn&rsquo;t submitted for the week
+          starting the following Monday.
+        </p>
+        <p>
+          People who have already submitted are left alone, and if everyone
+          has, nothing sends. It goes once a week whatever happens — you
+          can&rsquo;t accidentally send it twice.
         </p>
       </Section>
 

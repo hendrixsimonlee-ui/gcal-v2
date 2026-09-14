@@ -362,7 +362,7 @@ async function ByPersonView({
                   <td className="py-1 text-ink">
                     {cell.danceName}
                     {cell.isFlagged && (
-                      <span className="ml-2 rounded-full bg-bad-soft px-2 py-0.5 text-[10px] font-medium text-bad">
+                      <span className="ml-2 rounded bg-bad-soft px-2 py-0.5 text-[10px] font-medium text-bad">
                         Flagged
                       </span>
                     )}
@@ -425,7 +425,7 @@ async function UnexcusedView() {
             <span className="font-medium text-ink">
               {personRows[0].name}
             </span>
-            <span className="rounded-full bg-bad-soft px-2 py-0.5 text-xs font-medium text-bad">
+            <span className="rounded bg-bad-soft px-2 py-0.5 text-xs font-medium text-bad">
               {personRows.length} unexcused
             </span>
           </div>
@@ -596,7 +596,7 @@ async function EveryPracticeView() {
                   )}
                 </span>
               ) : (
-                <span className="rounded-full bg-warn-soft px-2 py-0.5 text-xs font-medium text-warn">
+                <span className="rounded bg-warn-soft px-2 py-0.5 text-xs font-medium text-warn">
                   Nobody checked in
                 </span>
               )}

@@ -153,7 +153,7 @@ export function SubmissionTracker({
             <span className="font-medium text-ink">{row.name}</span>
             {row.submittedAtIso ? (
               <span
-                className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${ row.submittedByName
+                className={`rounded px-2 py-0.5 text-[11px] font-medium ${ row.submittedByName
                     ? "bg-info-soft text-info"
                     : "bg-good-soft text-good"
                 }`}
@@ -168,7 +168,7 @@ export function SubmissionTracker({
               </span>
             ) : (
               <>
-                <span className="rounded-full bg-warn-soft px-2 py-0.5 text-[11px] font-medium text-warn">
+                <span className="rounded bg-warn-soft px-2 py-0.5 text-[11px] font-medium text-warn">
                   {row.nudgedAtIso
                     ? `Nudged ${stampFormatter.format(new Date(row.nudgedAtIso))}`
                     : "Not in yet"}

@@ -1,9 +1,14 @@
 import { prisma } from "@/lib/prisma";
-import { googleCalendarAddUrl } from "@/lib/calendar-links";
 import { sendPushToUsers } from "@/lib/push";
 import { isExpectedToCheckIn } from "@/lib/attendance";
 import type { NotificationType } from "@/generated/prisma/enums";
 import { APP_TIME_ZONE } from "@/lib/timezone";
+
+const timeFormatter = new Intl.DateTimeFormat("en-US", {
+  timeZone: APP_TIME_ZONE,
+  hour: "numeric",
+  minute: "2-digit",
+});
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", {
   timeZone: APP_TIME_ZONE,
@@ -14,36 +19,9 @@ const dateFormatter = new Intl.DateTimeFormat("en-US", {
   minute: "2-digit",
 });
 
-/** Sends an email if Resend is configured. Deliberately best-effort: a
- * missing API key (or a bounced send) must never break the AD's action of
- * confirming a practice, so failures are logged and swallowed. */
-async function sendEmail(to: string, subject: string, html: string) {
-  const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.EMAIL_FROM;
-  if (!apiKey || !from) return { skipped: true as const };
-
-  try {
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ from, to, subject, html }),
-    });
-    if (!res.ok) {
-      console.error("Email send failed", res.status, await res.text());
-      return { skipped: false as const, ok: false as const };
-    }
-    return { skipped: false as const, ok: true as const };
-  } catch (error) {
-    console.error("Email send threw", error);
-    return { skipped: false as const, ok: false as const };
-  }
-}
-
 /** Tells a dance's cast that a practice is locked in: an in-app notification
- * for everyone, plus an email with an add-to-calendar link. */
+/** Tells a dance's cast that a practice is locked in: an in-app notification
+ * and a push, for everyone in the dance. */
 export async function notifyPracticeConfirmed(practiceId: string) {
   const practice = await prisma.practice.findUnique({
     where: { id: practiceId },
@@ -56,44 +34,22 @@ export async function notifyPracticeConfirmed(practiceId: string) {
 
   const when = dateFormatter.format(practice.startDateTime);
   const where = practice.space?.name ?? "Space TBD";
-  const message = `${practice.dance.name} practice confirmed — ${when} at ${where}`;
 
-  const recipients = practice.dance.memberships.map((m) => m.user);
-  if (recipients.length === 0) return;
-
-  await prisma.notification.createMany({
-    data: recipients.map((user) => ({
-      userId: user.id,
-      type: "SCHEDULE_FINALIZED" as NotificationType,
-      message,
-    })),
-  });
-
-  const addUrl = googleCalendarAddUrl({
-    title: `${practice.dance.name} practice`,
-    start: practice.startDateTime,
-    end: practice.endDateTime,
-    location: practice.space?.location ?? practice.space?.name ?? undefined,
-    details: `${practice.dance.name} rehearsal.`,
-  });
-
-  const html = `
-    <p>Your <strong>${escapeHtml(practice.dance.name)}</strong> practice is confirmed.</p>
-    <p><strong>${escapeHtml(when)}</strong><br/>${escapeHtml(where)}</p>
-    <p><a href="${addUrl}">Add it to your Google Calendar</a></p>
-  `;
-
-  await Promise.all(
-    recipients.map((user) =>
-      sendEmail(user.email, `${practice.dance.name} practice confirmed`, html),
-    ),
+  await notify(
+    practice.dance.memberships.map((m) => m.user),
+    "SCHEDULE_FINALIZED",
+    `${practice.dance.name} practice confirmed — ${when} at ${where}`,
+    { href: "/schedule" },
   );
 }
 
-/** Announces a batch of newly confirmed practices — the "publish the whole
- * term at once" flow. Deliberately one notification and one email per
- * person listing all of their practices, rather than one per practice,
- * which would mean a dozen emails landing at once. */
+/** Announces a batch of newly confirmed practices — the "publish the week"
+ * flow. One notification and one push per person, listing how many practices
+ * they got, rather than one per practice: a dancer in four dances should feel
+ * one buzz, not four.
+ *
+ * Only ever called from publishing. A draft has never reached anybody and
+ * never will — this is the moment the schedule becomes real. */
 export async function notifySchedulePublished(practiceIds: string[]) {
   if (practiceIds.length === 0) return;
 
@@ -108,67 +64,45 @@ export async function notifySchedulePublished(practiceIds: string[]) {
   if (practices.length === 0) return;
 
   // userId -> the practices that person is actually in
-  const perUser = new Map<
-    string,
-    { email: string; name: string | null; items: typeof practices }
-  >();
-
+  const perUser = new Map<string, typeof practices>();
   for (const practice of practices) {
     for (const membership of practice.dance.memberships) {
       const existing = perUser.get(membership.userId);
-      if (existing) {
-        existing.items.push(practice);
-      } else {
-        perUser.set(membership.userId, {
-          email: membership.user.email,
-          name: membership.user.name,
-          items: [practice],
-        });
-      }
+      if (existing) existing.push(practice);
+      else perUser.set(membership.userId, [practice]);
     }
   }
 
-  const notifications: { userId: string; type: NotificationType; message: string }[] = [];
-  const emails: { to: string; subject: string; html: string }[] = [];
+  const notifications: {
+    userId: string;
+    type: NotificationType;
+    message: string;
+    href: string;
+  }[] = [];
 
-  for (const [userId, { email, items }] of perUser) {
-    const count = items.length;
+  for (const [userId, items] of perUser) {
     notifications.push({
       userId,
       type: "SCHEDULE_FINALIZED",
       message:
-        count === 1
+        items.length === 1
           ? `Schedule published — ${items[0].dance.name} on ${dateFormatter.format(items[0].startDateTime)}`
-          : `Schedule published — ${count} practices confirmed for you`,
-    });
-
-    const rows = items
-      .map((practice) => {
-        const addUrl = googleCalendarAddUrl({
-          title: `${practice.dance.name} practice`,
-          start: practice.startDateTime,
-          end: practice.endDateTime,
-          location: practice.space?.location ?? practice.space?.name ?? undefined,
-          details: `${practice.dance.name} rehearsal.`,
-        });
-        return `<li><strong>${escapeHtml(practice.dance.name)}</strong> — ${escapeHtml(
-          dateFormatter.format(practice.startDateTime),
-        )}, ${escapeHtml(practice.space?.name ?? "space TBD")} · <a href="${addUrl}">add to calendar</a></li>`;
-      })
-      .join("");
-
-    emails.push({
-      to: email,
-      subject:
-        count === 1
-          ? "Your practice is confirmed"
-          : `Your schedule is set — ${count} practices`,
-      html: `<p>The schedule has been published. Here's yours:</p><ul>${rows}</ul>`,
+          : `Schedule published — ${items.length} practices confirmed for you`,
+      href: "/schedule",
     });
   }
 
   await prisma.notification.createMany({ data: notifications });
-  await Promise.all(emails.map((e) => sendEmail(e.to, e.subject, e.html)));
+
+  // The message differs per person, so the in-app rows are written in one go
+  // above and the push is sent once for everyone with wording that doesn't
+  // need to know whose phone it lands on. A lock screen shouldn't carry the
+  // whole schedule anyway.
+  await sendPushToUsers(Array.from(perUser.keys()), {
+    title: "PADT",
+    body: "The schedule is published — open the app for your practices",
+    href: "/schedule",
+  });
 }
 
 /** Announces edits made to practices that were already published.
@@ -224,9 +158,8 @@ export async function announcePracticeChanges(
     message: string;
     href: string;
   }[] = [];
-  const emails: { to: string; subject: string; html: string }[] = [];
 
-  for (const [userId, { user, lines }] of perUser) {
+  for (const [userId, { lines }] of perUser) {
     const message =
       lines.length === 1
         ? `Schedule change — ${lines[0]}`
@@ -236,16 +169,6 @@ export async function announcePracticeChanges(
       type: "PRACTICE_CHANGED",
       message,
       href: "/schedule",
-    });
-    emails.push({
-      to: user.email,
-      subject:
-        lines.length === 1
-          ? "A practice of yours changed"
-          : `${lines.length} of your practices changed`,
-      html: `<p>The schedule has been updated. Here's what changed for you:</p><ul>${lines
-        .map((l) => `<li>${escapeHtml(l)}</li>`)
-        .join("")}</ul>`,
     });
   }
 
@@ -258,7 +181,6 @@ export async function announcePracticeChanges(
       href: "/schedule",
     },
   );
-  await Promise.all(emails.map((e) => sendEmail(e.to, e.subject, e.html)));
 
   return perUser.size;
 }
@@ -281,10 +203,6 @@ export async function notifyConflictsDue(
     `Your conflicts for the week of ${weekLabel} aren't in yet`,
     {
       href: "/conflicts",
-      emailSubject: "Your PADT conflicts are due",
-      emailHtml: `<p>The schedule for the week of ${escapeHtml(
-        weekLabel,
-      )} is being built now.</p><p>Open PADT Calendar and submit your conflicts so nothing gets booked over you.</p>`,
     },
   );
   return users.length;
@@ -311,8 +229,6 @@ export async function notifyWeekCancelled(
     message,
     {
       href: "/schedule",
-      emailSubject: `${dance.name} — no practice this week`,
-      emailHtml: `<p>${escapeHtml(message)}. Anything that was on the schedule for that week has been taken off.</p>`,
     },
   );
   return dance.memberships.length;
@@ -324,21 +240,19 @@ const weekLabelFormatter = new Intl.DateTimeFormat("en-US", {
   day: "numeric",
 });
 
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
 
-/** One person, one message, through every channel that's available: in-app
- * always, push if they've installed the app, email if Resend is configured. */
+/** One person, one message, through both channels the app has: an in-app
+ * notification always, and a push if they've turned them on.
+ *
+ * Email is gone on purpose. Forty students do not read club email, it needed
+ * a Resend key nobody had set, and a send that silently skipped looked
+ * identical to one that worked. Push is the channel people actually see, so
+ * it is the only one worth having. */
 async function notify(
   recipients: { id: string; email: string }[],
   type: NotificationType,
   message: string,
-  opts: { href?: string; emailSubject?: string; emailHtml?: string } = {},
+  opts: { href?: string; pushBody?: string } = {},
 ) {
   if (recipients.length === 0) return;
 
@@ -353,16 +267,62 @@ async function notify(
 
   await sendPushToUsers(
     recipients.map((r) => r.id),
-    { title: "PADT", body: message, href: opts.href },
+    { title: "PADT", body: opts.pushBody ?? message, href: opts.href },
   );
+}
 
-  if (opts.emailSubject && opts.emailHtml) {
-    await Promise.all(
-      recipients.map((user) =>
-        sendEmail(user.email, opts.emailSubject!, opts.emailHtml!),
-      ),
-    );
-  }
+/** "Bhangra starts in 15 minutes — Studio A."
+ *
+ * The one notification that arrives while there is still time to do something
+ * about it. Check-in fires as the practice begins, which is useful for
+ * marking attendance and useless for getting anybody there; this is the one
+ * that actually gets people in the room, so it leads with the place.
+ *
+ * Same recipient rule as check-in: nobody is buzzed about a practice the app
+ * already knows they can't make. Somebody with a logged conflict or marked
+ * away is left alone; somebody who said they'd arrive late still gets it,
+ * because they are coming. */
+export async function notifyPracticeStartingSoon(practiceId: string) {
+  const practice = await prisma.practice.findUnique({
+    where: { id: practiceId },
+    include: {
+      dance: { include: { memberships: { include: { user: true } } } },
+      space: true,
+      plannedArrivals: { select: { userId: true } },
+    },
+  });
+  if (!practice) return;
+
+  const castIds = practice.dance.memberships.map((m) => m.userId);
+  const [conflicts, unavailabilities] = await Promise.all([
+    prisma.conflict.findMany({ where: { userId: { in: castIds } } }),
+    prisma.unavailability.findMany({ where: { userId: { in: castIds } } }),
+  ]);
+  const planned = new Set(practice.plannedArrivals.map((p) => p.userId));
+
+  const recipients = practice.dance.memberships
+    .filter(
+      (m) =>
+        planned.has(m.userId) ||
+        isExpectedToCheckIn(
+          m.userId,
+          practice.startDateTime,
+          practice.endDateTime,
+          conflicts,
+          unavailabilities,
+        ),
+    )
+    .map((m) => m.user);
+
+  const where = practice.space?.name ?? "the usual space";
+  const at = timeFormatter.format(practice.startDateTime);
+
+  await notify(
+    recipients,
+    "REMINDER",
+    `${practice.dance.name} starts in 15 minutes — ${where}, ${at}`,
+    { href: "/schedule" },
+  );
 }
 
 /** "Practice is starting — check in." Sent as the practice begins, to the
@@ -435,8 +395,6 @@ export async function notifyAttendanceDue(practiceId: string) {
     `Confirm attendance for ${practice.dance.name} — ${when}`,
     {
       href: `/attendance/${practiceId}`,
-      emailSubject: `Confirm attendance for ${practice.dance.name}`,
-      emailHtml: `<p>Your <strong>${escapeHtml(practice.dance.name)}</strong> practice on ${escapeHtml(when)} has finished.</p><p>Open the app to check the recap and submit it.</p>`,
     },
   );
 }
@@ -469,8 +427,6 @@ export async function notifyPracticeChanged(
     message,
     {
       href: "/schedule",
-      emailSubject: `${practice.dance.name} practice ${change}`,
-      emailHtml: `<p>${escapeHtml(message)}.</p>`,
     },
   );
 }

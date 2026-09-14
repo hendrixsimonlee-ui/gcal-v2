@@ -46,7 +46,7 @@ export default async function AdminLayout({
         />
         {/* pb-24 on phones clears the fixed tab bar; the max-width keeps
             text from running the full width of a desktop monitor. */}
-        <main className="flex-1 overflow-y-auto px-4 pb-24 pt-5 sm:px-6 sm:pb-8 sm:pt-6">
+        <main className="flex-1 overflow-y-auto px-4 pb-32 pt-5 sm:px-6 sm:pb-8 sm:pt-6">
           <div className="mx-auto w-full max-w-5xl">{children}</div>
         </main>
       </div>

@@ -147,7 +147,7 @@ export default async function DancesPage() {
                 >
                   <span>
                     {membership.user.name || membership.user.email}{" "}
-                    <span className="rounded-full bg-surface-3 px-2 py-0.5 text-xs font-medium text-ink-soft">
+                    <span className="rounded bg-surface-3 px-2 py-0.5 text-xs font-medium text-ink-soft">
                       {membership.role === "CHOREOGRAPHER"
                         ? "Choreographer"
                         : "Dancer"}

@@ -4,6 +4,7 @@ import { getPersonDossier } from "@/lib/person-data";
 import { PersonAttendanceRow } from "@/components/person-attendance-row";
 import { ConflictStatusBadge } from "@/components/status-badges";
 import { APP_TIME_ZONE } from "@/lib/timezone";
+import { calendarDateFormatter } from "@/lib/dates";
 import { ConflictCalendarSync } from "@/components/conflict-calendar-sync";
 import { startOfWeek } from "@/lib/dates";
 
@@ -13,8 +14,9 @@ const dateFormatter = new Intl.DateTimeFormat("en-US", {
   month: "short",
   day: "numeric",
 });
-const dayFormatter = new Intl.DateTimeFormat("en-US", {
-  timeZone: APP_TIME_ZONE,
+// Away windows are `@db.Date` columns, so they read in UTC — in Eastern the
+// AD saw each one starting a day early, same bug the dancer saw.
+const dayFormatter = calendarDateFormatter({
   month: "short",
   day: "numeric",
   year: "numeric",
@@ -56,7 +58,7 @@ export default async function PersonPage({
         <p className="mt-1 flex flex-wrap items-center gap-x-2 text-sm text-ink-soft">
           <span>{person.email}</span>
           {person.isAdmin && (
-            <span className="rounded-full bg-accent-soft px-2 py-0.5 text-[11px] font-medium text-accent-ink">
+            <span className="rounded bg-accent-soft px-2 py-0.5 text-[11px] font-medium text-accent-ink">
               Admin
             </span>
           )}

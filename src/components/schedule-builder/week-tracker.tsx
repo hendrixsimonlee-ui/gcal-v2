@@ -255,17 +255,17 @@ export function WeekTracker({
                 First pick
               </label>
               <span
-                className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${style.className}`}
+                className={`rounded px-2 py-0.5 text-[11px] font-medium ${style.className}`}
               >
                 {style.label}
               </span>
               {row.pendingCancellation > 0 && (
-                <span className="rounded-full bg-bad-soft px-2 py-0.5 text-[11px] font-medium text-bad">
+                <span className="rounded bg-bad-soft px-2 py-0.5 text-[11px] font-medium text-bad">
                   Cancelled — cast not told
                 </span>
               )}
               {row.pendingChanges > 0 && (
-                <span className="rounded-full bg-warn-soft px-2 py-0.5 text-[11px] font-medium text-warn">
+                <span className="rounded bg-warn-soft px-2 py-0.5 text-[11px] font-medium text-warn">
                   {row.pendingChanges} changed, not announced
                 </span>
               )}
@@ -296,7 +296,7 @@ export function WeekTracker({
                       onClick={() =>
                         setExpandedPracticeId(open ? null : p.id)
                       }
-                      className={`rounded-full px-2 py-0.5 text-[11px] font-medium transition-colors ${ short
+                      className={`rounded px-2 py-0.5 text-[11px] font-medium transition-colors ${ short
                           ? "bg-warn-soft text-warn hover:bg-warn/20"
                           : "bg-good-soft text-good hover:bg-good/20"
                       }`}
@@ -324,7 +324,7 @@ export function WeekTracker({
                         disabled={isPending}
                         title="Delete this draft"
                         aria-label={`Delete ${row.danceName}'s draft`}
-                        className="rounded-full px-1.5 py-0.5 text-xs font-medium text-ink-faint transition-colors hover:bg-bad-soft hover:text-bad disabled:opacity-45"
+                        className="rounded px-1.5 py-0.5 text-xs font-medium text-ink-faint transition-colors hover:bg-bad-soft hover:text-bad disabled:opacity-45"
                       >
                         ×
                       </button>

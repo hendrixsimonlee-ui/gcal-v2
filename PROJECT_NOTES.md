@@ -203,9 +203,13 @@ conflict — so it breaks ties without ever overriding what people actually
 said. The AD can switch it off entirely. *(User asked for the off-switch
 explicitly, to "prevent machine error".)*
 
-**Email is best-effort.** No `RESEND_API_KEY` means it silently skips; a
-failed send is logged, not thrown. A mail problem must never stop the AD
-confirming a practice. In-app notifications always work.
+**There is no email.** It was removed once it became clear that forty
+students don't read club email, that it needed a Resend key nobody had set,
+and that a send which silently skipped looked exactly like one that worked.
+Two channels now: the in-app bell, always; and push, if the person turned it
+on and the VAPID keys are set. Push is best-effort in the same way email was
+— a failed send is logged, never thrown, because nothing about notifying
+people may block the AD from publishing.
 
 **Only the PROPOSED → CONFIRMED transition notifies**, so re-confirming
 doesn't spam the cast a second time.

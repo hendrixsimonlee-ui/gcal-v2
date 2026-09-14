@@ -10,90 +10,121 @@
 :root {
   color-scheme: light;
 
-  /* Warm neutrals, not grey ones.
-   *
-   * The greys used to be blue-biased, which fought a gold accent and made it
-   * look like a mistake rather than a choice. These carry a trace of the same
-   * hue as the accent — barely nameable on their own, but it's what makes the
-   * yellow read as the team's colour instead of a highlighter. */
-  --canvas: #faf7f0;
-  --surface: #ffffff;
-  --surface-2: #faf8f3;
-  --surface-3: #f3efe6;
-  --line: #e8e2d6;
-  --line-strong: #d6cebd;
+  /* White is the canvas; the accent is the only colour that carries meaning
+   * on its own. Neutrals are true greys with no hue bias — the previous set
+   * carried a gold tint to flatter a gold accent, which fights crimson. */
+  --canvas: #ffffff;
+  --surface: #f9fafb;
+  --surface-2: #f3f4f6;
+  --surface-3: #e5e7eb;
+  --line: #e5e7eb;
+  --line-strong: #d1d5db;
 
-  --ink: #1c1913;
-  --ink-soft: #5f584a;
-  --ink-faint: #8d8574;
+  --ink: #0a0a0a;
+  --ink-soft: #6b7280;
+  /* Third step the brand doesn't name. Between muted slate and the line
+   * colour, for timestamps sitting under something already quiet. */
+  --ink-faint: #9ca3af;
 
-  /* Yellow needs two tokens, not one.
+  /* Crimson needs two tokens, same as the gold did, for a different reason.
    *
-   * A single yellow can't both look yellow and carry white text — pushed dark
-   * enough for white to read on it, it stops being yellow and turns brown.
-   * So the fill is a real warm gold with near-black text on it (8:1), and
-   * text and links use a deeper gold that clears 5.4:1 on white. Same colour
-   * family, each doing the job it can actually do.
+   * White on #e11d48 is 4.70:1 — over the 4.5 line, so the fill can carry
+   * white text. But #e11d48 *as* text on white is the same 4.70:1, which is
+   * a pass with nothing to spare at 12px. So text and links use #be123c,
+   * which clears 6.3:1 and reads as the same red.
    *
    * `--accent` is for filled surfaces only. Anything that is itself text on a
    * light background wants `--accent-ink`. */
-  --accent: #e0a52b;
-  --accent-hover: #c98f1e;
-  --accent-ink: #8a6408;
-  --accent-soft: #fdf2d5;
-  --on-accent: #231a03;
+  --accent: #e11d48;
+  --accent-hover: #be123c;
+  --accent-ink: #be123c;
+  --accent-soft: #fff1f2;
+  --on-accent: #ffffff;
 
-  --good: #12735a;
-  --good-soft: #e4f4ee;
-  /* Pushed well into burnt orange, away from the gold accent. Amber would now
-   * read as "press this" rather than "look at this". */
-  --warn: #b0480b;
-  --warn-soft: #fdeee2;
-  --bad: #bb1b3c;
-  --bad-soft: #fdeaef;
-  --info: #0f6ba8;
-  --info-soft: #e6f2fb;
+  /* Status is not the accent. With a red brand that takes care: crimson means
+   * "press this", and an error still has to mean "this is wrong" without the
+   * two blurring. So `--bad` sits in true red rather than rose — a different
+   * hue, still unmistakably a warning — and good and warn are pushed well
+   * clear into green and amber. */
+  --good: #047857;
+  --good-soft: #ecfdf5;
+  --warn: #b45309;
+  --warn-soft: #fffbeb;
+  --bad: #b91c1c;
+  --bad-soft: #fef2f2;
+  --info: #1d4ed8;
+  --info-soft: #eff6ff;
 
-  --shadow-card: 0 1px 2px rgba(28, 25, 19, 0.04), 0 1px 3px rgba(28, 25, 19, 0.06);
+  /* Structure comes from 1px lines, not shadows. What's left is barely there,
+   * only enough to lift a popover off what it covers. */
+  --shadow-card: 0 1px 2px rgba(10, 10, 10, 0.04);
+
+  /* Type scale — mobile. The desktop step is below; both come from the brand
+   * sheet, and the utilities read these so the class names don't change. */
+  --type-meta: 12px;
+  --type-meta-lh: 16px;
+  --type-body: 14px;
+  --type-body-lh: 20px;
+  --type-head-sm: 20px;
+  --type-head-sm-lh: 26px;
+  --type-head-lg: 24px;
+  --type-head-lg-lh: 32px;
+  --type-head-lg-ls: -0.02em;
+}
+
+@media (min-width: 640px) {
+  :root {
+    --type-meta: 13px;
+    --type-meta-lh: 18px;
+    --type-body: 16px;
+    --type-body-lh: 24px;
+    --type-head-sm: 20px;
+    --type-head-sm-lh: 28px;
+    --type-head-lg: 36px;
+    --type-head-lg-lh: 44px;
+    --type-head-lg-ls: -0.03em;
+  }
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
     color-scheme: dark;
 
-    /* Warm charcoals rather than blue-blacks, for the same reason as above —
-     * a gold accent on a cold ground looks like it landed there by accident. */
-    --canvas: #100e0a;
-    --surface: #1a1712;
-    --surface-2: #211d17;
-    --surface-3: #2a251d;
-    --line: #2e2921;
-    --line-strong: #40392e;
+    /* The brand sheet is a light design and doesn't describe a dark one, but
+     * the app has always had one and people's phones are set to it. So: the
+     * same relationship inverted — near-black canvas, one step up for
+     * containers, crimson still the only colour that means anything. Neutral
+     * greys, no warm bias, to match the light side. */
+    --canvas: #0a0a0a;
+    --surface: #141416;
+    --surface-2: #1c1c1f;
+    --surface-3: #26262a;
+    --line: #26262a;
+    --line-strong: #3a3a40;
 
-    --ink: #f0ece3;
-    --ink-soft: #a49b8a;
-    --ink-faint: #7a7263;
+    --ink: #fafafa;
+    --ink-soft: #a1a1aa;
+    --ink-faint: #71717a;
 
-    /* On a dark ground the split matters less — a light warm gold is legible
-     * as both a fill and as text — but the two tokens stay so components
-     * don't have to know which mode they're in. */
-    --accent: #e9c26a;
-    --accent-hover: #f2d189;
-    --accent-ink: #eccc7e;
-    --accent-soft: #2e2413;
-    --on-accent: #1c1607;
+    /* Crimson at full strength disappears into a dark ground as text, so the
+     * text token lifts to rose-400 while fills keep the brand red — white on
+     * it still reads, and it still looks like the same colour. */
+    --accent: #e11d48;
+    --accent-hover: #f43f5e;
+    --accent-ink: #fb7185;
+    --accent-soft: #2a1015;
+    --on-accent: #ffffff;
 
-    --good: #3ddba4;
-    --good-soft: #0d2a22;
-    /* Orange, not amber. Amber against this accent is the same colour twice. */
-    --warn: #f79a4b;
-    --warn-soft: #331e10;
-    --bad: #fb7185;
-    --bad-soft: #33141c;
-    --info: #4cc4f7;
-    --info-soft: #0d2634;
+    --good: #34d399;
+    --good-soft: #0c2620;
+    --warn: #fbbf24;
+    --warn-soft: #2a1f0a;
+    --bad: #f87171;
+    --bad-soft: #2a1212;
+    --info: #60a5fa;
+    --info-soft: #0f1d33;
 
-    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.45);
+    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.5);
   }
 }
 
@@ -126,16 +157,62 @@
   --color-info: var(--info);
   --color-info-soft: var(--info-soft);
 
-  --font-sans: var(--font-geist-sans);
+  /* The brand type scale, reached through the class names already in use —
+   * `text-xs` is metadata, `text-sm` is body, `text-xl` and `text-2xl` are the
+   * two header sizes. Each reads a variable that steps up at 640px, so one set
+   * of classes gives both the mobile and the desktop scale and no component
+   * needs a breakpoint of its own. */
+  --text-xs: var(--type-meta);
+  --text-xs--line-height: var(--type-meta-lh);
+  --text-sm: var(--type-body);
+  --text-sm--line-height: var(--type-body-lh);
+  --text-xl: var(--type-head-sm);
+  --text-xl--line-height: var(--type-head-sm-lh);
+  --text-xl--letter-spacing: -0.02em;
+  --text-2xl: var(--type-head-lg);
+  --text-2xl--line-height: var(--type-head-lg-lh);
+  --text-2xl--letter-spacing: var(--type-head-lg-ls);
+
+  --font-sans: var(--font-jakarta);
   --font-mono: var(--font-geist-mono);
+
+  /* 8px grid. Nothing rounder than 12px, and never a pill — the shapes stay
+   * geometric. */
+  --radius-lg: 8px;
+  --radius-xl: 12px;
 }
 
 body {
   background: var(--canvas);
   color: var(--ink);
-  /* Geist was loaded from the very first commit but never actually applied —
-   * the app has been rendering in Arial this whole time. */
-  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  font-family: var(--font-jakarta), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", sans-serif;
+  font-size: var(--type-body);
+  line-height: var(--type-body-lh);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Every tap target on a phone clears 48px. Applied by role rather than by
+ * hand on a hundred components, and scoped to real controls so it can't
+ * stretch an inline link mid-sentence. Desktop keeps the tighter 40px rows the
+ * dense screens are built around. */
+@media (max-width: 639px) {
+  button:not([data-compact]),
+  [role="button"]:not([data-compact]),
+  select,
+  input:not([type="checkbox"]):not([type="radio"]),
+  summary {
+    min-height: 48px;
+  }
+
+  /* FullCalendar's toolbar is the exception. Its prev/next/today/week/month
+   * buttons are laid out to its own metrics, and forcing 48px on them pushed
+   * "today" onto a row of its own and wrapped the month title. They sit in a
+   * tight cluster you aim at deliberately rather than tap in passing, so 40px
+   * with room around them is the right call. */
+  .fc .fc-button {
+    min-height: 40px;
+  }
 }
 
 /* Digits that stack in a column have to line up: attendance counts, minutes
@@ -146,8 +223,9 @@ time {
   font-variant-numeric: tabular-nums;
 }
 
-/* The ink gold, not the fill: a focus ring has to be visible against a white
- * card, and the fill gold is too light there to read as a ring. */
+/* The deeper crimson, not the fill. A focus ring has to hold its own against
+ * a white card, and it is the one place the brand's "red marks the focus
+ * point" rule is doing literal work. */
 *:focus-visible {
   outline: 2px solid var(--accent-ink);
   outline-offset: 2px;
@@ -184,9 +262,9 @@ time {
 /* Practices are the content. Give them enough weight to read at a glance
  * against the availability shading now sitting behind them. */
 .fc .fc-timegrid-event {
-  border-radius: 0.35rem;
+  border-radius: 4px;
   box-shadow: 0 1px 2px rgb(0 0 0 / 0.18);
-  font-weight: 550;
+  font-weight: 600;
 }
 .fc .fc-timegrid-event:hover {
   filter: brightness(1.08);
@@ -194,7 +272,7 @@ time {
 }
 .fc .fc-toolbar-title {
   font-size: 0.9375rem;
-  font-weight: 620;
+  font-weight: 600;
   letter-spacing: -0.01em;
   color: var(--ink);
 }
@@ -213,7 +291,7 @@ time {
   border-color: var(--line);
   color: var(--ink-soft);
   font-size: 0.75rem;
-  font-weight: 550;
+  font-weight: 600;
   text-transform: none;
   padding: 0.25rem 0.6rem;
   box-shadow: none;

@@ -67,7 +67,7 @@ export function Header({
             <path d="M13.73 21a2 2 0 0 1-3.46 0" />
           </svg>
           {unreadCount > 0 && (
-            <span className="absolute right-0.5 top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-semibold tabular-nums text-on-accent">
+            <span className="absolute right-0.5 top-0.5 flex h-4 min-w-4 items-center justify-center rounded bg-accent px-1 text-[10px] font-semibold tabular-nums text-on-accent">
               {unreadCount > 9 ? "9+" : unreadCount}
             </span>
           )}

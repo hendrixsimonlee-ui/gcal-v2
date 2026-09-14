@@ -33,6 +33,26 @@ export default async function HelpPage() {
         </p>
       </div>
 
+      {/* The full handbook lives outside the app so it can be shared with
+          people who haven't signed in yet — a new member on day one, or exec
+          planning a term. These pages stay because they work on a phone in a
+          studio with no signal to spare; the handbook is the complete version
+          and the one to send someone. */}
+      <a
+        href="https://claude.ai/artifact/DKDUEU9wjpKChdsh4DA5Uv"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex flex-col gap-0.5 rounded-lg border border-accent/40 bg-accent-soft px-4 py-3 no-underline transition-colors hover:border-accent"
+      >
+        <span className="text-sm font-semibold text-accent-ink">
+          The full handbook &rarr;
+        </span>
+        <span className="text-xs text-ink-soft">
+          Everything the app does, in one page you can share. This page is the
+          short version — the steps you need to get going.
+        </span>
+      </a>
+
       <Callout>
         If you only do one thing today, do <B>Step 2</B> — putting your classes
         on your conflict calendar. Everything else works without you. That
@@ -100,8 +120,38 @@ export default async function HelpPage() {
         <p>
           This isn&rsquo;t tidiness. A website can only send you notifications
           once it&rsquo;s on your home screen — that&rsquo;s Apple&rsquo;s
-          rule, not ours. Without it you won&rsquo;t get the nudge when a
-          schedule is posted or when practice is starting.
+          rule, not ours.
+        </p>
+        <p>
+          <B>The app doesn&rsquo;t email you.</B>{" "}Notifications on your
+          phone are the only way it reaches you when you&rsquo;re not looking
+          at it. Skip this step and you&rsquo;ll only find things out by
+          opening the app and checking the bell.
+        </p>
+        <p>There are five, and that&rsquo;s the lot:</p>
+        <ul>
+          <li>
+            <B>The schedule is published</B>{" "}— your practices are set
+          </li>
+          <li>
+            <B>Something of yours changed</B>{" "}— one message however many
+            times the AD moved things
+          </li>
+          <li>
+            <B>A practice of yours is cancelled</B>
+          </li>
+          <li>
+            <B>Your dance starts in 15 minutes</B>, and where
+          </li>
+          <li>
+            <B>Practice has started</B>{" "}— check in
+          </li>
+        </ul>
+        <p>
+          You won&rsquo;t get the last two for a practice you&rsquo;ve already
+          logged a conflict for, or one in a week you said you&rsquo;re away.
+          The app doesn&rsquo;t nag you about something it already knows you
+          can&rsquo;t make.
         </p>
       </Section>
 

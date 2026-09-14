@@ -22,7 +22,7 @@ export function ConflictStatusBadge({ status }: { status: ConflictStatus }) {
   const style = CONFLICT_STYLES[status];
   return (
     <span
-      className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${style.className}`}
+      className={`rounded px-2 py-0.5 text-[11px] font-medium ${style.className}`}
     >
       {style.label}
     </span>
@@ -61,7 +61,7 @@ export function AttendanceBadge({
 }) {
   if (status === null) {
     return (
-      <span className="rounded-full bg-surface-3 px-2 py-0.5 text-[11px] font-medium text-ink-faint bg-surface-3">
+      <span className="rounded bg-surface-3 px-2 py-0.5 text-[11px] font-medium text-ink-faint bg-surface-3">
         Not recorded
       </span>
     );
@@ -69,7 +69,7 @@ export function AttendanceBadge({
   const style = ATTENDANCE_STYLES[status];
   return (
     <span
-      className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${style.className}`} >
+      className={`rounded px-2 py-0.5 text-[11px] font-medium ${style.className}`} >
       {style.label}
       {status === "LATE" && minutesLate ? ` ${minutesLate} min` : ""}
     </span>

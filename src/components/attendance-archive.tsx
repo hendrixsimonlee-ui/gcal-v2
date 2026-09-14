@@ -99,12 +99,12 @@ export function AttendanceArchive({ weeks }: { weeks: AttendanceWeekRow[] }) {
 
               <span className="ml-auto text-xs">
                 {row.reviewedAtIso ? (
-                  <span className="rounded-full bg-good-soft px-2 py-0.5 font-medium text-good">
+                  <span className="rounded bg-good-soft px-2 py-0.5 font-medium text-good">
                     Reviewed
                     {row.reviewedByName ? ` by ${row.reviewedByName}` : ""}
                   </span>
                 ) : row.submittedCount < row.practiceCount ? (
-                  <span className="rounded-full bg-warn-soft px-2 py-0.5 font-medium text-warn">
+                  <span className="rounded bg-warn-soft px-2 py-0.5 font-medium text-warn">
                     {row.practiceCount - row.submittedCount} waiting on a
                     choreographer
                   </span>

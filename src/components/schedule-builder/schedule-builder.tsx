@@ -22,6 +22,7 @@ import {
 import { WeekTracker } from "@/components/schedule-builder/week-tracker";
 import { PracticeEditor } from "@/components/schedule-builder/practice-editor";
 import { BuildWeek } from "@/components/schedule-builder/build-week";
+import { ExportWeek } from "@/components/schedule-builder/export-week";
 import { ConflictStatusBadge } from "@/components/status-badges";
 import { APP_TIME_ZONE } from "@/lib/timezone";
 
@@ -396,7 +397,7 @@ export function ScheduleBuilder({
                 setHint(null);
               }}
               aria-pressed={d.id === danceId}
-              className={`rounded-full px-3 py-1 text-sm font-medium transition-colors ${ d.id === danceId
+              className={`rounded px-3 py-1 text-sm font-medium transition-colors ${ d.id === danceId
                   ? "bg-accent text-on-accent"
                   : "border border-line-strong text-ink-soft hover:bg-surface-2 hover:text-ink"
               }`}
@@ -476,11 +477,18 @@ export function ScheduleBuilder({
             after navigating two weeks ahead still built the current week.
             Reading the same weekStart the rest of the screen uses means it
             follows the calendar, forwards and backwards alike. */}
-        <div className="border-t border-line pt-2">
+        <div className="flex flex-col gap-3 border-t border-line pt-2">
           <BuildWeek
             weekOfIso={weekStart.toISOString()}
             weekLabel={formatWeekLabel(weekStart)}
             onApplied={bump}
+          />
+          {/* Sits under Build so it reads as the last step of the week:
+              build, publish, send to the calendar. Publishing already does
+              this — the button is how you check that it actually happened. */}
+          <ExportWeek
+            weekOfIso={weekStart.toISOString()}
+            weekLabel={formatWeekLabel(weekStart)}
           />
         </div>
       </div>
@@ -557,7 +565,7 @@ export function ScheduleBuilder({
                     {p.spaceName ?? "no room yet"}
                   </span>
                   <span
-                    className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${ p.status === "PROPOSED"
+                    className={`rounded px-2 py-0.5 text-[11px] font-medium ${ p.status === "PROPOSED"
                         ? "bg-info-soft text-info"
                         : "bg-good-soft text-good"
                     }`}

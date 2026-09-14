@@ -4,6 +4,7 @@
  * npm test), because the bug being guarded against is exactly "works on my
  * laptop, wrong on the server". Every assertion here failed before
  * src/lib/timezone.ts existed. */
+import { calendarDateFormatter, calendarDateFromInput } from "./dates";
 import {
   addDaysInApp,
   appDateKey,
@@ -199,6 +200,48 @@ const midnight = zonedParts(zonedTimeToInstant(2026, 7, 4, 0, 0));
 assertEqual(midnight.hour, 0, "midnight reads as hour 0, not hour 24");
 assertEqual(midnight.day, 4, "…on the right day");
 assertEqual(midnight.weekday, 6, "4 July 2026 is a Saturday");
+
+// --- date-only columns display as the day they name -------------------------
+// Reported twice on two screens: somebody marks themselves away on the 19th
+// and 20th, and the app shows the 18th and 19th. A `@db.Date` is a bare
+// calendar day handed back at UTC midnight, so the Eastern formatter lands at
+// 8pm the evening before. `calendarDateFormatter` pins the zone so it can't.
+{
+  const stored = calendarDateFromInput("2026-09-19");
+  const shown = calendarDateFormatter({ month: "short", day: "numeric" }).format(
+    stored,
+  );
+  assertEqual(shown, "Sep 19", "an away date displays as the day it names");
+
+  // The whole range, since the bug shifted both ends.
+  const end = calendarDateFromInput("2026-09-20");
+  assertEqual(
+    calendarDateFormatter({ day: "numeric" }).format(end),
+    "20",
+    "…and so does the last day of the window",
+  );
+
+  // New Year's Day is the sharp case: get the zone wrong and the year moves.
+  assertEqual(
+    calendarDateFormatter({ year: "numeric", month: "short", day: "numeric" })
+      .format(calendarDateFromInput("2027-01-01")),
+    "Jan 1, 2027",
+    "…and a January date doesn't slip into the previous year",
+  );
+
+  // The zone is not the caller's to set — that is the whole point of the
+  // helper, and passing one through would quietly reintroduce the bug.
+  const forced = calendarDateFormatter({
+    day: "numeric",
+    // @ts-expect-error timeZone is deliberately excluded from the options type
+    timeZone: "America/New_York",
+  });
+  assertEqual(
+    forced.format(stored),
+    "19",
+    "…and an attempt to override the zone is ignored",
+  );
+}
 
 if (failures > 0) {
   console.error(`\n${failures} timezone test(s) failed`);

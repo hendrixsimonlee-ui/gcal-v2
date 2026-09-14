@@ -93,7 +93,7 @@ export default async function SignInPage() {
                       >
                         <span>{user.name ?? user.email}</span>
                         {user.isAdmin && (
-                          <span className="rounded-full bg-accent px-2 py-0.5 text-[10px] font-medium text-white">
+                          <span className="rounded bg-accent px-2 py-0.5 text-[10px] font-medium text-white">
                             AD
                           </span>
                         )}

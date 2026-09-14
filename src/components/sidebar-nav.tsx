@@ -6,6 +6,12 @@ import { usePathname } from "next/navigation";
 export type NavItem = {
   href: string;
   label: string;
+  /** What the phone tab bar says, where there is room for one short word.
+   *
+   * Stripping "My " off the full label used to do this, which gave a
+   * choreographer two tabs both reading "Attendance" — their own record and
+   * the one they check off for everyone. Each tab names itself instead. */
+  shortLabel?: string;
 };
 
 /** Navigation that changes shape rather than just shrinking.
@@ -38,14 +44,19 @@ export function SidebarNav({
       {useTabBar ? (
         <nav
           aria-label="Main"
-          className="fixed inset-x-0 bottom-0 z-30 flex border-t border-line bg-surface pb-[env(safe-area-inset-bottom)] sm:hidden"
+          // Lifted clear of the home indicator, not just inside the safe
+          // area. `env(safe-area-inset-bottom)` stops labels being *covered*
+          // by the bar, but on a modern iPhone that leaves them sitting right
+          // on the island, which reads as cramped and makes the bottom row of
+          // pixels hard to hit. The extra 0.625rem is the gap.
+          className="fixed inset-x-0 bottom-0 z-30 flex border-t border-line bg-surface pb-[calc(env(safe-area-inset-bottom)+0.625rem)] sm:hidden"
         >
           {items.map((item) => (
             <Link
               key={item.href}
               href={item.href}
               aria-current={isActive(item.href) ? "page" : undefined}
-              className={`flex flex-1 flex-col items-center gap-0.5 px-1 py-2.5 text-[11px] font-medium transition-colors ${ isActive(item.href)
+              className={`flex min-h-[3.25rem] flex-1 flex-col items-center justify-center gap-1 px-1 py-3 text-[11px] font-medium transition-colors ${ isActive(item.href)
                   ? "text-accent-ink"
                   : "text-ink-faint hover:text-ink"
               }`}
@@ -55,19 +66,20 @@ export function SidebarNav({
                 className={`h-0.5 w-6 rounded-full transition-colors ${ isActive(item.href) ? "bg-accent" : "bg-transparent"
                 }`}
               />
-              <span className="text-center leading-tight">
-                {item.label.replace(/^My /, "")}
+              <span className="truncate text-center leading-tight">
+                {item.shortLabel ?? item.label.replace(/^My /, "")}
               </span>
             </Link>
           ))}
           {switchLink && (
             <Link
               href={switchLink.href}
-              className="flex flex-1 flex-col items-center gap-0.5 px-1 py-2.5 text-[11px] font-medium text-ink-faint transition-colors hover:text-ink"
+              className="flex min-h-[3.25rem] flex-1 flex-col items-center justify-center gap-1 px-1 py-3 text-[11px] font-medium text-ink-faint transition-colors hover:text-ink"
             >
               <span aria-hidden="true" className="h-0.5 w-6" />
-              <span className="text-center leading-tight">
-                {switchLink.label.replace(/^[←→]\s*/, "")}
+              <span className="truncate text-center leading-tight">
+                {switchLink.shortLabel ??
+                  switchLink.label.replace(/^[←→]\s*/, "").replace(/\s*[←→]$/, "")}
               </span>
             </Link>
           )}
@@ -95,7 +107,7 @@ export function SidebarNav({
               href={switchLink.href}
               className="shrink-0 whitespace-nowrap rounded-lg border border-line-strong px-3 py-1.5 text-sm font-medium text-ink-soft transition-colors hover:bg-surface-2 hover:text-ink"
             >
-              {switchLink.label}
+              {switchLink.shortLabel ?? switchLink.label}
             </Link>
           )}
         </nav>

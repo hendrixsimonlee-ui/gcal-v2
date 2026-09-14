@@ -125,7 +125,7 @@ export default async function MySchedulePage() {
             <h2 className="font-medium text-ink">
               {dance.name}
             </h2>
-            <span className="rounded-full bg-surface-3 px-2 py-0.5 text-[11px] font-medium text-ink-soft bg-surface-3">
+            <span className="rounded bg-surface-3 px-2 py-0.5 text-[11px] font-medium text-ink-soft bg-surface-3">
               {role === "CHOREOGRAPHER" ? "Choreographer" : "Dancer"}
             </span>
           </div>
@@ -149,13 +149,13 @@ export default async function MySchedulePage() {
                     {practice.space?.name ?? "Space TBD"}
                   </span>
                   {practice.plannedArrivals[0] && (
-                    <span className="rounded-full bg-info-soft px-2 py-0.5 text-[11px] font-medium text-accent-ink">
+                    <span className="rounded bg-info-soft px-2 py-0.5 text-[11px] font-medium text-accent-ink">
                       you&rsquo;re due at{" "}
                       {timeFormatter.format(practice.plannedArrivals[0].arriveAt)}
                     </span>
                   )}
                   {practice.status === "PROPOSED" && (
-                    <span className="rounded-full bg-warn-soft px-2 py-0.5 text-[11px] font-medium text-warn">
+                    <span className="rounded bg-warn-soft px-2 py-0.5 text-[11px] font-medium text-warn">
                       Not final yet
                     </span>
                   )}

@@ -187,7 +187,7 @@ export function ConflictReview({
                 <h2 className="font-medium text-ink">
                   {person.name}
                   {todo > 0 && (
-                    <span className="ml-2 rounded-full bg-warn-soft px-2 py-0.5 text-[11px] font-medium text-warn">
+                    <span className="ml-2 rounded bg-warn-soft px-2 py-0.5 text-[11px] font-medium text-warn">
                       {todo} to review
                     </span>
                   )}

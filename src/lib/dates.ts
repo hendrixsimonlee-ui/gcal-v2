@@ -41,6 +41,27 @@ export function calendarDateKey(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
+/** Formats a `@db.Date` value for display — a birthday, an away window, a
+ * room booking's day.
+ *
+ * Use this and never a plain `Intl.DateTimeFormat` for these columns. A
+ * `@db.Date` holds a bare calendar day with no time and no zone, and Prisma
+ * hands it back anchored at UTC midnight. Reading that with the app's Eastern
+ * formatter lands at 8pm the *previous* evening, so "away on the 19th and
+ * 20th" displays as the 18th and 19th — which is exactly what people
+ * reported, twice, on two different screens.
+ *
+ * Forcing UTC here reads the day back the same way it was written. The
+ * options are yours; the zone is not.
+ *
+ * This is only for date-only columns. A real instant — a practice start, a
+ * conflict — is a moment in time and must still be read in Eastern. */
+export function calendarDateFormatter(
+  options: Omit<Intl.DateTimeFormatOptions, "timeZone">,
+): Intl.DateTimeFormat {
+  return new Intl.DateTimeFormat("en-US", { ...options, timeZone: "UTC" });
+}
+
 /** The Monday of the week a `@db.Date` value falls in, as "YYYY-MM-DD".
  * Used to group one-off space changes into weeks. */
 export function calendarWeekStartKey(date: Date): string {
@@ -50,13 +71,6 @@ export function calendarWeekStartKey(date: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
-/** Formatter for `@db.Date` values. Pinned to UTC to match their anchor. */
-export const calendarDateFormatter = new Intl.DateTimeFormat("en-US", {
-  weekday: "short",
-  month: "short",
-  day: "numeric",
-  timeZone: "UTC",
-});
 
 /** An instant as the "YYYY-MM-DD" URL parameter for the day it falls on,
  * read in Eastern so late-evening navigation doesn't jump a day. */

@@ -123,7 +123,7 @@ export function RosterRow({ person }: { person: RosterPerson }) {
         <form action={toggleAdmin.bind(null, person.id, !person.isAdmin)}>
           <button
             type="submit"
-            className={`rounded-full px-2 py-0.5 text-xs font-medium ${ person.isAdmin
+            className={`rounded px-2 py-0.5 text-xs font-medium ${ person.isAdmin
                 ? "bg-accent text-on-accent"
                 : "border border-line-strong text-ink-soft"
             }`}

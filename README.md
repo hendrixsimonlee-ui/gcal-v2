@@ -163,10 +163,10 @@ Beyond the local setup above you'll need:
 - **`INITIAL_ADMIN_EMAIL`** — set this to your own email. Whoever signs in
   with it is made an admin automatically, which is how the first AD gets
   created. After that the AD can promote others from the Roster screen.
-- **`RESEND_API_KEY` / `EMAIL_FROM`** — *optional.* Without them everything
-  works and in-app notifications still appear; only email is skipped.
-- **`VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT`** —
-  *optional.* Phone notifications when a practice starts and when it ends.
+- **`VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT`** — set these.
+  They are what makes push work, and push is now the only way the app reaches
+  anyone off the app. Without them people only see notifications when they
+  open the app and look at the bell.
   Generate with `npx web-push generate-vapid-keys`. On iPhone these only
   arrive once the app is on the home screen.
 - **`CRON_SECRET`** — guards `/api/cron/practice-notifications`, the endpoint

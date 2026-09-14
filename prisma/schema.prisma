@@ -494,6 +494,18 @@ model AppSettings {
   /// is on time.
   lateThresholdMinutes Int @default(5)
 
+  /// When the weekly "your conflicts aren't in yet" nudge goes out, in
+  /// Eastern time. Day is 1 = Monday through 7 = Sunday, matching the rest of
+  /// the app's weekday handling. It nudges about the week starting the
+  /// following Monday, and only the people who haven't submitted for it.
+  ///
+  /// Off by default: this is the one message that arrives without the AD
+  /// pressing anything, so it stays opt-in.
+  conflictNudgeEnabled Boolean @default(false)
+  conflictNudgeWeekday Int     @default(4)
+  conflictNudgeHour    Int     @default(18)
+  conflictNudgeMinute  Int     @default(0)
+
   /// The one calendar every room's bookings live on. It is the only source of
   /// spaces: an event's title is the room, its location is the location, and
   /// its times are when that room is ours. Nothing else creates a space.

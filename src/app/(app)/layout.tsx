@@ -13,9 +13,9 @@ export default async function AppLayout({
   // Roles are additive, not modes: everyone gets the personal screens, and
   // choreographing any dance simply adds check-off alongside them.
   const nav: NavItem[] = [
-    { href: "/schedule", label: "My Schedule" },
-    { href: "/conflicts", label: "My Conflicts" },
-    { href: "/my-attendance", label: "My Attendance" },
+    { href: "/schedule", label: "My Schedule", shortLabel: "Schedule" },
+    { href: "/conflicts", label: "My Conflicts", shortLabel: "Conflicts" },
+    { href: "/my-attendance", label: "My Attendance", shortLabel: "Mine" },
   ];
 
   let unreadCount = 0;
@@ -30,7 +30,10 @@ export default async function AppLayout({
       }),
     ]);
     if (choreographs) {
-      nav.push({ href: "/attendance", label: "Attendance" });
+      // "Check off" rather than "Attendance": a choreographer already has a
+      // tab for their own record, and two tabs reading the same word is no
+      // navigation at all.
+      nav.push({ href: "/attendance", label: "Attendance", shortLabel: "Check off" });
     }
     unreadCount = unread;
   }
@@ -47,13 +50,13 @@ export default async function AppLayout({
           items={nav}
           switchLink={
             session?.user?.isAdmin
-              ? { href: "/admin", label: "Admin Console →" }
+              ? { href: "/admin", label: "Admin Console →", shortLabel: "Admin" }
               : undefined
           }
         />
         {/* pb-24 on phones clears the fixed tab bar; the max-width keeps
             text from running the full width of a desktop monitor. */}
-        <main className="flex-1 overflow-y-auto px-4 pb-24 pt-5 sm:px-6 sm:pb-8 sm:pt-6">
+        <main className="flex-1 overflow-y-auto px-4 pb-32 pt-5 sm:px-6 sm:pb-8 sm:pt-6">
           <div className="mx-auto w-full max-w-5xl">{children}</div>
         </main>
       </div>

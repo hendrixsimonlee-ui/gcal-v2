@@ -72,7 +72,7 @@ export function TermsManager({ terms }: { terms: TermRange[] }) {
                   <p className="text-sm font-medium text-ink">
                     {term.name}
                     {term.isCurrent && (
-                      <span className="ml-2 rounded-full bg-good-soft px-2 py-0.5 text-xs font-medium text-good">
+                      <span className="ml-2 rounded bg-good-soft px-2 py-0.5 text-xs font-medium text-good">
                         Current
                       </span>
                     )}

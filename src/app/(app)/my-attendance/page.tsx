@@ -103,7 +103,7 @@ function DanceHistory({ group, bare }: { group: Group; bare?: boolean }) {
             {group.totalMinutesLate > 0 &&
               ` · ${group.totalMinutesLate} min late`}
           </span>
-          <span className="rounded-full bg-surface-3 px-2 py-0.5 font-medium text-ink-soft bg-surface-3">
+          <span className="rounded bg-surface-3 px-2 py-0.5 font-medium text-ink-soft bg-surface-3">
             {group.attendanceRate}%
           </span>
         </div>
