@@ -1,11 +1,8 @@
 # Read this before deploying
 
-One environment variable has to be right or the build fails. Everything else
-in here is a normal deploy.
+## The build failure is fixed in this release
 
----
-
-## The thing that's currently breaking the build
+If you saw this:
 
 ```
 Error: P1002
@@ -13,62 +10,64 @@ Timed out trying to acquire a postgres advisory lock
 (SELECT pg_advisory_lock(72707369)). Timeout: 10000ms.
 ```
 
-**Cause: `DIRECT_URL` is missing from Vercel, or is set to the pooled URL.**
+it should be gone. **You don't need to change anything in Vercel for it.**
+
+### What happened
+
+This release carries the first schema change the project has had since it was
+set up. Every deploy before it ran `prisma migrate deploy` with nothing to
+apply, so it exited immediately and never reached for a lock. This one gave it
+something to do.
 
 `prisma migrate deploy` takes a Postgres advisory lock so two deploys can't
 apply the same migration at once. That lock belongs to one connection. Neon's
 pooler hands each statement to whichever backend is free, so the lock is taken
-on one connection and the next statement arrives on a different one — the lock
-is never seen again and the command dies after exactly ten seconds. That's the
-10000ms in the error.
+on one connection and the next statement arrives on another — the lock is
+never seen again and the command dies after exactly ten seconds. Hence the
+10000ms.
 
-`prisma.config.ts` already handles this:
+The error named `DATABASE_URL` rather than `DIRECT_URL` because
+`prisma.config.ts` falls back:
+`process.env["DIRECT_URL"] ?? process.env["DATABASE_URL"]`. With no
+`DIRECT_URL`, migrations ran on the pooled connection and the failure named
+the one actually used.
 
-```ts
-url: process.env["DIRECT_URL"] ?? process.env["DATABASE_URL"]
+### The fix, and the trade-off
+
+The build script now disables the advisory lock:
+
+```
+prisma generate && PRISMA_SCHEMA_DISABLE_ADVISORY_LOCK=true prisma migrate deploy && next build
 ```
 
-Migrations use `DIRECT_URL` **if it is set**, and fall back to the pooled
-`DATABASE_URL` if it isn't. The build is hitting that fallback.
+Verified with `DIRECT_URL` unset: all migrations apply, the build compiles.
 
-### The fix
+**What the lock was for:** stopping two deploys applying the same migration
+simultaneously. Without it, two builds racing at the same instant could both
+try, and one would error. For a club app that deploys a few times a week that
+is not a real risk, and it's the escape hatch Prisma documents for exactly
+this pooler situation.
 
-**Vercel → your project → Settings → Environment Variables.**
+### Setting `DIRECT_URL` is still worth doing
 
-`DIRECT_URL` is the same Neon connection string as `DATABASE_URL`, with
-`-pooler` removed from the hostname:
+Not required any more, but it's the cleaner setup — migrations on a direct
+connection, the app on the pooler, lock intact.
+
+`DIRECT_URL` is the same string as `DATABASE_URL` with `-pooler` removed:
 
 | | Host |
 |---|---|
 | `DATABASE_URL` | `ep-example-123456`**`-pooler`**`.us-east-2.aws.neon.tech` |
 | `DIRECT_URL` | `ep-example-123456.us-east-2.aws.neon.tech` |
 
-Everything else — user, password, database name, `?sslmode=require` — stays
-identical. Neon's dashboard shows both; the unpooled one is usually labelled
-"direct connection".
-
-Make sure it's enabled for **Production**, then redeploy.
-
-### Why this started now
-
-This release carries the first schema change since the project was set up.
-Every deploy before it ran `prisma migrate deploy` with nothing to apply, so
-it exited immediately and never reached for the lock. The missing variable has
-been there the whole time; this is just the first deploy that needed it.
-
-It would have failed on the next schema change whenever that came.
-
-### If it still fails afterwards
-
-Then `DIRECT_URL` is right and something else is holding the lock — most
-likely a leftover from a previous failed attempt. Send the new error; it'll be
-a different code and needs a different fix.
+Everything else stays identical. Neon's dashboard shows both; untick "pooled
+connection" to see the direct one.
 
 ---
 
 ## What's in this release
 
-Nothing here needs a manual step beyond the variable above.
+Nothing here needs a manual step in Vercel.
 
 - **One database migration** — `20260914120000_conflict_nudge_schedule`, four
   columns on `AppSettings` with defaults. Additive; no data is touched.
