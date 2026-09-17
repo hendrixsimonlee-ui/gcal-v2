@@ -112,7 +112,6 @@ model User {
 
   memberships         DanceMembership[]
   conflicts           Conflict[]
-  unavailabilities    Unavailability[]
   weeklyExclusions    WeeklyExclusion[]
   attendanceRecords   Attendance[]                @relation("AttendanceSubject")
   attendanceMarkedBy  Attendance[]                @relation("AttendanceMarker")
@@ -288,20 +287,7 @@ model Conflict {
   @@index([status])
 }
 
-/// A full exclusion window (e.g. "out of town") distinct from a normal
-/// conflict — removes the user from conflict-checking entirely for the range.
-model Unavailability {
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  startDate DateTime @db.Date
-  endDate   DateTime @db.Date
-  reason    String?
 
-  createdAt DateTime @default(now())
-
-  @@index([userId])
-}
 
 model Practice {
   id      String @id @default(cuid())

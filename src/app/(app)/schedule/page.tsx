@@ -2,6 +2,7 @@ import Link from "next/link";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { googleCalendarAddUrl } from "@/lib/calendar-links";
+import { buildDescription } from "@/lib/team-calendar";
 import { getOpenCheckIns } from "@/lib/actions/attendance";
 import { CheckInCard } from "@/components/check-in-card";
 import { PushToggle } from "@/components/push-toggle";
@@ -64,6 +65,20 @@ export default async function MySchedulePage() {
       },
     }),
   ]);
+
+  // The roster for each practice, so the per-practice "Add to calendar" link
+  // carries the same body as the bulk export and the shared calendar. Built
+  // up front because it can't be awaited inside the JSX below.
+  const rosterByPractice = new Map(
+    await Promise.all(
+      memberships
+        .flatMap((m) => m.dance.practices)
+        .filter((p) => p.status === "CONFIRMED")
+        .map(
+          async (p) => [p.id, await buildDescription(p.id)] as const,
+        ),
+    ),
+  );
 
   const greeting = `Hi ${firstName(user.name, user.email ?? "")}`;
 
@@ -175,7 +190,9 @@ export default async function MySchedulePage() {
                         end: practice.endDateTime,
                         location:
                           practice.space?.location ?? practice.space?.name ?? undefined,
-                        details: `${dance.name} rehearsal.`,
+                        details:
+                          rosterByPractice.get(practice.id) ??
+                          `${dance.name} rehearsal.`,
                       })}
                       target="_blank"
                       rel="noopener noreferrer"

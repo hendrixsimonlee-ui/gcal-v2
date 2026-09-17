@@ -1,4 +1,3 @@
-import { endOfDayInApp } from "@/lib/timezone";
 /** Attendance classification and rollups.
  *
  * Attendance is self-reported: a dancer taps Check in during the practice and
@@ -22,18 +21,8 @@ export interface ConflictWindow {
   status: ConflictStatus;
 }
 
-export interface UnavailabilityWindow {
-  userId: string;
-  startDate: Date;
-  endDate: Date;
-}
-
 function overlaps(aStart: Date, aEnd: Date, bStart: Date, bEnd: Date): boolean {
   return aStart < bEnd && bStart < aEnd;
-}
-
-function endOfDay(date: Date): Date {
-  return endOfDayInApp(date);
 }
 
 /** When the practice really began. The choreographer can record a later
@@ -81,15 +70,7 @@ export function isExpectedToCheckIn(
   practiceStart: Date,
   practiceEnd: Date,
   conflicts: ConflictWindow[],
-  unavailabilities: UnavailabilityWindow[],
 ): boolean {
-  const unavailable = unavailabilities.some(
-    (u) =>
-      u.userId === userId &&
-      overlaps(practiceStart, practiceEnd, u.startDate, endOfDay(u.endDate)),
-  );
-  if (unavailable) return false;
-
   return !conflicts.some(
     (c) =>
       c.userId === userId &&
@@ -99,23 +80,18 @@ export function isExpectedToCheckIn(
 
 /** What to record for someone who never checked in.
  *
- * Unexcused unless the app has a reason to say otherwise: an out-of-town
- * window, or a conflict the AD actually looked at and excused. A conflict
- * nobody reviewed is not an excuse — but the AD can override any of this. */
+ * Unexcused unless the app has a reason to say otherwise: a conflict the AD
+ * actually looked at and excused. A conflict nobody reviewed is not an excuse
+ * — but the AD can override any of this.
+ *
+ * A whole day away is an excused all-day conflict now, so it lands here the
+ * same as anything else once the AD has marked it. */
 export function statusForNoCheckIn(
   userId: string,
   practiceStart: Date,
   practiceEnd: Date,
   conflicts: ConflictWindow[],
-  unavailabilities: UnavailabilityWindow[],
 ): AttendanceStatus {
-  const unavailable = unavailabilities.some(
-    (u) =>
-      u.userId === userId &&
-      overlaps(practiceStart, practiceEnd, u.startDate, endOfDay(u.endDate)),
-  );
-  if (unavailable) return "EXCUSED_ABSENT";
-
   const excused = conflicts.some(
     (c) =>
       c.userId === userId &&

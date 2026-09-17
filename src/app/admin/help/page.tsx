@@ -158,7 +158,7 @@ export default function AdminHelpPage() {
             <B>No choreographer for this dance can make it.</B>{" "}A rehearsal
             with nobody to run it isn&rsquo;t a rehearsal. One of three being
             busy is fine; all of them is not. (Unless you&rsquo;ve excused them
-            for the week — see Step 4.)
+            for the week — see Step 3.)
           </li>
         </ul>
         <p>
@@ -167,17 +167,7 @@ export default function AdminHelpPage() {
         </p>
 
         <h3 className="mt-2 font-semibold text-ink">
-          Step 3 — Set aside anyone who&rsquo;s away
-        </h3>
-        <p>
-          Someone out of town misses <em>every</em> slot that week equally, so
-          counting them can&rsquo;t change which slot is best — it would only
-          make every option look bad. They&rsquo;re listed separately as
-          &ldquo;away&rdquo; so you can still see the real headcount.
-        </p>
-
-        <h3 className="mt-2 font-semibold text-ink">
-          Step 4 — Score what&rsquo;s left, lowest wins
+          Step 3 — Score what&rsquo;s left, lowest wins
         </h3>
         <table className="my-1 w-full border-collapse text-left">
           <thead>
@@ -240,7 +230,7 @@ export default function AdminHelpPage() {
         </p>
         <p>
           <B>One exception, and you control it.</B>{" "}If every choreographer for
-          a dance is excused for the week or away, the rule lifts — you&rsquo;ve
+          a dance is excused for the week, the rule lifts — you&rsquo;ve
           already decided the dance runs without them, and refusing every slot
           would just make it unschedulable. Use the week tracker&rsquo;s excuse
           if you want a practice to go ahead leaderless.
@@ -251,7 +241,7 @@ export default function AdminHelpPage() {
           them&rdquo;</em>{" "}— rather than blaming the rooms.
         </p>
 
-        <h3 className="mt-2 font-semibold text-ink">Step 5 — Rank</h3>
+        <h3 className="mt-2 font-semibold text-ink">Step 4 — Rank</h3>
         <p>
           Lowest score first, ties to the earlier slot, at most 2 suggestions
           per day (so one evening doesn&rsquo;t fill the list in 30-minute
@@ -644,6 +634,14 @@ export default function AdminHelpPage() {
         <p>
           <B>Drafts never go on it</B>, by design. Forty people read that
           calendar, and a draft is a time you haven&rsquo;t committed to.
+        </p>
+
+        <p>
+          Every practice on it carries the roster in its notes — who&rsquo;s
+          excused, who isn&rsquo;t, who&rsquo;s arriving late, and any notes
+          you wrote ahead of time. The same body goes into people&rsquo;s own
+          calendars when they add practices there, so nobody has to open the
+          app to see who will be in the room.
         </p>
 
         <h3 className="mt-2 font-semibold text-ink">

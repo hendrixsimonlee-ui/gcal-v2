@@ -48,7 +48,6 @@ const base: SchedulingInput = {
     { userId: "dancer2", name: "Dancer Two", role: "DANCER" },
   ],
   conflicts: [],
-  unavailabilities: [],
   existingPracticesForCast: [],
   spaces: [
     {
@@ -645,37 +644,36 @@ function overlapsWindow(
   );
 }
 
-// Someone away is out of the mix: not scored, not counted as missing, but
-// still named so the AD can see the real headcount.
+// A whole day away is an ordinary all-day conflict now.
+//
+// The separate out-of-town feature is gone — people kept not using it, and an
+// all-day Google event is what they reach for anyway. So it is scored like
+// any other absence rather than being set aside.
 {
-  const away = {
+  const allDay = {
+    id: "away1",
     userId: "dancer1",
-    startDate: asStoredDate(nextMonday),
-    endDate: asStoredDate(addDays(nextMonday, 3)),
-    reason: "Home for the long weekend",
+    startDateTime: minutesIntoAppDay(nextMonday, 0),
+    endDateTime: minutesIntoAppDay(addDays(nextMonday, 1), 0),
+    isExcused: true,
+    title: "Home for the long weekend",
   };
-  const result = generateCandidateSlots({ ...base, unavailabilities: [away] });
+  const result = generateCandidateSlots({ ...base, conflicts: [allDay] });
   const onThatDay = result.filter(
     (c) => appDateKey(c.startDateTime) === appDateKey(nextMonday),
   );
-  assert(onThatDay.length > 0, "an away dancer doesn't remove the slot");
+  assert(onThatDay.length > 0, "an all-day conflict doesn't remove the slot");
   assert(
-    onThatDay.every((c) => c.score === 0),
-    "...and doesn't drag its score, since they miss every slot equally",
-  );
-  assert(
-    onThatDay.every(
-      (c) => !c.conflictedCastMembers.some((n) => n.userId === "dancer1"),
-    ),
-    "...so they are not reported as a conflict",
+    onThatDay.every((c) => c.score > 0),
+    "...but it does cost the slot, like any other absence",
   );
   assert(
     onThatDay.every((c) =>
-      c.awayCastMembers.some(
-        (a) => a.userId === "dancer1" && a.reason === "Home for the long weekend",
+      c.conflictedCastMembers.some(
+        (n) => n.userId === "dancer1" && n.title === "Home for the long weekend",
       ),
     ),
-    "...but are listed as away, with the reason",
+    "...and they're named, with what they told us",
   );
 }
 

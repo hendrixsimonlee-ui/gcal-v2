@@ -9,7 +9,6 @@ import {
   summarizePractice,
   type AttendanceStatus,
   type ConflictWindow,
-  type UnavailabilityWindow,
 } from "./attendance";
 
 function assert(cond: boolean, msg: string) {
@@ -102,61 +101,63 @@ const LATE_THRESHOLD = 5;
       status: "UNEXCUSED",
     },
     {
+      // A whole day away, the way it is recorded now: an all-day event on
+      // their Google calendar, imported as a conflict spanning the day and
+      // excused by the AD. There is no separate out-of-town feature any more.
+      userId: "away-person",
+      startDateTime: at(0, 0),
+      endDateTime: at(24, 0),
+      status: "EXCUSED",
+    },
+    {
       userId: "elsewhere-person",
       startDateTime: new Date("2026-09-11T18:00:00"),
       endDateTime: new Date("2026-09-11T20:00:00"),
       status: "EXCUSED",
     },
   ];
-  const unavailable: UnavailabilityWindow[] = [
-    {
-      userId: "away-person",
-      startDate: new Date("2026-09-08T00:00:00"),
-      endDate: new Date("2026-09-12T00:00:00"),
-    },
-  ];
 
   assert(
-    isExpectedToCheckIn("nobody-special", start, end, conflicts, unavailable),
+    isExpectedToCheckIn("nobody-special", start, end, conflicts),
     "someone with nothing logged is expected to check in",
   );
   assert(
-    !isExpectedToCheckIn("excused-person", start, end, conflicts, unavailable),
+    !isExpectedToCheckIn("excused-person", start, end, conflicts),
     "an excused conflict means nobody chases them to check in",
   );
   assert(
-    !isExpectedToCheckIn("unexcused-person", start, end, conflicts, unavailable),
+    !isExpectedToCheckIn("unexcused-person", start, end, conflicts),
     "a known unexcused absence doesn't need a check-in either",
   );
   assert(
-    !isExpectedToCheckIn("away-person", start, end, conflicts, unavailable),
-    "out of town means no check-in",
+    !isExpectedToCheckIn("away-person", start, end, conflicts),
+    "an all-day conflict means no check-in",
   );
   assert(
-    isExpectedToCheckIn("elsewhere-person", start, end, conflicts, unavailable),
+    isExpectedToCheckIn("elsewhere-person", start, end, conflicts),
     "a conflict on another day doesn't excuse this practice",
   );
 
   // ...and what gets recorded for each of them.
   assert(
-    statusForNoCheckIn("nobody-special", start, end, conflicts, unavailable) ===
+    statusForNoCheckIn("nobody-special", start, end, conflicts) ===
       "UNEXCUSED_ABSENT",
     "no check-in and nothing logged is unexcused",
   );
   assert(
-    statusForNoCheckIn("excused-person", start, end, conflicts, unavailable) ===
+    statusForNoCheckIn("excused-person", start, end, conflicts) ===
       "EXCUSED_ABSENT",
     "an excused conflict makes the absence excused",
   );
   assert(
-    statusForNoCheckIn("unexcused-person", start, end, conflicts, unavailable) ===
+    statusForNoCheckIn("unexcused-person", start, end, conflicts) ===
       "UNEXCUSED_ABSENT",
     "an unexcused conflict stays unexcused",
   );
   assert(
-    statusForNoCheckIn("away-person", start, end, conflicts, unavailable) ===
+    statusForNoCheckIn("away-person", start, end, conflicts) ===
       "EXCUSED_ABSENT",
-    "out of town is an excused absence",
+    "a whole day away, excused, is an excused absence",
   );
 
   const unreviewed: ConflictWindow[] = [
@@ -168,7 +169,7 @@ const LATE_THRESHOLD = 5;
     },
   ];
   assert(
-    statusForNoCheckIn("pending-person", start, end, unreviewed, []) ===
+    statusForNoCheckIn("pending-person", start, end, unreviewed) ===
       "UNEXCUSED_ABSENT",
     "a conflict nobody reviewed is not an excuse on its own",
   );

@@ -280,7 +280,7 @@ async function notify(
  *
  * Same recipient rule as check-in: nobody is buzzed about a practice the app
  * already knows they can't make. Somebody with a logged conflict or marked
- * away is left alone; somebody who said they'd arrive late still gets it,
+ * conflict is left alone; somebody who said they'd arrive late still gets it,
  * because they are coming. */
 export async function notifyPracticeStartingSoon(practiceId: string) {
   const practice = await prisma.practice.findUnique({
@@ -294,10 +294,9 @@ export async function notifyPracticeStartingSoon(practiceId: string) {
   if (!practice) return;
 
   const castIds = practice.dance.memberships.map((m) => m.userId);
-  const [conflicts, unavailabilities] = await Promise.all([
-    prisma.conflict.findMany({ where: { userId: { in: castIds } } }),
-    prisma.unavailability.findMany({ where: { userId: { in: castIds } } }),
-  ]);
+  const conflicts = await prisma.conflict.findMany({
+    where: { userId: { in: castIds } },
+  });
   const planned = new Set(practice.plannedArrivals.map((p) => p.userId));
 
   const recipients = practice.dance.memberships
@@ -309,7 +308,6 @@ export async function notifyPracticeStartingSoon(practiceId: string) {
           practice.startDateTime,
           practice.endDateTime,
           conflicts,
-          unavailabilities,
         ),
     )
     .map((m) => m.user);
@@ -339,10 +337,9 @@ export async function notifyCheckInOpen(practiceId: string) {
   if (!practice) return;
 
   const castIds = practice.dance.memberships.map((m) => m.userId);
-  const [conflicts, unavailabilities] = await Promise.all([
-    prisma.conflict.findMany({ where: { userId: { in: castIds } } }),
-    prisma.unavailability.findMany({ where: { userId: { in: castIds } } }),
-  ]);
+  const conflicts = await prisma.conflict.findMany({
+    where: { userId: { in: castIds } },
+  });
   const planned = new Set(practice.plannedArrivals.map((p) => p.userId));
 
   // Nobody gets nagged about a practice the app already knows they're
@@ -356,7 +353,6 @@ export async function notifyCheckInOpen(practiceId: string) {
           practice.startDateTime,
           practice.endDateTime,
           conflicts,
-          unavailabilities,
         ),
     )
     .map((m) => m.user);

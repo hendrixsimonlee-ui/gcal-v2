@@ -696,18 +696,6 @@ export function ScheduleBuilder({
                     </>
                   )}
 
-                  {/* Away people don't count against the slot — they miss
-                      every slot equally — but the AD still needs the real
-                      headcount before deciding to hold the rehearsal. */}
-                  {c.awayCastMembers.length > 0 && (
-                    <div className="mt-0.5 text-ink-faint">
-                      Away all week:{" "}
-                      {c.awayCastMembers
-                        .map((a) => (a.reason ? `${a.name} (${a.reason})` : a.name))
-                        .join(", ")}
-                    </div>
-                  )}
-
                   {doubleBooked.length > 0 && (
                     <div className="mt-1 rounded border border-warn/35 bg-warn-soft px-1.5 py-1 leading-snug text-warn">
                       <span className="font-medium">

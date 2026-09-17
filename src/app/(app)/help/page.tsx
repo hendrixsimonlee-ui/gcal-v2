@@ -104,11 +104,15 @@ export default async function HelpPage() {
           whenever something changes. You never have to type a conflict twice.
         </p>
         <p>
-          <B>One catch:</B>{" "}a conflict needs a start and end time. An all-day
-          entry doesn&rsquo;t say which part of the day you&rsquo;re busy, so
-          it can&rsquo;t be used — the app will tell you how many it had to
-          skip. If you&rsquo;re away for whole days, use the away option rather
-          than an all-day event.
+          <B>Away for whole days?</B>{" "}Make it an all-day event on that same
+          calendar — &ldquo;Home for fall break&rdquo;, spanning the days
+          you&rsquo;re gone. It comes in as a conflict covering those whole
+          days, and the scheduler works around it like any other.
+        </p>
+        <p>
+          There used to be a separate out-of-town section for this. It&rsquo;s
+          gone: an all-day event is what people reached for anyway, so
+          that&rsquo;s what the app reads now. One calendar, one habit.
         </p>
       </Section>
 
@@ -149,7 +153,7 @@ export default async function HelpPage() {
         </ul>
         <p>
           You won&rsquo;t get the last two for a practice you&rsquo;ve already
-          logged a conflict for, or one in a week you said you&rsquo;re away.
+          logged a conflict for, including an all-day one.
           The app doesn&rsquo;t nag you about something it already knows you
           can&rsquo;t make.
         </p>
@@ -292,7 +296,7 @@ export default async function HelpPage() {
           </li>
           <li>
             <B>Sync imported nothing but found events</B> — they&rsquo;re
-            probably all-day entries. Give them real times.
+            outside the dates it searched. Sync the whole term again.
           </li>
           <li>
             <B>A rehearsal is in the app but not your Google Calendar</B> —

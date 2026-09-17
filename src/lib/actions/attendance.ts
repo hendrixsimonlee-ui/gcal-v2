@@ -115,9 +115,8 @@ export async function getOpenCheckIns(): Promise<CheckInWindow[]> {
   });
   if (practices.length === 0) return [];
 
-  const [conflicts, unavailabilities] = await Promise.all([
+  const [conflicts] = await Promise.all([
     prisma.conflict.findMany({ where: { userId: user.id } }),
-    prisma.unavailability.findMany({ where: { userId: user.id } }),
   ]);
 
   return practices
@@ -132,7 +131,6 @@ export async function getOpenCheckIns(): Promise<CheckInWindow[]> {
         p.startDateTime,
         p.endDateTime,
         conflicts,
-        unavailabilities,
       );
     })
     .map((p) => ({
@@ -225,9 +223,8 @@ export async function settleAttendance(practiceId: string): Promise<number> {
   const missing = castUserIds.filter((id) => !recorded.has(id));
   if (missing.length === 0) return 0;
 
-  const [conflicts, unavailabilities, exclusions] = await Promise.all([
+  const [conflicts, exclusions] = await Promise.all([
     prisma.conflict.findMany({ where: { userId: { in: missing } } }),
-    prisma.unavailability.findMany({ where: { userId: { in: missing } } }),
     // Anyone the AD took out of this dance's week can't be marked down for
     // not turning up to it. The app removed them from the scheduling that
     // produced this practice; holding it against them afterwards would be the
@@ -254,7 +251,6 @@ export async function settleAttendance(practiceId: string): Promise<number> {
             practice.startDateTime,
             practice.endDateTime,
             conflicts,
-            unavailabilities,
           ),
     })),
     skipDuplicates: true,

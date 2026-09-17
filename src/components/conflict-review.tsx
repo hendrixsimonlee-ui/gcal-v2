@@ -33,34 +33,18 @@ const timeFormatter = new Intl.DateTimeFormat("en-US", {
   hour: "numeric",
   minute: "2-digit",
 });
-const dayFormatter = new Intl.DateTimeFormat("en-US", {
-  timeZone: APP_TIME_ZONE,
-  month: "short",
-  day: "numeric",
-});
-
-interface AwayWindow {
-  id: string;
-  name: string;
-  startDate: string;
-  endDate: string;
-  reason: string | null;
-}
-
 export function ConflictReview({
   people,
   weekLabel,
   weekOfIso,
   weekStartKey,
   todayKey,
-  awayThisWeek,
 }: {
   people: ReviewPerson[];
   weekLabel: string;
   weekOfIso: string;
   weekStartKey: string;
   todayKey: string;
-  awayThisWeek: AwayWindow[];
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -144,34 +128,7 @@ export function ConflictReview({
       <SubmissionTracker weekOfIso={weekOfIso} weekLabel={weekLabel} />
 
 
-      {awayThisWeek.length > 0 && (
-        <section className="rounded-xl border border-info/35 bg-info-soft p-4">
-          <h2 className="text-sm font-semibold text-info">
-            Away this week ({awayThisWeek.length})
-          </h2>
-          <p className="mb-2 text-xs text-info /80">
-            Out of town, so they&rsquo;re out of scheduling entirely — nothing
-            to excuse here, but worth knowing before you build the week.
-          </p>
-          <ul className="flex flex-col gap-1">
-            {awayThisWeek.map((away) => (
-              <li
-                key={away.id}
-                className="flex flex-wrap items-center gap-x-2 text-sm text-info"
-              >
-                <span className="font-medium">{away.name}</span>
-                <span className="text-xs">
-                  {dayFormatter.format(new Date(away.startDate))} –{" "}
-                  {dayFormatter.format(new Date(away.endDate))}
-                </span>
-                {away.reason && (
-                  <span className="text-xs opacity-70">{away.reason}</span>
-                )}
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+
 
       <div className="flex flex-col gap-3">
         {optimistic.map((person) => {

@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { buildIcs } from "@/lib/calendar-links";
+import { buildDescription } from "@/lib/team-calendar";
 import { addDays, parseWeekParam } from "@/lib/dates";
 
 /** Every practice the signed-in person has in one week, as a single calendar
@@ -31,17 +32,21 @@ export async function GET(request: NextRequest) {
     orderBy: { startDateTime: "asc" },
   });
 
-  const ics = buildIcs(
-    practices.map((p) => ({
+  // The same roster the app and the shared calendar carry — who's excused,
+  // who isn't, who's coming late. Downloading the week and then having to
+  // open the app to see who'll be there defeats the point of downloading it.
+  const rows = await Promise.all(
+    practices.map(async (p) => ({
       uid: `${p.id}@dance-scheduler`,
       title: `${p.dance.name} practice`,
       start: p.startDateTime,
       end: p.endDateTime,
       location: p.space?.location ?? p.space?.name ?? undefined,
-      description: `${p.dance.name} rehearsal.`,
+      description: await buildDescription(p.id),
     })),
-    "PADT practices",
   );
+
+  const ics = buildIcs(rows, "PADT practices");
 
   return new NextResponse(ics, {
     headers: {

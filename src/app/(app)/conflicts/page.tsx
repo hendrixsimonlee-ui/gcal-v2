@@ -4,15 +4,12 @@ import { WeekNav } from "@/components/week-nav";
 import { ConflictsCalendar } from "@/components/conflicts-calendar";
 import { addDays, formatWeekLabel, parseWeekParam, toDateParam } from "@/lib/dates";
 import {
-  addUnavailability,
   deleteConflict,
-  deleteUnavailability,
 } from "@/lib/actions/conflicts";
 import { ConflictCalendarSync } from "@/components/conflict-calendar-sync";
 import { ConflictStatusBadge } from "@/components/status-badges";
 import { SubmitWeekButton } from "@/components/submit-week-button";
 import { APP_TIME_ZONE } from "@/lib/timezone";
-import { calendarDateFormatter } from "@/lib/dates";
 
 const timeFormatter = new Intl.DateTimeFormat("en-US", {
   timeZone: APP_TIME_ZONE,
@@ -22,11 +19,6 @@ const timeFormatter = new Intl.DateTimeFormat("en-US", {
 });
 // Out-of-town windows are `@db.Date` columns — a bare calendar day, handed
 // back at UTC midnight. Reading them in Eastern showed the day before.
-const dateFormatter = calendarDateFormatter({
-  month: "short",
-  day: "numeric",
-});
-
 export default async function MyConflictsPage({
   searchParams,
 }: {
@@ -38,7 +30,7 @@ export default async function MyConflictsPage({
 
   const weekStart = parseWeekParam(week);
 
-  const [me, weekConflicts, calendarConflicts, unavailabilities, submission] =
+  const [me, weekConflicts, calendarConflicts, submission] =
     await Promise.all([
       prisma.user.findUniqueOrThrow({
         where: { id: userId },
@@ -57,10 +49,6 @@ export default async function MyConflictsPage({
           endDateTime: { lte: addDays(new Date(), 120) },
         },
         orderBy: { startDateTime: "asc" },
-      }),
-      prisma.unavailability.findMany({
-        where: { userId, endDate: { gte: new Date() } },
-        orderBy: { startDate: "asc" },
       }),
       prisma.conflictSubmission.findUnique({
         where: { userId_weekOf: { userId, weekOf: weekStart } },
@@ -82,7 +70,7 @@ export default async function MyConflictsPage({
           My Conflicts
         </h1>
         <p className="mt-1 text-sm text-ink-soft">
-          Log every time you&rsquo;re unavailable so the AD can schedule around
+          Log every time you&rsquo;re busy so the AD can schedule around
           it.
         </p>
       </div>
@@ -166,84 +154,7 @@ export default async function MyConflictsPage({
         </ul>
       </section>
 
-      <section className="rounded-lg border border-line bg-surface p-4">
-        <h2 className="mb-1 font-medium text-ink">
-          Out of town / fully unavailable
-        </h2>
-        <p className="mb-3 text-xs text-ink-soft">
-          Use this instead of a regular conflict when you&rsquo;re fully out
-          for a stretch of time — it removes you from scheduling
-          consideration entirely for that window.
-        </p>
-
-        <ul className="mb-4 flex flex-col gap-1">
-          {unavailabilities.length === 0 && (
-            <li className="text-sm text-ink-soft">
-              No upcoming out-of-town windows.
-            </li>
-          )}
-          {unavailabilities.map((u) => (
-            <li
-              key={u.id}
-              className="flex items-center justify-between rounded-lg bg-surface-2 px-3 py-2 text-sm bg-surface"
-            >
-              <span>
-                {dateFormatter.format(u.startDate)} –{" "}
-                {dateFormatter.format(u.endDate)}
-                {u.reason && (
-                  <span className="ml-2 text-xs text-ink-soft">{u.reason}</span>
-                )}
-              </span>
-              <form action={deleteUnavailability.bind(null, u.id)}>
-                <button
-                  type="submit"
-                  className="text-xs font-medium text-ink-faint transition-colors hover:text-bad"
-                >
-                  Remove
-                </button>
-              </form>
-            </li>
-          ))}
-        </ul>
-
-        <form
-          action={addUnavailability}
-          className="flex flex-wrap items-end gap-3"
-        >
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-ink-soft">From</label>
-            <input
-              type="date"
-              name="startDate"
-              required
-              className="rounded-lg border border-line-strong px-3 py-1.5 text-sm bg-surface"
-            />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium text-ink-soft">To</label>
-            <input
-              type="date"
-              name="endDate"
-              required
-              className="rounded-lg border border-line-strong px-3 py-1.5 text-sm bg-surface"
-            />
-          </div>
-          <div className="flex flex-1 flex-col gap-1">
-            <label className="text-xs font-medium text-ink-soft">Reason</label>
-            <input
-              name="reason"
-              placeholder="e.g. Out of town"
-              className="w-full rounded-lg border border-line-strong px-3 py-1.5 text-sm bg-surface"
-            />
-          </div>
-          <button
-            type="submit"
-            className="rounded-lg border border-line-strong px-4 py-1.5 text-sm font-medium text-ink-soft hover:bg-surface-3"
-          >
-            Mark unavailable
-          </button>
-        </form>
-      </section>
+      
     </div>
   );
 }

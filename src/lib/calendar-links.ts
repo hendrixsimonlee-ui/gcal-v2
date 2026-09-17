@@ -80,7 +80,11 @@ export function buildIcs(events: IcsEvent[], calendarName: string): string {
 function escapeIcs(value: string): string {
   return value
     .replace(/\\/g, "\\\\")
-    .replace(/;/g, "\;")
+    // "\;" in a JS string is just ";" — the backslash is dropped, so this
+    // escaped nothing. Semicolons are a field separator in iCalendar, so an
+    // unescaped one in a name or a note can split a line and corrupt the
+    // event. It matters more now that descriptions carry the full roster.
+    .replace(/;/g, "\\;")
     .replace(/,/g, "\\,")
     .replace(/\r?\n/g, "\\n");
 }

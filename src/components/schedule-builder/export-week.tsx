@@ -116,9 +116,12 @@ function ExportResult({
         <p className="text-warn">
           {result.failed}{" "}
           {result.failed === 1 ? "practice" : "practices"} couldn&rsquo;t be
-          written — usually your Google sign-in has expired, or the calendar
-          isn&rsquo;t shared with you any more. Sign out and back in, then try
-          again.
+          written.{" "}
+          {/* The actual reason from Google, where there is one. This used to
+              blame an expired sign-in every time, which was sometimes true
+              and sometimes sent the AD to fix the wrong thing. */}
+          {result.problem ??
+            "Sign out and back in, tick the calendar boxes, then try again."}
         </p>
       )}
       {result.drafts > 0 && (

@@ -16,6 +16,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
+import { buildDescription } from "@/lib/team-calendar";
 import { requireUser } from "@/lib/authz";
 import {
   describeGoogleError,
@@ -94,7 +95,12 @@ export async function syncMyPracticesToGoogle(): Promise<PracticeExportResult> {
             .filter(Boolean)
             .join(", ")
         : undefined,
-      description: "Added by PADT Calendar. Moves when the schedule moves.",
+      // The same roster the shared team calendar carries: who's excused,
+      // who isn't, who's arriving late and any notes. Somebody looking at
+      // their own calendar the morning of a rehearsal wants to know who is
+      // actually going to be there, and opening the app to find out is the
+      // step this removes.
+      description: `${await buildDescription(practice.id)}\n\nAdded by PADT Calendar. Moves when the schedule moves.`,
       start: { dateTime: practice.startDateTime.toISOString() },
       end: { dateTime: practice.endDateTime.toISOString() },
     };

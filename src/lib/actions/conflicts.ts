@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAdmin, requireUser } from "@/lib/authz";
 import { startOfWeek, addDays, formatWeekLabel } from "@/lib/dates";
 import { notifyConflictsDue } from "@/lib/notify";
+import { googleEventWindow } from "@/lib/google-events";
 import { appDateKey, clampToSupportedRange } from "@/lib/timezone";
 import { activeRange } from "@/lib/terms";
 import {
@@ -366,38 +367,7 @@ export async function nudgeMissingSubmissions(
   return { nudged: count };
 }
 
-export async function addUnavailability(formData: FormData) {
-  const session = await auth();
-  const userId = session!.user.id;
 
-  const startDate = new Date(String(formData.get("startDate") ?? ""));
-  const endDate = new Date(String(formData.get("endDate") ?? ""));
-  const reason = String(formData.get("reason") ?? "").trim() || null;
-
-  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
-    throw new Error("Please provide valid dates");
-  }
-  if (startDate > endDate) {
-    throw new Error("Start date must be before end date");
-  }
-
-  await prisma.unavailability.create({
-    data: { userId, startDate, endDate, reason },
-  });
-  revalidatePath("/conflicts");
-}
-
-export async function deleteUnavailability(unavailabilityId: string) {
-  const session = await auth();
-  const record = await prisma.unavailability.findUniqueOrThrow({
-    where: { id: unavailabilityId },
-  });
-  if (record.userId !== session!.user.id && !session!.user.isAdmin) {
-    throw new Error("Not authorized to delete this");
-  }
-  await prisma.unavailability.delete({ where: { id: unavailabilityId } });
-  revalidatePath("/conflicts");
-}
 
 /** The signed-in person's own Google calendars, so they can say which one is
  * their PADT conflict calendar. Returns the failure as a value rather than
@@ -617,6 +587,7 @@ export interface ConflictSyncResult {
  * to be cheap to do and safe to repeat. Only rows a previous sync created are
  * touched: conflicts typed into the app directly have no source id and are
  * left alone, and an event deleted in Google disappears here next sync. */
+
 export async function syncConflictCalendar(
   rangeStartIso: string,
   weeks: number,
@@ -678,7 +649,14 @@ export async function syncConflictCalendar(
       skippedCancelled++;
       return false;
     }
-    if (!event.start?.dateTime || !event.end?.dateTime) {
+    // An all-day entry is a real conflict now, not something to skip.
+    //
+    // It used to be dropped, on the reasoning that "busy Tuesday" doesn't say
+    // which hours — and there was a separate out-of-town feature for whole
+    // days. That feature is gone: people kept not using it, and an all-day
+    // event is what they reach for anyway. So an all-day entry means the
+    // whole day, which is exactly what somebody means when they make one.
+    if (!event.start?.dateTime && !event.start?.date) {
       skippedAllDay++;
       return false;
     }
@@ -707,8 +685,7 @@ export async function syncConflictCalendar(
   let updated = 0;
 
   for (const event of events) {
-    const start = new Date(event.start!.dateTime!);
-    const end = new Date(event.end!.dateTime!);
+    const { start, end } = googleEventWindow(event);
     // The event's own title is the whole point — it's what the AD reads when
     // deciding whether a conflict is excused.
     const title = event.summary ?? null;

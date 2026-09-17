@@ -102,11 +102,8 @@ export async function getCandidateSlots(
     ? await getHistoricalAbsenceRates(castUserIds)
     : undefined;
 
-  const [conflicts, unavailabilities, weeklyExcuses] = await Promise.all([
+  const [conflicts, weeklyExcuses] = await Promise.all([
     prisma.conflict.findMany({ where: { userId: { in: castUserIds } } }),
-    prisma.unavailability.findMany({
-      where: { userId: { in: castUserIds } },
-    }),
     prisma.weeklyExclusion.findMany({ where: { danceId } }),
   ]);
 
@@ -163,7 +160,6 @@ export async function getCandidateSlots(
       isExcused: c.status === "EXCUSED",
       title: c.title,
     })),
-    unavailabilities,
     spaces,
     existingPracticesForCast,
     choreographerExcusedByWeek,
@@ -309,7 +305,6 @@ export async function getWeekTracker(
     priorities,
     memberships,
     conflicts,
-    unavailabilities,
     exclusions,
   ] = await Promise.all([
     prisma.dance.findMany({
@@ -347,10 +342,6 @@ export async function getWeekTracker(
         status: true,
       },
     }),
-    prisma.unavailability.findMany({
-      where: { startDate: { lt: weekEnd }, endDate: { gte: weekOf } },
-      select: { userId: true, startDate: true, endDate: true, reason: true },
-    }),
     // Anyone the AD took out of a dance for this week. The scheduler already
     // leaves them out of its headcount; without this the checklist counted
     // them, and the two numbers disagreed.
@@ -368,11 +359,11 @@ export async function getWeekTracker(
   }
 
   // Who is expected at a practice: the cast, minus anyone whose conflict
-  // overlaps it, anyone away across it, and anyone taken out of the week.
+  // overlaps it and anyone taken out of the week.
   //
   // This has to be the same reading the scheduler uses when it ranks slots,
   // or the checklist contradicts the proposal that produced the practice —
-  // which it did: the proposal counted away and excluded people as attending,
+  // which it did: the proposal counted excluded people as attending,
   // so it reported everyone expected at every practice and the number only
   // corrected itself once the drafts loaded here.
   const castByDance = new Map<string, typeof memberships>();
@@ -399,25 +390,6 @@ export async function getWeekTracker(
           name: member.user.name ?? member.user.email,
           role: member.role,
           reason: reason ? `Out this week — ${reason}` : "Out this week",
-        });
-        continue;
-      }
-
-      const away = unavailabilities.find(
-        (u) =>
-          u.userId === member.userId &&
-          overlaps(
-            practice.startDateTime,
-            practice.endDateTime,
-            u.startDate,
-            new Date(u.endDate.getTime() + 24 * 60 * 60 * 1000),
-          ),
-      );
-      if (away) {
-        missing.push({
-          name: member.user.name ?? member.user.email,
-          role: member.role,
-          reason: away.reason ? `Away — ${away.reason}` : "Away",
         });
         continue;
       }

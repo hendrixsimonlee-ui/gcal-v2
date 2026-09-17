@@ -3,7 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/authz";
-import { syncPracticeToTeamCalendar } from "@/lib/team-calendar";
+import {
+  checkTeamCalendarAccess,
+  syncPracticeToTeamCalendar,
+} from "@/lib/team-calendar";
 import { addDays, startOfWeek } from "@/lib/dates";
 
 /** What's left here is the *team* calendar — where published practices are
@@ -69,6 +72,9 @@ export type TeamCalendarExport = {
   /** Published practices found in the week. `written + failed` should equal
    * this; if it doesn't, the rest were skipped for want of a calendar. */
   published: number;
+  /** Why nothing could be written, when nothing was. Null when it worked, or
+   * when there was nothing to write. */
+  problem?: string | null;
   /** Drafts sitting in the week, deliberately left alone. Reported so the AD
    * can see why a practice they're looking at didn't go across. */
   drafts: number;
@@ -109,7 +115,7 @@ export async function getTeamCalendarStatus(): Promise<{
 export async function exportWeekToTeamCalendar(
   weekOfIso: string,
 ): Promise<TeamCalendarExport> {
-  await requireAdmin();
+  const admin = await requireAdmin();
 
   const { linked, calendarName } = await getTeamCalendarStatus();
   const weekStart = startOfWeek(new Date(weekOfIso));
@@ -141,10 +147,21 @@ export async function exportWeekToTeamCalendar(
   let written = 0;
   let failed = 0;
   for (const practice of published) {
-    const result = await syncPracticeToTeamCalendar(practice.id);
+    // The AD pressing the button is tried first. Writing used to always go
+    // through the oldest admin with a Google account, so a stale connection
+    // on somebody else's login broke it for everyone.
+    const result = await syncPracticeToTeamCalendar(practice.id, admin.id);
     if (result === "written") written++;
     else failed++;
   }
+
+  // If nothing landed, say why rather than guessing. The old message blamed
+  // an expired sign-in every time, which was sometimes true and sometimes
+  // completely misleading.
+  const problem =
+    written === 0 && published.length > 0
+      ? (await checkTeamCalendarAccess(admin.id)).message
+      : null;
 
   revalidatePath("/admin/schedule-builder");
   return {
@@ -154,5 +171,6 @@ export async function exportWeekToTeamCalendar(
     failed,
     published: published.length,
     drafts,
+    problem,
   };
 }

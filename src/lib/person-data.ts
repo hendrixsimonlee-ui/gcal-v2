@@ -47,7 +47,6 @@ export interface PersonDossier {
   dances: { danceId: string; danceName: string; role: string; archived: boolean }[];
   practices: PersonPracticeRow[];
   conflicts: PersonConflictRow[];
-  away: { id: string; startDate: Date; endDate: Date; reason: string | null }[];
   notes: PersonNoteRow[];
   totals: {
     recorded: number;
@@ -81,7 +80,6 @@ export async function getPersonDossier(
     where: { id: userId },
     include: {
       memberships: { include: { dance: true }, orderBy: { dance: { name: "asc" } } },
-      unavailabilities: { orderBy: { startDate: "desc" }, take: 20 },
     },
   });
   if (!user) return null;
@@ -168,12 +166,6 @@ export async function getPersonDossier(
       endDateTime: c.endDateTime,
       status: c.status,
       fromGoogle: Boolean(c.sourceGoogleEventId),
-    })),
-    away: user.unavailabilities.map((u) => ({
-      id: u.id,
-      startDate: u.startDate,
-      endDate: u.endDate,
-      reason: u.reason,
     })),
     notes: notes.map((n) => ({
       id: n.id,

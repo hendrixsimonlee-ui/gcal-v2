@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { addDays, formatWeekLabel, parseWeekParam, toDateParam } from "@/lib/dates";
+import { formatWeekLabel, parseWeekParam, toDateParam } from "@/lib/dates";
 import { ConflictReview } from "@/components/conflict-review";
 
 /** The AD's weekly triage. Grouped by person, title first, one decision per
@@ -13,9 +13,7 @@ export default async function AdminConflictsPage({
   const { week } = await searchParams;
   const weekStart = parseWeekParam(week);
 
-  const weekEnd = addDays(weekStart, 7);
-
-  const [conflicts, awayThisWeek] = await Promise.all([
+  const [conflicts] = await Promise.all([
     prisma.conflict.findMany({
       where: { weekOf: weekStart },
       orderBy: [{ startDateTime: "asc" }],
@@ -24,11 +22,6 @@ export default async function AdminConflictsPage({
     // Out-of-town windows aren't conflicts and can't be excused — but they
     // take someone out of scheduling entirely, so the AD has to be able to
     // see who's gone rather than wondering why the suggestions changed.
-    prisma.unavailability.findMany({
-      where: { startDate: { lt: weekEnd }, endDate: { gte: weekStart } },
-      include: { user: { select: { name: true, email: true } } },
-      orderBy: { startDate: "asc" },
-    }),
   ]);
 
   const byPerson = new Map<
@@ -80,13 +73,6 @@ export default async function AdminConflictsPage({
       weekOfIso={weekStart.toISOString()}
       weekStartKey={toDateParam(weekStart)}
       todayKey={toDateParam(new Date())}
-      awayThisWeek={awayThisWeek.map((u) => ({
-        id: u.id,
-        name: u.user.name ?? u.user.email,
-        startDate: u.startDate.toISOString(),
-        endDate: u.endDate.toISOString(),
-        reason: u.reason,
-      }))}
     />
   );
 }

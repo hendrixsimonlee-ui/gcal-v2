@@ -1,4 +1,4 @@
-import { addDays, addWeeks, startOfWeek } from "@/lib/dates";
+import { addWeeks, startOfWeek } from "@/lib/dates";
 import {
   addDaysInApp,
   appDateKey,
@@ -26,14 +26,6 @@ export interface ConflictInterval {
   title?: string | null;
 }
 
-export interface UnavailabilityInterval {
-  userId: string;
-  startDate: Date;
-  endDate: Date;
-  /** "Home for fall break" — shown beside their name so the AD knows why
-   * they're out rather than just that they are. */
-  reason?: string | null;
-}
 
 export interface ExistingPractice {
   id: string;
@@ -68,7 +60,6 @@ export interface SpaceOption {
 export interface SchedulingInput {
   castMembers: CastMember[];
   conflicts: ConflictInterval[];
-  unavailabilities: UnavailabilityInterval[];
   spaces: SpaceOption[];
   existingPracticesForCast: ExistingPractice[];
   /** Choreographer weekly excuses, keyed by that week's Monday (startOfWeek)
@@ -145,10 +136,11 @@ export interface CastConflictNote {
   endIso?: string;
 }
 
-/** Someone unavailable for this whole slot — out of town rather than busy.
- * Kept apart from the conflicted list because they are missing from every
- * slot equally, so counting them as a conflict would be noise. */
-export interface AwayCastMember {
+
+/** Somebody the AD took out of this dance for the week. Not scored — that
+ * decision is already made — but listed, so the headcount shown is the real
+ * one. */
+export interface ExcludedCastMember {
   userId: string;
   name: string;
   role: CastRole;
@@ -162,13 +154,11 @@ export interface CandidateSlot {
   spaceName: string;
   score: number;
   conflictedCastMembers: CastConflictNote[];
-  /** Away for this slot, and deliberately not counted against it. */
-  awayCastMembers: AwayCastMember[];
   /** Taken out of this dance's week by the AD. Like the away list, these are
    * held apart from the scoring — the AD has already decided they're not
    * coming, so charging for them would drag every slot equally — but they are
    * absent, and the headcount shown to the AD has to say so. */
-  excludedCastMembers: AwayCastMember[];
+  excludedCastMembers: ExcludedCastMember[];
   /** How many choreographers can't make it. One of three missing is a normal
    * slot; the UI shows it without alarm. */
   choreographersMissing: number;
@@ -250,7 +240,6 @@ export function generateCandidateSlots(input: SchedulingInput): CandidateSlot[] 
   const {
     castMembers,
     conflicts,
-    unavailabilities,
     spaces,
     existingPracticesForCast,
     choreographerExcusedByWeek,
@@ -356,34 +345,8 @@ export function generateCandidateSlots(input: SchedulingInput): CandidateSlot[] 
     );
 
     const conflictedCastMembers: CastConflictNote[] = [];
-    const awayCastMembers: AwayCastMember[] = [];
     let score = 0;
     let choreographersMissing = 0;
-
-    // Anyone away is out of the mix, not counted as missing.
-    //
-    // Someone out of town is unavailable for every slot the week could offer,
-    // so scoring them adds the same amount everywhere and cannot change which
-    // slot wins — it only makes every option look bad. They're listed
-    // separately instead, so the real headcount is still visible when the AD
-    // decides whether the rehearsal is worth holding.
-    const awayUserIds = new Set<string>();
-    for (const member of castMembers) {
-      const away = unavailabilities.find(
-        (u) =>
-          u.userId === member.userId &&
-          overlaps(start, end, u.startDate, addDays(u.endDate, 1)),
-      );
-      if (away) {
-        awayUserIds.add(member.userId);
-        awayCastMembers.push({
-          userId: member.userId,
-          name: member.name,
-          role: member.role,
-          reason: away.reason ?? null,
-        });
-      }
-    }
 
     // Choreographers are weighted, not required.
     //
@@ -399,8 +362,7 @@ export function generateCandidateSlots(input: SchedulingInput): CandidateSlot[] 
     const expectedChoreographers = choreographers.filter(
       (c) =>
         !excusedThisWeek?.has(c.userId) &&
-        !ignoredUserIds.has(c.userId) &&
-        !awayUserIds.has(c.userId),
+        !ignoredUserIds.has(c.userId),
     );
 
     for (const choreographer of expectedChoreographers) {
@@ -438,27 +400,24 @@ export function generateCandidateSlots(input: SchedulingInput): CandidateSlot[] 
 
     // Soft score: everyone else's conflicts and other-dance practices.
     const choreographerIds = new Set(choreographers.map((c) => c.userId));
-    const excludedCastMembers: AwayCastMember[] = [];
+    const excludedCastMembers: ExcludedCastMember[] = [];
 
     for (const member of castMembers) {
       if (ignoredUserIds.has(member.userId)) {
         // Not scored — the AD took them out of the week, so they'd cost every
         // slot the same — but recorded, so the headcount can leave them out.
-        if (!awayUserIds.has(member.userId)) {
-          excludedCastMembers.push({
-            userId: member.userId,
-            name: member.name,
-            role: member.role,
-            reason: null,
-          });
-        }
+        excludedCastMembers.push({
+          userId: member.userId,
+          name: member.name,
+          role: member.role,
+          reason: null,
+        });
         continue;
       }
       // A choreographer excused for this week is fully exempt, not just
       // from the hard mandatory-attendance requirement — their conflict
       // shouldn't count against the ranking either.
       if (excusedThisWeek?.has(member.userId)) continue;
-      if (awayUserIds.has(member.userId)) continue;
       // Already charged, at the much heavier choreographer rate, just above.
       if (choreographerIds.has(member.userId)) continue;
 
@@ -523,7 +482,6 @@ export function generateCandidateSlots(input: SchedulingInput): CandidateSlot[] 
       spaceName: space.spaceName,
       score,
       conflictedCastMembers,
-      awayCastMembers,
       excludedCastMembers,
       choreographersMissing,
       noChoreographerAvailable: noChoreographerLeft,

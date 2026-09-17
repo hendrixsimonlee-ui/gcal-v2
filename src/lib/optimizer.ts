@@ -304,9 +304,8 @@ function memberWeight(
  *
  * - `conflictedCastMembers` — logged conflicts and clashes with another
  *   dance. Obviously absent.
- * - `awayCastMembers` and `excludedCastMembers` — out of town for the whole
- *   slot, or taken out of this dance's week by the AD. Just as absent, but
- *   held in separate lists on purpose: they miss every slot of the week
+ * - `excludedCastMembers` — taken out of this dance's week by the AD. Just as
+ *   absent, but held in a separate list on purpose: they miss every slot of the week
  *   equally, so charging them would make every option look worse without
  *   changing which one wins. That reasoning is about *ranking*. Reading it as
  *   "not absent" counted them into the headcount the AD was shown.
@@ -325,7 +324,6 @@ function attendeesFor(dance: DanceToPlace, slot: CandidateSlot): Set<string> {
       .filter((c) => c.reason !== "historically-absent")
       .map((c) => c.userId),
   );
-  for (const person of slot.awayCastMembers) absent.add(person.userId);
   for (const person of slot.excludedCastMembers) absent.add(person.userId);
 
   const present = new Set<string>();

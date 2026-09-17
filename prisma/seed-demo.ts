@@ -11,6 +11,7 @@
  */
 import { PrismaClient } from "../src/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
+import { startOfWeek } from "../src/lib/dates";
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
@@ -47,7 +48,6 @@ async function main() {
     "Session",
     "Account",
     "Conflict",
-    "Unavailability",
     "WeeklyExclusion",
     "ConflictSubmission",
     "AttendanceWeekReview",
@@ -233,12 +233,18 @@ async function main() {
     });
   }
 
-  await prisma.unavailability.create({
+  // A whole week away is an all-day conflict now, the same as somebody would
+  // create in Google Calendar — there is no separate out-of-town feature.
+  await prisma.conflict.create({
     data: {
       userId: users["Jordan Blake"],
-      startDate: at(5, 0),
-      endDate: at(12, 0),
-      reason: "Studying abroad interview trip",
+      weekOf: startOfWeek(at(5, 0)),
+      startDateTime: at(5, 0),
+      endDateTime: at(12, 0),
+      title: "Studying abroad interview trip",
+      status: "EXCUSED",
+      reviewedById: users["Priya Raman"],
+      reviewedAt: new Date(),
     },
   });
 

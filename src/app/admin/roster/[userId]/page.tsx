@@ -4,7 +4,6 @@ import { getPersonDossier } from "@/lib/person-data";
 import { PersonAttendanceRow } from "@/components/person-attendance-row";
 import { ConflictStatusBadge } from "@/components/status-badges";
 import { APP_TIME_ZONE } from "@/lib/timezone";
-import { calendarDateFormatter } from "@/lib/dates";
 import { ConflictCalendarSync } from "@/components/conflict-calendar-sync";
 import { startOfWeek } from "@/lib/dates";
 
@@ -16,12 +15,6 @@ const dateFormatter = new Intl.DateTimeFormat("en-US", {
 });
 // Away windows are `@db.Date` columns, so they read in UTC — in Eastern the
 // AD saw each one starting a day early, same bug the dancer saw.
-const dayFormatter = calendarDateFormatter({
-  month: "short",
-  day: "numeric",
-  year: "numeric",
-});
-
 /** One person, everything the app knows about them.
  *
  * Built for the conversation that starts "I was definitely there" — their
@@ -190,27 +183,7 @@ export default async function PersonPage({
           </>
         )}
 
-        {person.away.length > 0 && (
-          <>
-            <h3 className="mb-1 mt-4 text-xs font-medium uppercase text-ink-faint">
-              Out of town
-            </h3>
-            <ul className="flex flex-col gap-1 text-sm">
-              {person.away.map((away) => (
-                <li
-                  key={away.id}
-                  className="rounded-lg bg-info-soft px-3 py-1.5 text-info"
-                >
-                  {dayFormatter.format(away.startDate)} –{" "}
-                  {dayFormatter.format(away.endDate)}
-                  {away.reason && (
-                    <span className="ml-2 text-xs opacity-70">{away.reason}</span>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </>
-        )}
+
       </section>
 
       {person.notes.length > 0 && (
