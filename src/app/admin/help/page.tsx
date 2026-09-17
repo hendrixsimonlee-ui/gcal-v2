@@ -94,6 +94,40 @@ export default function AdminHelpPage() {
         </p>
       </Section>
 
+      <Section title="Getting the team onto notifications">
+        <p>
+          You will be asked about this, so it&rsquo;s worth knowing the shape
+          of it. <B>Notifications are the only way the app reaches anybody.</B>{" "}
+          There is no email.
+        </p>
+        <p>It takes two steps on a phone, and people stop after the first:</p>
+        <ol>
+          <li>
+            Add PADT to the home screen. On an iPhone nothing can be sent until
+            they do, because Apple won&rsquo;t deliver to a browser tab.
+          </li>
+          <li>
+            Open it from the home screen and answer <B>Turn on
+            notifications?</B>
+          </li>
+        </ol>
+        <p>
+          <B>The app now asks them itself, on every screen, every time they
+          open it</B>, until they answer one way or the other. They can press
+          Not now as often as they like and it comes back next time. So
+          &ldquo;I never got told&rdquo; should become rare, and when it
+          happens the usual cause is step 1.
+        </p>
+        <p>
+          <B>If nobody on the team has notifications</B>, it isn&rsquo;t the
+          team. Push needs three settings on the server:{" "}
+          <code>VAPID_PUBLIC_KEY</code>, <code>VAPID_PRIVATE_KEY</code>{" "}and{" "}
+          <code>VAPID_SUBJECT</code>. Without them the app tells people their
+          browser can&rsquo;t do notifications, which blames the wrong thing.
+          Check those first.
+        </p>
+      </Section>
+
       <Section title="Conflicts — where availability comes from">
         <p>
           Each person links their own PADT conflict calendar and syncs it. You
@@ -269,13 +303,13 @@ export default function AdminHelpPage() {
             Takes every dance not already scheduled that week and not marked off
           </li>
           <li>
-            Goes <B>most-constrained-first</B> — the dance with the fewest
-            options picks first, bigger cast breaks ties. A dance with one
-            workable slot must not lose it to a dance that had five.
+            Asks every unplaced dance <B>what it stands to lose by waiting</B>{" "}
+            — the gap between its best remaining slot and its next two — and
+            places whichever dance would lose most. A dance down to a single
+            workable time has everything to lose, so it goes immediately.
           </li>
           <li>
-            Gives each dance its best remaining slot, judged by how many people
-            can come
+            Gives that dance its best remaining slot, judged by who can come
           </li>
           <li>
             Refuses any placement that clashes with one already made — same
@@ -283,12 +317,11 @@ export default function AdminHelpPage() {
           </li>
           <li>
             <B>Goes back for anything it couldn&rsquo;t fit</B> and asks up to
-            two dances already placed to move over, if they have somewhere else
-            to go
+            three dances already placed to move over, if they have somewhere
+            else to go
           </li>
           <li>
-            Then tries swapping pairs of placements to see if the total turnout
-            improves
+            Then tries swapping pairs of placements to see if the week improves
           </li>
           <li>
             <B>Hands each slot to the dance that gets the most out of it</B> —
@@ -296,16 +329,119 @@ export default function AdminHelpPage() {
             on it has somewhere else just as good, they trade
           </li>
           <li>
-            <B>Does all of that several times from different starting orders</B>{" "}
-            and keeps the best week it found
+            <B>Tears three or four placements back out at random and rebuilds
+            them</B>, over and over, keeping any version that comes out better.
+            This is where most of the improvement comes from — it reaches
+            arrangements no single swap can.
+          </li>
+          <li>
+            <B>Starts the whole thing over from scratch</B>, again and again,
+            for up to ten seconds, and keeps the best week it found
+          </li>
+        </ol>
+
+        <h3 className="mt-2 font-semibold text-ink">
+          What it is actually comparing
+        </h3>
+        <p>
+          When the builder weighs two possible weeks against each other, it
+          asks three questions <B>strictly in this order</B> and stops at the
+          first one that gives a different answer:
+        </p>
+        <ol>
+          <li>
+            <B>How many dances got a time?</B> More wins, always, whatever it
+            cost in attendance.
+          </li>
+          <li>
+            <B>Who can&rsquo;t be there?</B> Fewer missing wins. A missing
+            dancer counts 1, a missing choreographer counts 1.75, and anyone
+            the history weighting has flagged counts up to 2.
+          </li>
+          <li>
+            <B>How many booked minutes get stranded?</B> Fewer wins.
           </li>
         </ol>
         <p>
-          If the historical toggle is on, someone who keeps missing{" "}
-          <em>that particular dance</em> counts slightly more than one head, so
-          ties break toward including the person who keeps getting left out. It
-          only ever breaks ties — it never outvotes people who actually said
-          they&rsquo;re busy.
+          <B>The order is the whole point.</B> Question 3 is only ever asked
+          when two weeks are dead level on question 2. So a tidier set of rooms
+          can never be chosen over a week more of the cast can make — there is
+          no exchange rate between them, at any size.
+        </p>
+        <p>
+          <B>How many rehearsals somebody has in a day isn&rsquo;t one of the
+          questions.</B>{" "}Four in a day is treated as an ordinary week. The
+          builder briefly scored it and it has been taken back out: people are
+          in the dances they&rsquo;re in, and shuffling a week to even out
+          somebody&rsquo;s Tuesday means fitting fewer dances into rooms the
+          club has already paid for.
+        </p>
+        <p>
+          The old version tried to do this with weights instead, keeping the
+          room term deliberately small and hoping it stayed smaller than one
+          person. It didn&rsquo;t, once, and the builder drafted a snug slot
+          over a slot the whole cast was free for. Asking the questions in
+          order removes the possibility rather than making it unlikely.
+        </p>
+        <p>
+          <B>A note on the two sets of numbers.</B>{" "}The table further up is
+          the single-dance list&rsquo;s scale, where a missing dancer costs 2
+          and a missing choreographer costs 3. Build the week runs on its own
+          scale, where a dancer costs 1 and a choreographer 1.75 — very
+          slightly more weight on choreographers than the single-dance list
+          gives them. Both say the same thing about what matters: a
+          choreographer counts for more than a dancer, and two dancers still
+          count for more than one choreographer. You will not see the
+          difference in practice; it is written down here so that the two
+          screens disagreeing by a fraction doesn&rsquo;t look like a bug.
+        </p>
+        <p>
+          If the historical toggle is on, whoever keeps ending up as the one
+          left out counts slightly more than one head, so ties break toward
+          including them. It looks at <B>three things</B>, all worked out from
+          the attendance you tick off — there is nothing to maintain:
+        </p>
+        <ul>
+          <li>
+            <B>How much of this dance they&rsquo;ve missed.</B>{" "}The direct
+            answer, and worth 80% of the ordinary weighting. Ignored below one
+            miss in five.
+          </li>
+          <li>
+            <B>How much they&rsquo;ve missed this term across every dance
+            they&rsquo;re in.</B>{" "}The other 20%. Somebody being squeezed out
+            of four different dances a little at a time looks unremarkable in
+            each one. Two misses in a term count for nothing; it&rsquo;s at
+            full strength by eight.
+          </li>
+          <li>
+            <B>How many of this dance they&rsquo;ve missed in a row, right
+            now.</B>{" "}Not a share — this one is a ladder of its own, and it
+            is the only part of the weighting that can outrank people who said
+            they&rsquo;re busy. <B>Two weeks running makes them worth 2.5
+            people. Three or more makes them worth 3.</B>
+          </li>
+        </ul>
+        <p>
+          <B>Why a run is treated differently.</B>{" "}A percentage can&rsquo;t
+          break a streak. Somebody who has missed three weeks of one dance in a
+          row still only reads as a fraction of a term, so they used to cap out
+          at two heads — which ties two people missing for the first time and
+          loses to two-and-a-bit. The builder would sacrifice them a fourth
+          time, which is the exact pattern this whole feature exists to stop.
+          So a run gets its own rung on the ladder and is allowed to win the
+          argument.
+        </p>
+        <p>
+          <B>It stops at three on purpose.</B>{" "}Three heads is enough to tie
+          three people, deliberately not enough to beat them. Past that the
+          builder starts producing weeks you can&rsquo;t defend — a practice at
+          a time most of the cast can&rsquo;t make, to bring one person back.
+        </p>
+        <p>
+          Everything except a run <B>only breaks ties</B>{" "}and tops out at
+          two heads. Excused and unexcused both count throughout: the question
+          is who keeps ending up unable to come, not whose reason was better.
         </p>
         <p>
           Everything it produces is a <B>draft</B>. Nobody is told anything
@@ -332,9 +468,11 @@ export default function AdminHelpPage() {
           never the one asked to shift.
         </p>
         <p>
-          It will move <B>up to two</B> dances to make room. Three would cost
-          more time than it buys and would leave you unable to explain to a
-          choreographer why their practice moved, so it stops there.
+          It will move <B>up to three</B> dances to make room, in a chain — A
+          moves so B can move so C can fit. Four would cost more time than it
+          buys, so it stops there. If you need to explain to a choreographer
+          why their practice moved, the unplaced list names every dance that
+          was involved.
         </p>
         <p>
           If a dance is still listed as unplaced afterwards, it now genuinely
@@ -363,34 +501,52 @@ export default function AdminHelpPage() {
         </p>
 
         <h3 className="mt-2 font-semibold text-ink">
-          It solves the week several times and keeps the best
+          It solves the week hundreds of times and keeps the best
         </h3>
         <p>
-          Placing most-constrained-first is a good rule, not a perfect one — it
-          can back itself into a corner that a different starting order walks
-          straight past. So the builder solves the whole week{" "}
-          <B>up to 12 times over</B> from different orders and keeps whichever
-          result comes out best: more dances placed wins first, and if two are
-          level on that, more people expected wins.
+          Placing the most desperate dance first is a good rule, not a perfect
+          one — it can back itself into a corner that a different order walks
+          straight past. So the builder solves the whole week over and over,
+          from different randomised starting points, for <B>up to ten
+          seconds</B>, and keeps whichever version answers the three questions
+          above best.
         </p>
         <p>
-          <B>This can only help, never hurt.</B> The first run is always the
-          normal ordering, and another run has to be <em>strictly</em> better
-          to replace it. If none of them beat it, you get the same answer you
-          would have got anyway.
+          The result line tells you how many it got through —{" "}
+          <B>best of 93 arrangements</B>. On a typical week that is somewhere
+          in the dozens to low hundreds. A week that only managed a handful is
+          a week worth looking over more carefully than usual.
         </p>
         <p>
-          <B>Pressing Build twice gives the same schedule.</B> The extra runs
-          vary how the builder searches, not what it decides, so the same week
-          with the same conflicts always comes out the same. If the answer
-          changes, something in the data changed — a new conflict, a published
-          practice, a First pick tick.
+          <B>This can only help, never hurt.</B> The first attempt is always
+          the plain, un-randomised one, and a later attempt has to be{" "}
+          <em>strictly</em> better to replace it. If none of them beat it, you
+          get exactly the answer you would have got without the search.
         </p>
         <p>
-          It stops early once every dance has a time, and it has a time limit,
-          so the button stays quick. On a normal week it&rsquo;s a fraction of
-          a second.
+          <B>Pressing Build twice gives the same schedule.</B> The randomness
+          is seeded from the week itself, so it varies how the builder
+          searches, not what it decides. If the answer changes, something in
+          the data changed — a new conflict, a published practice, a First pick
+          tick.
         </p>
+        <p>
+          It stops early in two cases: when there is nothing left to find —
+          every dance placed, everybody able to come, no room time wasted — and
+          when it has gone a long stretch without improving on the best week it
+          has. So a straightforward week still returns almost instantly.
+        </p>
+        <p>
+          <B>A hard week will use the whole ten seconds, and should.</B>{" "}The
+          &ldquo;long stretch&rdquo; above scales with how many dances there
+          are, because a fifteen-dance week has an enormous number of
+          arrangements and its last improvement can come hundreds of attempts
+          in. This used to be a flat number and it stopped an eighteen-dance
+          test week after under three seconds, at which point running the full
+          budget still found a better answer. If the button feels slow on a
+          busy week, that is it doing the thing you asked for.
+        </p>
+
 
         <h3 className="mt-2 font-semibold text-ink">
           The four reasons a dance can still come back unplaced
@@ -422,10 +578,10 @@ export default function AdminHelpPage() {
             </tr>
             <tr>
               <td>
-                <B>Three or more dances are in the way</B>
+                <B>Four or more dances are in the way</B>
               </td>
               <td>
-                It moves at most two aside. Tick First pick on this dance and
+                It moves at most three aside. Tick First pick on this dance and
                 rebuild so it chooses before the others.
               </td>
             </tr>
@@ -487,24 +643,64 @@ export default function AdminHelpPage() {
         </p>
 
         <h3 className="mt-2 font-semibold text-ink">
+          No dance gets hollowed out
+        </h3>
+        <p>
+          The builder is adding up people across the whole week, and addition
+          doesn&rsquo;t know the difference between a rehearsal and a room with
+          four people standing in it. Twelve down to four is &ldquo;only&rdquo;
+          eight, and eight is a bargain if it buys nine somewhere else.
+        </p>
+        <p>
+          So there&rsquo;s a hard rule on top of the arithmetic:{" "}
+          <B>no dance is moved below half its cast to improve the rest of the
+          week.</B>{" "}A dance can still be moved to a worse time — that&rsquo;s
+          the whole point of trading — it just can&rsquo;t be gutted. Full
+          attendance down to two-thirds is fine. Down to a third is not, at any
+          price.
+        </p>
+        <p>
+          <B>The one exception is getting a dance scheduled at all.</B>{" "}If the
+          only workable time for a dance is one most of its cast can&rsquo;t
+          make, it still takes it, because a thin rehearsal beats no rehearsal.
+          The rule governs trading, not placing.
+        </p>
+
+        <h3 className="mt-2 font-semibold text-ink">
           Packing rooms — no stranded half-hours
         </h3>
         <p>
           The club has a fixed number of booked hours, and a 30-minute hole
-          between two rehearsals in the same room is time nobody can use.
-          So when two slots are otherwise level, the builder prefers the one
-          that starts exactly when the previous practice ends, and avoids one
-          that would leave a gap of <B>45 minutes or less</B>. A longer gap is
-          fine — you can still book into it.
+          between two rehearsals in the same room is time nobody can use. So
+          the builder counts up <B>the wasted minutes themselves</B> — every
+          gap of <B>under 45 minutes</B> it would leave in a booked room — and
+          drives that number down. A gap of 45 minutes or more isn&rsquo;t
+          waste at all, because you can still book into it, so it costs
+          nothing.
         </p>
         <p>
           It counts practices already in the room too, published ones and
           drafts alike, not just what it&rsquo;s placing this run.
         </p>
         <p>
-          This is a tie-breaker and nothing more —{" "}
-          <B>it is worth less than one person&rsquo;s attendance</B>, so a
-          tidier room can never beat a time more of the cast can actually make.
+          Counting minutes rather than just noticing a hole matters more than
+          it sounds: a 5-minute sliver and a 40-minute hole used to score the
+          same, and a slot with two awkward neighbours scored the same as one
+          with a single awkward neighbour. Now they don&rsquo;t.
+        </p>
+        <p>
+          <B>This is asked only after attendance.</B> Two weeks have to put
+          exactly the same people in the room before room time is consulted at
+          all, so a tidier set of bookings can never cost anybody their
+          rehearsal — not for five wasted minutes and not for five hundred.
+          Within that limit, though, the builder is ruthless about it: if a
+          hole isn&rsquo;t costing anyone their attendance, it will go a long
+          way to close it.
+        </p>
+        <p>
+          The result line under Build the week says what you&rsquo;re left
+          with — <B>no room time wasted</B>, or the number of minutes if the
+          only way to keep everybody in the room left a hole behind.
         </p>
 
         <h3 className="mt-2 font-semibold text-ink">Which week it builds</h3>

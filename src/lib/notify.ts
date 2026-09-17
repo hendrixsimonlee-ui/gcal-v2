@@ -38,7 +38,7 @@ export async function notifyPracticeConfirmed(practiceId: string) {
   await notify(
     practice.dance.memberships.map((m) => m.user),
     "SCHEDULE_FINALIZED",
-    `${practice.dance.name} practice confirmed — ${when} at ${where}`,
+    `${practice.dance.name} practice is set for ${when} at ${where}`,
     { href: "/schedule" },
   );
 }
@@ -86,8 +86,8 @@ export async function notifySchedulePublished(practiceIds: string[]) {
       type: "SCHEDULE_FINALIZED",
       message:
         items.length === 1
-          ? `Schedule published — ${items[0].dance.name} on ${dateFormatter.format(items[0].startDateTime)}`
-          : `Schedule published — ${items.length} practices confirmed for you`,
+          ? `Your schedule is up. ${items[0].dance.name} on ${dateFormatter.format(items[0].startDateTime)}`
+          : `Your schedule is up. You have ${items.length} practices this week`,
       href: "/schedule",
     });
   }
@@ -100,7 +100,7 @@ export async function notifySchedulePublished(practiceIds: string[]) {
   // whole schedule anyway.
   await sendPushToUsers(Array.from(perUser.keys()), {
     title: "PADT",
-    body: "The schedule is published — open the app for your practices",
+    body: "Your schedule is up. Open the app to see your practices",
     href: "/schedule",
   });
 }
@@ -138,7 +138,7 @@ export async function announcePracticeChanges(
   for (const practice of practices) {
     const when = dateFormatter.format(practice.startDateTime);
     const where = practice.space?.name ?? "space TBD";
-    const line = `${practice.dance.name} — ${when}, ${where}${ practice.pendingChangeNote ? ` (${practice.pendingChangeNote})` : ""
+    const line = `${practice.dance.name} is now ${when} at ${where}${ practice.pendingChangeNote ? ` (${practice.pendingChangeNote})` : ""
     }`;
 
     for (const membership of practice.dance.memberships) {
@@ -162,7 +162,7 @@ export async function announcePracticeChanges(
   for (const [userId, { lines }] of perUser) {
     const message =
       lines.length === 1
-        ? `Schedule change — ${lines[0]}`
+        ? lines[0]
         : `${lines.length} of your practices changed`;
     notifications.push({
       userId,
@@ -176,8 +176,8 @@ export async function announcePracticeChanges(
   await sendPushToUsers(
     Array.from(perUser.keys()),
     {
-      title: "PADT Calendar",
-      body: "The schedule changed — open the app for the details",
+      title: "PADT",
+      body: "Something on your schedule changed. Open the app to see what",
       href: "/schedule",
     },
   );
@@ -200,7 +200,7 @@ export async function notifyConflictsDue(
   await notify(
     users,
     "CONFLICTS_DUE",
-    `Your conflicts for the week of ${weekLabel} aren't in yet`,
+    `Please add your conflicts for the week of ${weekLabel}`,
     {
       href: "/conflicts",
     },
@@ -271,7 +271,7 @@ async function notify(
   );
 }
 
-/** "Bhangra starts in 15 minutes — Studio A."
+/** "Bhangra starts in 15 minutes. Studio A, 3:00 PM."
  *
  * The one notification that arrives while there is still time to do something
  * about it. Check-in fires as the practice begins, which is useful for
@@ -318,12 +318,13 @@ export async function notifyPracticeStartingSoon(practiceId: string) {
   await notify(
     recipients,
     "REMINDER",
-    `${practice.dance.name} starts in 15 minutes — ${where}, ${at}`,
+    `${practice.dance.name} starts in 15 minutes. ${where}, ${at}`,
     { href: "/schedule" },
   );
 }
 
-/** "Practice is starting — check in." Sent as the practice begins, to the
+/** "Bhangra has started at Studio A. Tap to check in." Sent as the
+ * practice begins, to the
  * people who are actually expected there. */
 export async function notifyCheckInOpen(practiceId: string) {
   const practice = await prisma.practice.findUnique({
@@ -360,7 +361,7 @@ export async function notifyCheckInOpen(practiceId: string) {
   await notify(
     recipients,
     "CHECK_IN_OPEN",
-    `${practice.dance.name} has started at ${practice.space?.name ?? "your space"} — check in`,
+    `${practice.dance.name} has started at ${practice.space?.name ?? "your space"}. Tap to check in`,
     { href: "/schedule" },
   );
 }
@@ -388,7 +389,7 @@ export async function notifyAttendanceDue(practiceId: string) {
   await notify(
     practice.dance.memberships.map((m) => m.user),
     "ATTENDANCE_DUE",
-    `Confirm attendance for ${practice.dance.name} — ${when}`,
+    `Tick off who came to ${practice.dance.name} on ${when}`,
     {
       href: `/attendance/${practiceId}`,
     },
@@ -415,7 +416,7 @@ export async function notifyPracticeChanged(
   const message =
     change === "cancelled"
       ? `${practice.dance.name} on ${when} is cancelled`
-      : `${practice.dance.name} moved — now ${when} at ${where}`;
+      : `${practice.dance.name} moved. It is now ${when} at ${where}`;
 
   await notify(
     practice.dance.memberships.map((m) => m.user),

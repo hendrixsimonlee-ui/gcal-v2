@@ -6,171 +6,267 @@
  * with plenty of options give way to one with almost none, which puts more
  * people in more rooms overall.
  *
- * What it optimises for, in the AD's words: maximise overall attendance,
- * minimise conflicts, and don't let the same person keep being the one who
- * misses out.
+ * What it optimises for, in the AD's words: every dance gets a time, as many
+ * people as possible are in the room, nobody is repeatedly the one who misses
+ * out, and the club's booked hours don't get chopped into holes too short to
+ * use.
  *
- * ## The priority scheme
+ * ## What a week costs
  *
- * 1. **Hard constraints are never traded away.** A room can't hold two
- *    dances at once, nobody can be in two places at once, and a
- *    choreographer who isn't excused has to be there. These filter, they
- *    don't score.
+ * Everything here is a **cost to be driven down**, never a score to be driven
+ * up. Two halves of the same codebase used to count in opposite directions —
+ * `scheduling.ts` charged points for problems, this file awarded points for
+ * attendance — and every comparison had to be read twice to be sure which way
+ * round it was. One direction now: lower is better, everywhere.
  *
- * 2. **Every dance getting a time beats every dancer making every time.**
- *    A dance with nobody scheduled rehearses not at all; a dance scheduled at
- *    a time two people can't make still rehearses. So once the greedy pass is
- *    done, anything left unplaced gets a second go in which up to two
- *    already-placed dances are asked to move aside — accepted even when the
- *    move costs attendance, because a placement is worth more than a
- *    headcount.
+ * A finished week is judged on three things, **strictly in this order**:
  *
- * 3. **Dances are placed most-constrained first.** A dance with three
- *    workable slots is placed before one with thirty. This is what actually
- *    gets everything scheduled — placing the flexible dance first is how you
- *    end up unable to place the rigid one.
+ * 1. **How many dances got a time.** Never traded. A dance with no practice
+ *    doesn't rehearse at all, so a week that places one more dance wins
+ *    however much attendance it cost.
  *
- * 4. **A slot's value is the attendance it buys**, counted as people rather
- *    than as a penalty score, so the numbers mean something to the AD: "11 of
- *    14" is legible in a way that "score 6" is not.
+ * 2. **Who can't be there.** Weighted absence: choreographers count for more,
+ *    and so does anyone who has been the one to miss out before.
  *
- *    And a slot ends up with **whichever dance gets the most out of it**, not
- *    whichever was placed first. Swapping two dances only helps when each can
- *    use the other's time; the common case is a slot where one dance would
- *    have its whole cast sitting under a dance that merely quite likes it and
- *    has somewhere else just as good. That is a move, not a swap, so there is
- *    a pass for it — and it only fires when the pair comes out ahead, so
- *    nothing is shunted somewhere worse to suit a dance that gains less.
+ * 3. **Dead minutes in the booked rooms.** A 30-minute hole between two
+ *    rehearsals is a room the club is paying for that nobody can use.
  *
- * 5. **Someone who has already missed this dance counts for more.** Their
- *    presence is weighted up, so when the solver has to disappoint somebody
- *    it disappoints whoever has been present all term rather than the person
- *    who has already missed three. This is the "not missing too many dances"
- *    requirement, and it is the one piece of the scheme that deliberately
- *    trades a little total attendance for fairness.
+ * Those tiers are *lexicographic, not weighted*. Room waste is only consulted
+ * between two arrangements where exactly the same people make it. It cannot
+ * buy off a single absence at any exchange rate, because there is no exchange
+ * rate.
  *
- * 6. **Practices in a room are packed back to back.** The club has a fixed
- *    number of booked hours, and a 30-minute hole between two rehearsals is
- *    time nobody can use. Slots that sit flush against a neighbour are
- *    preferred slightly; slots that strand a short gap are avoided slightly.
- *    The *swing* between best- and worst-packed stays under one person's
- *    attendance, so this only ever settles ties — see
- *    `MAX_COMPACTNESS_ADJUSTMENT`, where getting that wrong once already made
- *    the builder pick a snug slot over a slot the whole cast was free for.
+ * How many rehearsals a given person ends up with in one day is **not** scored.
+ * It was, briefly. The AD's call is that it doesn't matter: people sign up for
+ * the dances they sign up for, and a week that works around how tired somebody
+ * might be is a week that fits fewer dances into the rooms the club paid for.
  *
- * 7. **Ties break toward the earlier slot**, so a week fills from the front
- *    and the AD isn't left with everything on Sunday night.
+ * That is stronger than the old approach, which capped the tidiness term below
+ * one person's attendance and hoped — and got it wrong once, drafting a snug
+ * slot over a slot the whole cast was free for. It is also *more* aggressive
+ * about gaps than that cap allowed: whenever a hole isn't costing anyone their
+ * attendance, the solver will go to any length to close it, and it now counts
+ * the wasted minutes rather than flatly noting that a hole exists.
  *
- * One run is greedy by that ordering, then rescues unplaced dances by
- * displacement, then does pairwise swaps while they improve the total. The
- * whole week is then solved **several times over from different starting
- * orders**, and the best result kept — because most-constrained-first is a
- * good rule rather than a correct one, and can corner itself in a way another
- * order walks straight past.
+ * ## How it searches
  *
- * Run 0 is always the canonical ordering and a rival must be *strictly*
- * better to replace it, so the multi-run search is monotone: it can match or
- * beat the single-run answer, never do worse. The restarts are seeded from
- * the input, so the same week always solves the same way — the randomness
- * varies the search, not the answer.
+ * **Regret-first insertion.** Rather than a fixed "fewest options first"
+ * ordering, the solver asks each unplaced dance what it would lose by waiting:
+ * the gap between its best remaining slot and its next two. The dance that
+ * stands to lose most goes next. A dance with exactly one workable time has
+ * infinite regret and is placed immediately, which is the old
+ * most-constrained-first rule falling out as a special case rather than being
+ * imposed.
+ *
+ * **Displacement, up to three deep.** A dance with nowhere left to go asks the
+ * dances in its way to move. For a dance that would otherwise go unscheduled
+ * this is accepted on legality alone — coverage beats attendance, and that is
+ * the AD's rule, not an accident. For an already-placed dance merely wanting a
+ * better slot, the chain has to leave the group as a whole better off.
+ *
+ * **Destroy and repair.** A finished week has a few placements torn out at
+ * random and rebuilt by the same regret rule. This shakes loose arrangements
+ * no single swap can reach, and it is where most of the late improvement comes
+ * from.
+ *
+ * **Restarts, within a time budget.** All of the above, repeated from
+ * different randomised starting points until the clock runs out.
+ *
+ * Attempt 0 is always the deterministic, noise-free one, and a rival has to be
+ * *strictly* better to replace it. So the search is monotone: more time can
+ * match or beat the plain answer, never undercut it. The randomness is seeded
+ * from the input, so the same week always solves the same way — it varies the
+ * *search*, not the answer.
  *
  * Still not provably optimal; an exact solve of an assignment problem this
  * shape is overkill for ~15 dances. But it is comfortably better than
- * first-come ordering and fast enough to rerun on every change.
+ * first-come ordering, and it is honest about what it will and won't trade.
  */
 
 import type { CandidateSlot } from "@/lib/scheduling";
 
-/** How much a person's prior absences inflate the value of their attending.
+/** How much a person's prior absences inflate the cost of their missing out.
  * At 1.0 someone who has missed every practice counts double someone who has
  * missed none. Kept at that: high enough to break the pattern of the same
  * person always losing, low enough that it can't outweigh several people. */
 export const DEFAULT_DEFICIT_WEIGHT = 1.0;
 
-/** Absence rates below this are ignored. Missing one practice out of ten is
- * ordinary life, not a pattern worth reshaping the schedule around. */
+/** Where ordinary life stops and a pattern starts.
+ *
+ * Missing one practice in ten is ordinary. Missing a couple across a whole
+ * term is ordinary. Each signal is measured from its own floor and saturates
+ * at its own ceiling, so neither fires on somebody who just had a bad
+ * Tuesday. */
 const DEFICIT_FLOOR = 0.2;
+const TERM_FLOOR = 2;
+const TERM_CEILING = 8;
 
-/** A choreographer in the room is worth more than a dancer in the room.
+/** How the two *rate-like* signals share one unit of deficit between them.
  *
- * Having none at all is refused outright before the solver ever sees the slot
- * (see `requireChoreographer` in scheduling.ts). This is the other half of the
- * AD's rule — *as many as possible* should be there — and it was missing: the
- * per-dance list already charged 3 for a missing choreographer against 2 for
- * a dancer, but the week solver counted every head the same, so it would
- * happily trade a choreographer for a dancer.
- *
- * Kept at 1.5 rather than something larger: two dancers should still outweigh
- * one choreographer, because a rehearsal is for the cast. It tips the choice
- * when the headcount is close, which is where it belongs. */
-const CHOREOGRAPHER_WEIGHT = 1.5;
+ * The per-dance rate carries most of it: it is the direct answer to "is this
+ * person always the one left out of *this* dance". The term total is the
+ * correction for somebody being squeezed out of everything a little at a
+ * time, which looks unremarkable inside any one dance. They add to 1, so
+ * these two together can never make a person worth more than
+ * `1 + deficitWeight` — two heads at the default. */
+const RATE_SHARE = 0.8;
+const TERM_SHARE = 0.2;
 
-/** Cap on improvement passes, so a pathological input can't spin. */
-const MAX_IMPROVEMENT_PASSES = 6;
+/** A run of misses of the *same* dance that is still going, which escalates
+ * past the ceiling those two share.
+ *
+ * A percentage can't break a streak. Somebody who has missed three weeks
+ * running of one dance caps out at two heads, which ties two people missing
+ * for the first time and loses to two-and-a-bit — so the solver sacrifices
+ * them a fourth time, which is exactly the pattern the weighting exists to
+ * stop. A run is therefore its own step, and it is allowed to outrank people
+ * who have genuinely said they're busy.
+ *
+ * Two in a row must beat two first-time absences, so it is worth 2.5 heads.
+ * Three stops at 3.0 — enough to tie three people, deliberately not enough to
+ * beat them. Past that the builder starts producing weeks an AD can't defend:
+ * a practice at a time most of the cast can't make, to bring back one person.
+ *
+ * Stored as deficits rather than weights so they scale with the AD's
+ * `deficitWeight` setting like everything else. Highest step first. */
+export const STREAK_STEPS: { atLeast: number; deficit: number }[] = [
+  { atLeast: 3, deficit: 2.0 },
+  { atLeast: 2, deficit: 1.5 },
+];
+
+function streakDeficit(streak: number): number {
+  for (const step of STREAK_STEPS) {
+    if (streak >= step.atLeast) return step.deficit;
+  }
+  return 0;
+}
+
+/** Where `x` sits between `floor` and `ceiling`, as 0 to 1. */
+function ramp(x: number, floor: number, ceiling: number): number {
+  if (x <= floor) return 0;
+  if (x >= ceiling) return 1;
+  return (x - floor) / (ceiling - floor);
+}
+
+/** A choreographer missing costs more than a dancer missing.
+ *
+ * Having *none* at all is refused outright before the solver ever sees the
+ * slot (see `requireChoreographer` in scheduling.ts). This is the other half
+ * of the AD's rule — as many as possible should be there.
+ *
+ * 1.75 rather than the old 1.5, which is the methodology's "3.5 points for a
+ * partial choreographer gap" translated into this file's units: `scheduling.ts`
+ * charges 2 for a missing person, so 3.5 there is 1.75 dancers here. Two
+ * dancers still outweigh one choreographer (2 > 1.75), which is the property
+ * that matters — a rehearsal is for the cast. */
+const CHOREOGRAPHER_WEIGHT = 1.75;
+
+/** No dance that was already at or above this share of its cast is ever moved
+ * below it by an improvement pass.
+ *
+ * The cost model is a sum, so it happily trades one dance's cast away to buy a
+ * bigger gain elsewhere — twelve people down to four is "only" eight, and
+ * eight is cheap if it saves nine. But a rehearsal with a third of the cast is
+ * not a third of a rehearsal, it is a wasted room, and nothing in a linear sum
+ * can see that. So it is a rule rather than a weight.
+ *
+ * **Coverage overrides it.** Placing a dance that would otherwise go
+ * unscheduled ignores this completely — a thin rehearsal still beats no
+ * rehearsal, which is the AD's first rule and this must not undo it. */
+export const ATTENDANCE_FLOOR = 0.5;
+
+/** The least a missing person can ever cost. `memberWeight` starts here and
+ * only ever scales up. Exported so tests can assert relationships against it
+ * rather than trusting a comment. */
+export const MIN_MEMBER_WEIGHT = 1;
 
 /** A gap this short between two practices in the same room is dead time.
  *
  * Nothing the club runs fits in half an hour once people have walked in and
- * warmed up, so a 30-minute hole between two rehearsals is a booked room
- * being paid for and not used. Rehearsals are 60–90 minutes, so anything
- * under 45 counts as stranded. */
+ * warmed up, so a 30-minute hole between two rehearsals is a booked room being
+ * paid for and not used. Rehearsals are 60–90 minutes, so anything under 45
+ * counts as stranded — and anything at or over it is bookable, so it costs
+ * nothing. */
 export const STRANDED_GAP_MINUTES = 45;
 
-/** Sitting flush against a neighbour is worth a little; stranding a short gap
- * costs a little.
- *
- * What matters is not how big either one is but the **swing between them**:
- * the most a slot can gain minus the most another can lose. A person is worth
- * at least 1 (`memberWeight` only ever scales attendance up), so if the swing
- * reaches 1 the tidier room starts beating the better-attended time.
- *
- * That is exactly what went wrong the first time: clamping each slot to ±1
- * gave a swing of 2, so a flush slot missing somebody could beat a slot where
- * the whole cast was free. The clamp is now ±0.4 — a swing of 0.8, safely
- * under a person — so full attendance always wins and packing only settles
- * ties. `MAX_COMPACTNESS_ADJUSTMENT` must stay below 0.5 for that to hold. */
-const FLUSH_BONUS = 0.2;
-const STRANDED_GAP_PENALTY = 0.3;
-export const MAX_COMPACTNESS_ADJUSTMENT = 0.4;
+/** Floating-point slack. Weighted attendance costs are sums of fractions, so
+ * two arrangements that are "the same" can differ in the sixteenth decimal
+ * place. Without this the tidiness tier would almost never get consulted. */
+const EPSILON = 1e-9;
 
-/** The least a person's attendance can ever be worth. `memberWeight` starts
- * here and only ever scales up, so this is the floor the packing swing has to
- * stay under. Exported so the test can assert the relationship rather than
- * trusting a comment — that is what failed last time. */
-export const MIN_MEMBER_WEIGHT = 1;
+/** How many of a dance's remaining options get costed when working out its
+ * regret. They're kept sorted best-first by this file's own cost, so the
+ * winner is near the front; this only exists to stop a dance with 2,000
+ * candidate slots dominating the clock. */
+const MAX_REGRET_SCAN = 120;
 
 /** How many slots the displacement rescue will look through per dance. Big
  * enough to cover a week at 30-minute increments across every room, small
  * enough that a pathological input can't stall the button. */
 const MAX_DISPLACEMENT_SCAN = 400;
 
-/** Moving two dances at once multiplies the search, so the per-dance scan
+/** Moving several dances at once multiplies the search, so the per-dance scan
  * shrinks when it's doing that. */
 const MAX_CHAIN_SCAN = 80;
 
-/** At most two dances are ever moved to fit a third in. Three would take
- * longer to compute than it's worth and would leave the AD unable to explain
- * to anybody why their practice moved. */
-const MAX_BLOCKERS_TO_MOVE = 2;
+/** At most three dances are ever moved to fit a fourth in.
+ *
+ * Two used to be the limit, on the grounds that the AD couldn't explain a
+ * longer chain to anybody. Three is the methodology's depth and it does
+ * unstick real weeks; the explanation problem is handled by naming the dances
+ * that moved rather than by refusing to move them. */
+const MAX_BLOCKERS_TO_MOVE = 3;
 
-/** Only the first N options of a stuck dance get the expensive two-dance
- * treatment. They're score-ordered, so these are the ones worth having. */
+/** Only the first N options of a stuck dance get the expensive multi-dance
+ * treatment. They're cost-ordered, so these are the ones worth having. */
 const MAX_CHAIN_SLOTS = 40;
 
-/** How many different orderings to try before settling.
- *
- * Placing most-constrained-first is a good rule, not a correct one: it can
- * paint itself into a corner that a different order walks straight past. So
- * the week is solved several times over from different starting orders and
- * the best result kept. Run 0 is always the canonical ordering, and a rival
- * has to be *strictly* better to displace it — so this can only ever match or
- * beat the single-run answer, never do worse than it. */
-const MAX_RUNS = 12;
+/** Cap on deterministic polish passes, so a pathological input can't spin. */
+const MAX_IMPROVEMENT_PASSES = 6;
 
-/** Wall-clock ceiling across all runs. The AD presses a button and waits; a
- * schedule that is 2% better isn't worth five seconds of staring. Run 0
- * always completes regardless. */
-const RUN_TIME_BUDGET_MS = 1500;
+/** How many better-for-this-dance times each placed dance chases per pass. */
+const MAX_REALLOCATION_SCAN = 60;
+
+/** Destroy-and-repair rounds per attempt, and how much of the week each round
+ * tears out. Small neighbourhoods, many of them: ripping out three placements
+ * and rebuilding them is cheap and finds most of what there is to find. */
+const LNS_ROUNDS = 40;
+const LNS_MIN_DESTROY = 2;
+const LNS_MAX_DESTROY = 4;
+
+/** How many randomised restarts to try before settling. The time budget
+ * normally bites first; this is the backstop for a tiny week where each
+ * attempt costs almost nothing. */
+const MAX_RUNS = 4000;
+
+/** Give up once this many attempts in a row have failed to find anything
+ * better, scaled to how much there is to search.
+ *
+ * A three-dance week is solved to death in milliseconds and there is no sense
+ * burning the rest of the budget on it. A fifteen-dance week is the opposite:
+ * it has an enormous number of arrangements and its last improvement can come
+ * hundreds of attempts in.
+ *
+ * This was a flat 80, and that was wrong. On an 18-dance week it stopped the
+ * search after 2.8 seconds of its 10-second budget, at 110 attempts — and
+ * running to the full budget (400-odd attempts) found a measurably better
+ * week. The flat number existed to keep the test suite quick, which is not a
+ * reason to hand the AD a worse schedule. Tiny weeks still stop early; real
+ * ones now use the time they were given. */
+function attemptsWithoutGainAllowed(danceCount: number): number {
+  return Math.max(80, danceCount * 40);
+}
+
+/** Wall-clock ceiling across all attempts.
+ *
+ * Ten seconds, at the AD's request — they'd rather wait and get the best week
+ * the search can find than have it stop early. Attempt 0 always completes
+ * regardless of the clock, so a slow week still gets a real answer.
+ *
+ * NOTE: the page that calls this sets `maxDuration` to match. A serverless
+ * function that gets killed at ten seconds while the solver is still thinking
+ * returns nothing at all, which is much worse than a slightly worse schedule. */
+const TIME_BUDGET_MS = 10_000;
 
 export type CastMember = {
   userId: string;
@@ -195,8 +291,17 @@ export type DanceToPlace = {
 };
 
 export type AttendanceHistory = {
-  /** Key: `${userId}:${danceId}`. */
+  /** How much of this dance this person has missed. Key: `${userId}:${danceId}`. */
   missRateByMemberDance: Map<string, number>;
+  /** How many of this dance's practices they have missed *in a row*, right
+   * now. Key: `${userId}:${danceId}`. A run of three is a different problem
+   * from three scattered across a term — it's the one where somebody quietly
+   * stops being part of the dance. */
+  missStreakByMemberDance: Map<string, number>;
+  /** How many practices they have missed this term across every dance they're
+   * in. Key: `${userId}`. Somebody being squeezed out of four different dances
+   * looks fine in each one and is not fine overall. */
+  termMissesByMember: Map<string, number>;
 };
 
 /** A room already spoken for: a published practice, or a draft for a dance
@@ -216,11 +321,13 @@ export type OptimizerInput = {
   deficitWeight?: number;
   /** Practices already in the rooms this week, for gap-packing only. */
   occupied?: OccupiedInterval[];
-  /** How many different orderings to try. Defaults to MAX_RUNS. Set to 1 to
-   * get the plain single-run answer — which is what the monotonicity test
-   * compares against, and the escape hatch if the search ever needs turning
-   * off in a hurry. */
+  /** How many attempts to make. Defaults to MAX_RUNS, and the time budget
+   * normally stops it first. Set to 1 to get the plain deterministic answer —
+   * which is what the monotonicity test compares against, and the escape
+   * hatch if the search ever needs turning off in a hurry. */
   maxRuns?: number;
+  /** Override the wall-clock ceiling. Tests use it to keep the suite quick. */
+  timeBudgetMs?: number;
 };
 
 export type Placement = {
@@ -256,8 +363,7 @@ export type UnplacedCause =
   | "cast-double-booked"
   /** The one dance in the way is marked First pick, so it wasn't moved. */
   | "blocked-by-first-pick"
-  /** Two or more dances are in the way everywhere, and only one is ever
-   * moved. */
+  /** More dances are in the way everywhere than the rescue will ever move. */
   | "too-tangled";
 
 export type Unplaced = {
@@ -273,27 +379,47 @@ export type Unplaced = {
 export type OptimizerResult = {
   placements: Placement[];
   unplaced: Unplaced[];
-  /** Weighted total the solver maximised. Only meaningful compared against
-   * another run of the same week. */
-  totalValue: number;
+  /** Weighted absence across the week the solver settled on. Lower is better.
+   * Only meaningful compared against another solve of the same week. */
+  totalCost: number;
+  /** Minutes of booked room time left in holes too short to use. */
+  deadMinutes: number;
   /** Plain headcount across every placement — what the AD actually cares
    * about. */
   totalExpectedAttendance: number;
+  /** How many attempts the search got through inside its budget. Surfaced so
+   * a week that only managed one attempt can say so rather than looking the
+   * same as one that managed three hundred. */
+  attempts: number;
 };
 
-/** How much this person attending is worth. Someone who keeps missing this
- * dance is worth more, so the solver stops picking the same loser. */
+/** How much this person missing costs. Someone who keeps missing this dance
+ * costs more to leave out, so the solver stops picking the same loser. */
 function memberWeight(
   userId: string,
   danceId: string,
   history: AttendanceHistory | undefined,
   deficitWeight: number,
 ): number {
-  const rate = history?.missRateByMemberDance.get(`${userId}:${danceId}`) ?? 0;
-  if (rate <= DEFICIT_FLOOR) return 1;
-  // Rescale so the floor is the zero point rather than stepping at it.
-  const excess = (rate - DEFICIT_FLOOR) / (1 - DEFICIT_FLOOR);
-  return 1 + deficitWeight * excess;
+  if (!history) return MIN_MEMBER_WEIGHT;
+
+  const key = `${userId}:${danceId}`;
+  const rate = history.missRateByMemberDance.get(key) ?? 0;
+  const streak = history.missStreakByMemberDance.get(key) ?? 0;
+  const term = history.termMissesByMember.get(userId) ?? 0;
+
+  // The blend and the streak step are two readings of the same thing, so the
+  // worse one wins rather than the two stacking. Stacking would let a bad
+  // term-long rate push a three-week run past the 3.0 ceiling that exists to
+  // keep the answer defensible.
+  const blended =
+    RATE_SHARE * ramp(rate, DEFICIT_FLOOR, 1) +
+    TERM_SHARE * ramp(term, TERM_FLOOR, TERM_CEILING);
+
+  const deficit = Math.max(blended, streakDeficit(streak));
+
+  if (deficit <= 0) return MIN_MEMBER_WEIGHT;
+  return MIN_MEMBER_WEIGHT + deficitWeight * deficit;
 }
 
 /** Who we actually expect in the room at this slot.
@@ -303,14 +429,17 @@ function memberWeight(
  * number only corrected itself once the drafts landed in the week checklist.
  *
  * - `conflictedCastMembers` — logged conflicts and clashes with another
- *   dance. Obviously absent.
+ *   dance. Obviously absent. An all-day conflict (someone home for the week)
+ *   arrives through here like any other, which is the whole point of having
+ *   dropped the separate out-of-town feature.
  * - `excludedCastMembers` — taken out of this dance's week by the AD. Just as
- *   absent, but held in a separate list on purpose: they miss every slot of the week
- *   equally, so charging them would make every option look worse without
- *   changing which one wins. That reasoning is about *ranking*. Reading it as
- *   "not absent" counted them into the headcount the AD was shown.
+ *   absent, but held in a separate list on purpose: they miss every slot of
+ *   the week equally, so charging them would make every option look worse
+ *   without changing which one wins. That reasoning is about *ranking*.
+ *   Reading it as "not absent" counted them into the headcount the AD was
+ *   shown.
  *
- * Counting them here is safe for ranking too: it lowers every slot for that
+ * Counting them here is safe for ranking too: it raises every slot for that
  * dance by the same amount, so the order within a dance is untouched.
  *
  * The one flag deliberately ignored is `historically-absent`. That is a guess
@@ -333,137 +462,325 @@ function attendeesFor(dance: DanceToPlace, slot: CandidateSlot): Set<string> {
   return present;
 }
 
-function slotValue(
+/** What this slot costs this dance in people: everyone who can't be there,
+ * weighted up for choreographers and for anyone who keeps missing out. */
+function absenceCost(
   dance: DanceToPlace,
   slot: CandidateSlot,
   history: AttendanceHistory | undefined,
   deficitWeight: number,
 ): number {
-  let value = 0;
   const attendees = attendeesFor(dance, slot);
+  let cost = 0;
   for (const member of dance.cast) {
-    if (!attendees.has(member.userId)) continue;
+    if (attendees.has(member.userId)) continue;
     const weight = memberWeight(
       member.userId,
       dance.danceId,
       history,
       deficitWeight,
     );
-    value +=
+    cost +=
       member.role === "CHOREOGRAPHER" ? weight * CHOREOGRAPHER_WEIGHT : weight;
   }
-  return value;
+  return cost;
 }
 
-function overlaps(a: CandidateSlot, b: CandidateSlot): boolean {
-  return a.startDateTime < b.endDateTime && b.startDateTime < a.endDateTime;
+/* ------------------------------------------------------------------ *
+ * Prepared dances: everything that doesn't change between attempts,
+ * worked out once.
+ * ------------------------------------------------------------------ */
+
+type Span = { start: number; end: number };
+
+type Prepared = {
+  dance: DanceToPlace;
+  castIds: Set<string>;
+  /** Per candidate index, aligned with `dance.candidates`. */
+  cost: number[];
+  attendees: string[][];
+  span: Span[];
+  /** Candidate indices, best cost first, ties to the earlier slot. Every scan
+   * in the solver walks this rather than the raw list, so "the first few
+   * options" always means "the best few". */
+  order: number[];
+  /** `${spaceId}|${start}|${end}` -> candidate index. The swap pass asks "can
+   * this dance use that dance's slot?" for every pair on every pass, which is
+   * a linear scan through a couple of thousand candidates if you let it. */
+  indexByKey: Map<string, number>;
+};
+
+function slotKey(slot: CandidateSlot): string {
+  return `${slot.spaceId}|${slot.startDateTime.getTime()}|${slot.endDateTime.getTime()}`;
 }
 
-/** How well this slot packs against what else is in its room.
- *
- * The club only has so many booked hours. Two rehearsals with 30 minutes
- * between them waste that gap outright — it is too short to schedule anything
- * into and too long to ignore. So a slot that starts exactly when a
- * neighbour ends (or ends exactly when one starts) is nudged up, and one that
- * leaves a stranded sliver is nudged down.
- *
- * The result is clamped to ±1 — one person's attendance — because this is a
- * tidiness preference, not a reason to rehearse without people. */
-function compactnessAdjustment(
-  slot: CandidateSlot,
-  neighbours: OccupiedInterval[],
-): number {
-  let adjustment = 0;
-  for (const other of neighbours) {
-    if (other.spaceId !== slot.spaceId) continue;
+function prepare(
+  dances: DanceToPlace[],
+  history: AttendanceHistory | undefined,
+  deficitWeight: number,
+): Prepared[] {
+  return dances.map((dance) => {
+    const cost: number[] = [];
+    const attendees: string[][] = [];
+    const span: Span[] = [];
 
-    // One of these is the gap; the other is negative (that neighbour is on
-    // the far side) and skipped.
-    const gapBefore =
-      (slot.startDateTime.getTime() - other.endDateTime.getTime()) / 60000;
-    const gapAfter =
-      (other.startDateTime.getTime() - slot.endDateTime.getTime()) / 60000;
-
-    for (const gap of [gapBefore, gapAfter]) {
-      if (gap < 0) continue;
-      if (gap === 0) adjustment += FLUSH_BONUS;
-      else if (gap <= STRANDED_GAP_MINUTES) adjustment -= STRANDED_GAP_PENALTY;
+    for (const slot of dance.candidates) {
+      cost.push(absenceCost(dance, slot, history, deficitWeight));
+      attendees.push([...attendeesFor(dance, slot)]);
+      span.push({
+        start: slot.startDateTime.getTime(),
+        end: slot.endDateTime.getTime(),
+      });
     }
-  }
-  return Math.max(
-    -MAX_COMPACTNESS_ADJUSTMENT,
-    Math.min(MAX_COMPACTNESS_ADJUSTMENT, adjustment),
-  );
-}
 
-function asInterval(slot: CandidateSlot): OccupiedInterval {
-  return {
-    spaceId: slot.spaceId,
-    startDateTime: slot.startDateTime,
-    endDateTime: slot.endDateTime,
-  };
-}
+    const order = dance.candidates.map((_, i) => i).sort((a, b) => {
+      if (Math.abs(cost[a] - cost[b]) > EPSILON) return cost[a] - cost[b];
+      return span[a].start - span[b].start;
+    });
 
-/** Can these two dances both happen as placed? Two hard rules: one room can
- * only hold one dance at a time, and nobody can be in two rooms at once. */
-function compatible(
-  a: { dance: DanceToPlace; slot: CandidateSlot },
-  b: { dance: DanceToPlace; slot: CandidateSlot },
-): boolean {
-  if (!overlaps(a.slot, b.slot)) return true;
-  if (a.slot.spaceId === b.slot.spaceId) return false;
-  return !b.dance.cast.some((m) => castIdsOf(a.dance).has(m.userId));
-}
+    const indexByKey = new Map<string, number>();
+    dance.candidates.forEach((slot, i) => {
+      if (!indexByKey.has(slotKey(slot))) indexByKey.set(slotKey(slot), i);
+    });
 
-/** Cast lookups happen in the innermost loop of the displacement pass, which
- * can run into the millions of comparisons on a full week. Building the set
- * once per dance rather than once per comparison is the difference between
- * the button feeling instant and feeling stuck. */
-const castIdCache = new WeakMap<DanceToPlace, Set<string>>();
-
-function castIdsOf(dance: DanceToPlace): Set<string> {
-  let ids = castIdCache.get(dance);
-  if (!ids) {
-    ids = new Set(dance.cast.map((m) => m.userId));
-    castIdCache.set(dance, ids);
-  }
-  return ids;
-}
-
-type Entry = { dance: DanceToPlace; slot: CandidateSlot };
-
-/** Priority first, then most constrained.
- *
- * Most-constrained-first is the right default: the dance with the fewest
- * workable times is the one that can most easily end up with nothing, so it
- * should pick before a dance that has five options. But it optimises for
- * "everything gets placed", and sometimes the AD knows something the data
- * doesn't — a piece going into a showcase, a week where one dance has to have
- * everybody there. A dance marked priority picks first regardless of how many
- * options it has; the rest keep the usual ordering among themselves. Cast
- * size breaks ties within each group, since a big dance is harder to fit
- * later. */
-function canonicalOrder(dances: DanceToPlace[]): DanceToPlace[] {
-  return [...dances].sort((a, b) => {
-    if (Boolean(a.priority) !== Boolean(b.priority)) {
-      return a.priority ? -1 : 1;
-    }
-    if (a.candidates.length !== b.candidates.length) {
-      return a.candidates.length - b.candidates.length;
-    }
-    return b.cast.length - a.cast.length;
+    return {
+      dance,
+      castIds: new Set(dance.cast.map((m) => m.userId)),
+      cost,
+      attendees,
+      span,
+      order,
+      indexByKey,
+    };
   });
 }
 
-/** Whatever else an ordering does, dances the AD flagged still go first. That
- * is the one instruction they gave the solver by hand, and no amount of
- * searching for a better arrangement is allowed to quietly drop it. */
-function priorityFirst(dances: DanceToPlace[]): DanceToPlace[] {
-  return [
-    ...dances.filter((d) => d.priority),
-    ...dances.filter((d) => !d.priority),
-  ];
+/* ------------------------------------------------------------------ *
+ * The state of a partly- or fully-built week.
+ * ------------------------------------------------------------------ */
+
+type Placed = { prep: Prepared; slotIndex: number };
+
+type State = {
+  placed: Placed[];
+  /** Weighted absence across every placement. */
+  absence: number;
+  /** Intervals per room, including the ones the solver can't touch. */
+  bySpace: Map<string, Span[]>;
+  /** Dead minutes per room, kept in step with `bySpace`. */
+  deadBySpace: Map<string, number>;
+  dead: number;
+};
+
+function deadMinutesIn(spans: Span[]): number {
+  if (spans.length < 2) return 0;
+  const sorted = [...spans].sort((a, b) => a.start - b.start);
+  let dead = 0;
+  for (let i = 1; i < sorted.length; i++) {
+    const gap = (sorted[i].start - sorted[i - 1].end) / 60000;
+    // A gap at or over the threshold is bookable, so it isn't wasted. A
+    // negative gap can't happen between two legal placements, but occupied
+    // rows come from the database and needn't be tidy.
+    if (gap > 0 && gap < STRANDED_GAP_MINUTES) dead += gap;
+  }
+  return dead;
 }
+
+function newState(occupied: OccupiedInterval[]): State {
+  const bySpace = new Map<string, Span[]>();
+  for (const o of occupied) {
+    const list = bySpace.get(o.spaceId) ?? [];
+    list.push({
+      start: o.startDateTime.getTime(),
+      end: o.endDateTime.getTime(),
+    });
+    bySpace.set(o.spaceId, list);
+  }
+
+  const deadBySpace = new Map<string, number>();
+  let dead = 0;
+  for (const [spaceId, spans] of bySpace) {
+    const d = deadMinutesIn(spans);
+    deadBySpace.set(spaceId, d);
+    dead += d;
+  }
+
+  return {
+    placed: [],
+    absence: 0,
+    bySpace,
+    deadBySpace,
+    dead,
+  };
+}
+
+function spaceIdOf(p: Prepared, slotIndex: number): string {
+  return p.dance.candidates[slotIndex].spaceId;
+}
+
+function add(state: State, prep: Prepared, slotIndex: number): void {
+  state.placed.push({ prep, slotIndex });
+  state.absence += prep.cost[slotIndex];
+
+  const spaceId = spaceIdOf(prep, slotIndex);
+  const spans = state.bySpace.get(spaceId) ?? [];
+  spans.push(prep.span[slotIndex]);
+  state.bySpace.set(spaceId, spans);
+  const d = deadMinutesIn(spans);
+  state.dead += d - (state.deadBySpace.get(spaceId) ?? 0);
+  state.deadBySpace.set(spaceId, d);
+}
+
+function remove(state: State, index: number): Placed {
+  const [entry] = state.placed.splice(index, 1);
+  const { prep, slotIndex } = entry;
+  state.absence -= prep.cost[slotIndex];
+
+  const spaceId = spaceIdOf(prep, slotIndex);
+  const spans = state.bySpace.get(spaceId)!;
+  const at = spans.indexOf(prep.span[slotIndex]);
+  spans.splice(at, 1);
+  const d = deadMinutesIn(spans);
+  state.dead += d - (state.deadBySpace.get(spaceId) ?? 0);
+  state.deadBySpace.set(spaceId, d);
+
+  return entry;
+}
+
+/** What adding this placement would cost, without actually adding it.
+ *
+ * Built to agree with `add` exactly — same absence figure, same
+ * before-and-after dead-minute difference — so the fast path used while
+ * inserting and the full recount used while comparing whole weeks can never
+ * drift apart. */
+function deltaOf(
+  state: State,
+  prep: Prepared,
+  slotIndex: number,
+): { absence: number; dead: number } {
+  const absence = prep.cost[slotIndex];
+
+  const spaceId = spaceIdOf(prep, slotIndex);
+  const spans = state.bySpace.get(spaceId) ?? [];
+  const dead =
+    deadMinutesIn([...spans, prep.span[slotIndex]]) -
+    (state.deadBySpace.get(spaceId) ?? 0);
+
+  return { absence, dead };
+}
+
+/* ------------------------------------------------------------------ *
+ * Comparing weeks. Placements first, then people, then tidiness — and
+ * the tiers never trade against each other.
+ * ------------------------------------------------------------------ */
+
+type Score = { placedCount: number; absence: number; dead: number };
+
+function scoreOf(state: State): Score {
+  return {
+    placedCount: state.placed.length,
+    absence: state.absence,
+    dead: state.dead,
+  };
+}
+
+/** Is `a` strictly better than `b`?
+ *
+ * Each tier is only reached when the one above it is a dead heat, so a
+ * tidier week can never be chosen over a better-attended one and a gentler
+ * week can never be chosen over either. */
+function beats(a: Score, b: Score): boolean {
+  if (a.placedCount !== b.placedCount) return a.placedCount > b.placedCount;
+  if (Math.abs(a.absence - b.absence) > EPSILON) return a.absence < b.absence;
+  return a.dead < b.dead - EPSILON;
+}
+
+/* ------------------------------------------------------------------ *
+ * Hard constraints.
+ * ------------------------------------------------------------------ */
+
+function spansOverlap(a: Span, b: Span): boolean {
+  return a.start < b.end && b.start < a.end;
+}
+
+/** Can these two placements both happen? Two hard rules: one room only holds
+ * one dance at a time, and nobody can be in two rooms at once. */
+function compatible(
+  a: { prep: Prepared; slotIndex: number },
+  b: { prep: Prepared; slotIndex: number },
+): boolean {
+  if (!spansOverlap(a.prep.span[a.slotIndex], b.prep.span[b.slotIndex])) {
+    return true;
+  }
+  if (spaceIdOf(a.prep, a.slotIndex) === spaceIdOf(b.prep, b.slotIndex)) {
+    return false;
+  }
+  for (const id of b.prep.castIds) {
+    if (a.prep.castIds.has(id)) return false;
+  }
+  return true;
+}
+
+function fits(state: State, prep: Prepared, slotIndex: number): boolean {
+  const proposal = { prep, slotIndex };
+  for (const p of state.placed) {
+    if (p.prep === prep) continue;
+    if (!compatible(p, proposal)) return false;
+  }
+  return true;
+}
+
+function attendeeCount(p: Placed): number {
+  return p.prep.attendees[p.slotIndex].length;
+}
+
+function meetsFloor(p: Placed): boolean {
+  const cast = p.prep.dance.cast.length;
+  // A dance with nobody in it can't be hollowed out, and dividing by zero here
+  // would give NaN — which compares false against everything and would pin
+  // such a dance in place for the rest of the solve.
+  if (cast === 0) return true;
+  // Counts, not shares: a 2-person dance with 1 present is exactly the floor,
+  // and floating-point division is the obvious way to get that wrong.
+  return attendeeCount(p) >= cast * ATTENDANCE_FLOOR - EPSILON;
+}
+
+/** Would this rearrangement gut a dance?
+ *
+ * For every dance in both arrangements:
+ *
+ * - one that met the floor has to still meet it;
+ * - one that was already below it must not get worse.
+ *
+ * A dance that appears only in `after` is exempt — it has just been placed,
+ * and coverage beats attendance.
+ *
+ * Note what the first rule deliberately does *not* say. It is not "attendance
+ * must never drop". Applied to a dance comfortably above the floor that would
+ * be strict Pareto, which is the exact trap this whole scheme exists to avoid:
+ * a dance sitting at full attendance would refuse to move even when the dance
+ * it is blocking would gain four people. A healthy dance may fall from 90% to
+ * 55%. It may not fall to 40%. Only a dance already under the floor is held to
+ * "no worse", so 40% -> 45% is allowed and 40% -> 10% is not. */
+function respectsFloor(before: Placed[], after: Placed[]): boolean {
+  const was = new Map<string, Placed>();
+  for (const p of before) was.set(p.prep.dance.danceId, p);
+
+  for (const p of after) {
+    const previous = was.get(p.prep.dance.danceId);
+    if (!previous) continue;
+    if (meetsFloor(previous)) {
+      if (!meetsFloor(p)) return false;
+    } else if (attendeeCount(p) < attendeeCount(previous)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/* ------------------------------------------------------------------ *
+ * Regret-first insertion.
+ * ------------------------------------------------------------------ */
 
 /** Deterministic PRNG (mulberry32).
  *
@@ -493,380 +810,191 @@ function seedFrom(dances: DanceToPlace[]): number {
   // Fold in when the week starts, so the same roster in a different week
   // searches differently.
   const earliest = dances
-    .flatMap((d) => (d.candidates[0] ? [d.candidates[0].startDateTime.getTime()] : []))
+    .flatMap((d) =>
+      d.candidates[0] ? [d.candidates[0].startDateTime.getTime()] : [],
+    )
     .sort((a, b) => a - b)[0];
-  if (earliest !== undefined) hash = Math.imul(hash ^ (earliest & 0xffffffff), 16777619);
+  if (earliest !== undefined) {
+    hash = Math.imul(hash ^ (earliest & 0xffffffff), 16777619);
+  }
   return hash >>> 0;
 }
 
-function shuffled(dances: DanceToPlace[], rng: () => number): DanceToPlace[] {
-  const out = [...dances];
-  for (let i = out.length - 1; i > 0; i--) {
-    const j = Math.floor(rng() * (i + 1));
-    [out[i], out[j]] = [out[j], out[i]];
-  }
-  return priorityFirst(out);
+type Option = { slotIndex: number; absence: number; dead: number };
+
+/** The same tier order as `beats`, applied to a single candidate slot. */
+function optionBeats(a: Option, b: Option): boolean {
+  if (Math.abs(a.absence - b.absence) > EPSILON) return a.absence < b.absence;
+  return a.dead < b.dead - EPSILON;
 }
 
-/** How good a finished week is, for comparing one run against another.
+/** A single number standing in for an option's cost, used only to size the gap
+ * between a dance's first choice and its next ones — regret has to be
+ * subtractable, and tiers are not.
  *
- * Dances placed comes first and is never traded — that is the AD's rule, and
- * a run that schedules one more dance wins however much attendance it cost.
- * Attendance (with the fairness weighting and the room-packing term already
- * in it) only separates runs that placed the same number. */
-function scoreArrangement(
-  placed: Entry[],
-  occupied: OccupiedInterval[],
-  history: AttendanceHistory | undefined,
-  deficitWeight: number,
-): { placedCount: number; value: number } {
-  let value = 0;
-  for (let i = 0; i < placed.length; i++) {
-    const neighbours = [
-      ...occupied,
-      ...placed.filter((_, k) => k !== i).map((p) => asInterval(p.slot)),
-    ];
-    value +=
-      slotValue(placed[i].dance, placed[i].slot, history, deficitWeight) +
-      compactnessAdjustment(placed[i].slot, neighbours);
-  }
-  return { placedCount: placed.length, value };
+ * The scaling keeps the tiers in their proper order at any magnitude this app
+ * will ever see: a whole week's dead minutes run to a few hundred, so they
+ * cannot climb into a single absence's range. */
+function regretKey(o: Option): number {
+  return o.absence + o.dead * 1e-6;
 }
 
-/** One complete solve from one starting order. Pure: no shared state, so it
- * can be run as many times as the budget allows. */
-function attemptWeek(
-  ordered: DanceToPlace[],
-  occupied: OccupiedInterval[],
-  history: AttendanceHistory | undefined,
-  deficitWeight: number,
-): { placed: Entry[]; unplaced: Unplaced[] } {
-  const placed: Entry[] = [];
-  const unplaced: Unplaced[] = [];
+/** The best few slots still open to this dance, costed against the week as it
+ * currently stands. Returns them best-first. */
+function bestOptions(
+  state: State,
+  prep: Prepared,
+  feasible: number[],
+  want: number,
+): Option[] {
+  const found: Option[] = [];
+  let scanned = 0;
 
-  for (const dance of ordered) {
-    if (dance.candidates.length === 0) {
-      unplaced.push({
-        danceId: dance.danceId,
-        danceName: dance.danceName,
-        cause: dance.blockedByChoreographerGap ? "no-choreographer" : "no-slots",
-        blockingDanceNames: [],
-        reason: dance.blockedByChoreographerGap
-          ? "There are open times this week, but no choreographer for this dance can make any of them. A practice with nobody to run it is never drafted, so this one needs a choreographer to free something up — or excuse them for the week if it should go ahead without them."
-          : "Nowhere to put it. No room is booked for long enough this week, or every open hour is already taken by a practice.",
-      });
-      continue;
+  for (const slotIndex of feasible) {
+    if (scanned >= MAX_REGRET_SCAN) break;
+    if (!fits(state, prep, slotIndex)) continue;
+    scanned++;
+
+    const option: Option = { slotIndex, ...deltaOf(state, prep, slotIndex) };
+
+    // Insertion sort into a list of at most `want`. Ties go to the earlier
+    // slot, so a week fills from the front rather than piling onto Sunday —
+    // `prep.order` is already sorted that way, so first-seen wins a tie.
+    let at = found.length;
+    while (at > 0 && optionBeats(option, found[at - 1])) at--;
+    if (at < want) {
+      found.splice(at, 0, option);
+      if (found.length > want) found.pop();
     }
+  }
 
-    let best: CandidateSlot | null = null;
-    let bestValue = -Infinity;
+  return found;
+}
 
-    // What's already in the rooms, for the gap-packing term.
-    const neighbours = [...occupied, ...placed.map((p) => asInterval(p.slot))];
+/** Places every dance in `pending`, hardest-to-satisfy first.
+ *
+ * "Hardest" is measured as regret: how much worse this dance's second and
+ * third choices are than its first. A dance whose only workable time is about
+ * to be taken has everything to lose by waiting; a dance with five equally
+ * good times has nothing. Placing in that order is what actually gets a week
+ * fully scheduled — and a dance down to a single option comes out with
+ * infinite regret, so the old "fewest options first" rule falls out of this
+ * one rather than having to be bolted on beside it.
+ *
+ * Dances the AD flagged still go first, always. That is the one instruction
+ * they gave the solver by hand and no amount of searching is allowed to
+ * quietly drop it.
+ *
+ * `noise` perturbs the choice on restarts. At 0 this is fully deterministic,
+ * which is what attempt 0 uses.
+ *
+ * Anything with no legal slot left is returned rather than placed; the
+ * displacement rescue gets a go at those next. */
+function insertByRegret(
+  state: State,
+  pending: Prepared[],
+  noise: number,
+  rng: () => number,
+): Prepared[] {
+  const feasible = new Map<Prepared, number[]>();
+  for (const prep of pending) {
+    feasible.set(
+      prep,
+      prep.order.filter((i) => fits(state, prep, i)),
+    );
+  }
 
-    for (const slot of dance.candidates) {
-      const proposal = { dance, slot };
-      if (placed.some((p) => !compatible(p, proposal))) continue;
+  const left = new Set(pending);
+  const stuck: Prepared[] = [];
 
-      const value =
-        slotValue(dance, slot, history, deficitWeight) +
-        compactnessAdjustment(slot, neighbours);
-      // Ties go to the earlier slot, so the week fills from the front.
-      if (
-        value > bestValue ||
-        (value === bestValue &&
-          best !== null &&
-          slot.startDateTime < best.startDateTime)
-      ) {
-        best = slot;
-        bestValue = value;
+  while (left.size > 0) {
+    const flagged = [...left].filter((p) => p.dance.priority);
+    const pool = flagged.length > 0 ? flagged : [...left];
+
+    let choice: { prep: Prepared; option: Option } | null = null;
+    let choiceRank = -Infinity;
+
+    for (const prep of pool) {
+      const options = bestOptions(state, prep, feasible.get(prep)!, 3);
+
+      if (options.length === 0) {
+        // Placements only ever add constraints, so a dance with nothing legal
+        // now will still have nothing legal later in this pass.
+        left.delete(prep);
+        stuck.push(prep);
+        continue;
+      }
+
+      // Regret over the next two choices, not just the next one: a dance
+      // whose second and third options are both poor is in more trouble than
+      // one that merely has a close runner-up.
+      let regret = 0;
+      if (options.length === 1) {
+        regret = Infinity;
+      } else {
+        const first = regretKey(options[0]);
+        for (let k = 1; k < options.length; k++) {
+          regret += regretKey(options[k]) - first;
+        }
+      }
+
+      // Break ties toward the dance that is expensive wherever it goes, then
+      // let the restarts jiggle it.
+      let rank = regret + regretKey(options[0]) * 1e-3;
+      if (noise > 0 && Number.isFinite(rank)) rank += rng() * noise;
+
+      if (rank > choiceRank) {
+        choiceRank = rank;
+        choice = { prep, option: options[0] };
       }
     }
 
-    if (best) placed.push({ dance, slot: best });
-    else
-      unplaced.push({
-        danceId: dance.danceId,
-        danceName: dance.danceName,
-        // Filled in properly once the rescue pass has had its go — until
-        // then there is no telling which of the several quite different
-        // things went wrong.
-        cause: "too-tangled",
-        blockingDanceNames: [],
-        reason: "",
-      });
-  }
+    if (!choice) continue;
 
-  // Coverage beats attendance: rescue what greedy left behind, even at a cost.
-  const rescued = rescueUnplacedByDisplacement(placed, unplaced, ordered);
-
-  // Then tidy up: a slot should end up with whichever dance gets the most out
-  // of it, not whichever dance happened to be placed first.
-  for (let pass = 0; pass < MAX_IMPROVEMENT_PASSES; pass++) {
-    const swapped = improveBySwapping(placed, occupied, history, deficitWeight);
-    const moved = improveByReallocation(placed, history, deficitWeight);
-    if (!swapped && !moved) break;
-  }
-
-  return {
-    placed,
-    unplaced: unplaced.filter((u) => !rescued.has(u.danceId)),
-  };
-}
-
-export function solveWeek(input: OptimizerInput): OptimizerResult {
-  const deficitWeight = input.deficitWeight ?? DEFAULT_DEFICIT_WEIGHT;
-  const { history } = input;
-  const occupied = input.occupied ?? [];
-  const byDanceId = new Map(input.dances.map((d) => [d.danceId, d]));
-
-  // Solve the week several times from different starting orders and keep the
-  // best. Most-constrained-first is a good rule, not a correct one — it can
-  // corner itself in a way a different order walks straight past.
-  //
-  // Run 0 is the canonical ordering, so the single-run answer is the floor.
-  // Every later run has to be *strictly* better to replace it, which makes
-  // this monotone: it can match or beat what came before, never undercut it.
-  const rng = makeRng(seedFrom(input.dances));
-  const orderings: DanceToPlace[][] = [
-    canonicalOrder(input.dances),
-    // Two cheap deterministic alternatives before falling back on shuffles:
-    // biggest cast first (hardest to fit late), and fewest options but
-    // smallest cast first, which unsticks the opposite kind of jam.
-    priorityFirst([...input.dances].sort((a, b) => b.cast.length - a.cast.length)),
-    priorityFirst(
-      [...input.dances].sort(
-        (a, b) => a.candidates.length - b.candidates.length || a.cast.length - b.cast.length,
-      ),
-    ),
-  ];
-
-  const startedAt = Date.now();
-  let best = attemptWeek(orderings[0], occupied, history, deficitWeight);
-  let bestScore = scoreArrangement(best.placed, occupied, history, deficitWeight);
-
-  const maxRuns = Math.max(1, input.maxRuns ?? MAX_RUNS);
-  for (let run = 1; run < maxRuns; run++) {
-    if (Date.now() - startedAt > RUN_TIME_BUDGET_MS) break;
-    // Nothing left to find once every dance has a time.
-    if (best.unplaced.length === 0 && run > orderings.length) break;
-
-    const order = orderings[run] ?? shuffled(input.dances, rng);
-    const attempt = attemptWeek(order, occupied, history, deficitWeight);
-    const score = scoreArrangement(attempt.placed, occupied, history, deficitWeight);
-
-    const better =
-      score.placedCount > bestScore.placedCount ||
-      (score.placedCount === bestScore.placedCount && score.value > bestScore.value);
-    if (better) {
-      best = attempt;
-      bestScore = score;
-    }
-  }
-
-  const { placed } = best;
-  // Explain the leftovers against the arrangement actually being shown, not
-  // against some run that was thrown away.
-  const stillUnplaced = best.unplaced.map((u) =>
-    diagnose(u, byDanceId.get(u.danceId)!, placed),
-  );
-
-  const placements: Placement[] = placed.map(({ dance, slot }) => {
-    const attendees = attendeesFor(dance, slot);
-    return {
-      danceId: dance.danceId,
-      danceName: dance.danceName,
-      slot,
-      expectedCount: attendees.size,
-      castSize: dance.cast.length,
-      missingUserIds: dance.cast
-        .map((m) => m.userId)
-        .filter((id) => !attendees.has(id)),
+    const taken: Placed = {
+      prep: choice.prep,
+      slotIndex: choice.option.slotIndex,
     };
-  });
+    add(state, taken.prep, taken.slotIndex);
+    left.delete(taken.prep);
 
-  // Report in the order the week runs, not the order they were solved.
-  placements.sort(
-    (a, b) => a.slot.startDateTime.getTime() - b.slot.startDateTime.getTime(),
-  );
-
-  return {
-    placements,
-    unplaced: stillUnplaced,
-    totalValue: placed.reduce(
-      (sum, p) => sum + slotValue(p.dance, p.slot, history, deficitWeight),
-      0,
-    ),
-    totalExpectedAttendance: placements.reduce(
-      (sum, p) => sum + p.expectedCount,
-      0,
-    ),
-  };
-}
-
-/** Works out *which* kind of stuck a dance is, once the rescue pass has
- * failed, and says so in a sentence naming the thing to change.
- *
- * The four are genuinely different problems with genuinely different fixes,
- * and the AD can't tell them apart from the schedule. In particular
- * `cast-double-booked` is the one that looks like a bug and isn't: those
- * times show on the dance's own page — marked, because the AD may still want
- * to see them — while the builder can't use them, since nobody can be in two
- * rooms at once. Saying that out loud is the difference between "the tool is
- * broken" and "of course, Maya's in Bhangra then". */
-function diagnose(
-  entry: Unplaced,
-  dance: DanceToPlace,
-  placed: { dance: DanceToPlace; slot: CandidateSlot }[],
-): Unplaced {
-  // Already fully explained at the point it was skipped: there was never a
-  // legal slot, so there is nothing here to have blocked it.
-  if (dance.candidates.length === 0) return entry;
-
-  const blockingNames = new Set<string>();
-  let sawFirstPickBlocker: string | null = null;
-  let everySlotTangled = true;
-  let sawRoomClash = false;
-  let sawCastClash = false;
-
-  for (const slot of dance.candidates) {
-    const proposal = { dance, slot };
-    const blockers = placed.filter((p) => !compatible(p, proposal));
-    if (blockers.length === 0) continue;
-    // "Tangled" means more dances in the way than the rescue will ever move.
-    if (blockers.length <= MAX_BLOCKERS_TO_MOVE) everySlotTangled = false;
-
-    for (const blocker of blockers) {
-      blockingNames.add(blocker.dance.danceName);
-      if (blocker.slot.spaceId === slot.spaceId) sawRoomClash = true;
-      else sawCastClash = true;
-    }
-
-    if (blockers.length <= MAX_BLOCKERS_TO_MOVE) {
-      const flagged = blockers.find((b) => b.dance.priority);
-      if (flagged) sawFirstPickBlocker ??= flagged.dance.danceName;
+    // Everything still waiting loses whatever that placement just ruled out.
+    for (const prep of left) {
+      const list = feasible.get(prep)!;
+      feasible.set(
+        prep,
+        list.filter((i) => compatible(taken, { prep, slotIndex: i })),
+      );
     }
   }
 
-  const names = Array.from(blockingNames).sort();
-  const list = names.join(", ");
-
-  let cause: UnplacedCause;
-  let reason: string;
-
-  if (sawFirstPickBlocker) {
-    cause = "blocked-by-first-pick";
-    reason = `The only time that works is held by ${sawFirstPickBlocker}, which you marked First pick — so it wasn't asked to move. Untick First pick on ${sawFirstPickBlocker} and rebuild to let them swap.`;
-  } else if (everySlotTangled) {
-    cause = "too-tangled";
-    reason = `Every open time has three or more dances in the way (${list}), and at most two are ever moved aside. Tick First pick on this dance and rebuild so it chooses before the others.`;
-  } else if (sawCastClash && !sawRoomClash) {
-    cause = "cast-double-booked";
-    reason = `Every open time overlaps a practice its own dancers are already in (${list}). Those times still show on this dance's own page with the clash marked, but nobody can be in two rooms at once, so the builder can't use them.`;
-  } else if (sawRoomClash && !sawCastClash) {
-    cause = "room-taken";
-    reason = `Every open time is in a room ${list} is using, and there is nowhere else for ${names.length === 1 ? "it" : "them"} to go this week.`;
-  } else {
-    cause = "too-tangled";
-    reason = `Every open time clashes with a dance already placed (${list}) — same room, or dancers in both — and the dance in the way had nowhere else to go.`;
-  }
-
-  return { ...entry, cause, reason, blockingDanceNames: names };
+  return stuck;
 }
 
-/** Second chance for dances greedy couldn't fit: ask someone to move.
- *
- * This is the AD's rule made concrete — **a dance being on the schedule at
- * all matters more than everyone making every practice.** Greedy stops as
- * soon as a dance has no free slot left, which is the wrong place to stop:
- * often the dance blocking it has somewhere else perfectly good to go, and
- * moving it turns one unscheduled dance into two scheduled ones. The cost is
- * that the dance which moved may land at a time a couple of its dancers
- * can't make, and that trade is accepted on purpose — no attendance test is
- * applied here, only legality.
- *
- * Up to two dances are moved to fit a third in. Three would cost more to
- * compute than it buys and would leave the AD unable to explain to anybody
- * why their practice moved, so the pass stops there.
- *
- * A dance the AD flagged as first pick is never the one asked to move. That
- * flag exists precisely to say "this one keeps the slot it chose", and
- * shuffling it aside to fit something else in would quietly undo the only
- * instruction the AD gave the solver by hand.
- *
- * Returns the ids it managed to place. */
-function rescueUnplacedByDisplacement(
-  placed: Entry[],
-  unplaced: Unplaced[],
-  dances: DanceToPlace[],
-): Set<string> {
-  const rescued = new Set<string>();
-  const byId = new Map(dances.map((d) => [d.danceId, d]));
-
-  for (const entry of unplaced) {
-    const dance = byId.get(entry.danceId);
-    if (!dance || dance.candidates.length === 0) continue;
-
-    let done = false;
-    const slots = dance.candidates.slice(0, MAX_DISPLACEMENT_SCAN);
-
-    for (let s = 0; s < slots.length && !done; s++) {
-      const proposal = { dance, slot: slots[s] };
-      const blockers: number[] = [];
-      for (let i = 0; i < placed.length; i++) {
-        if (!compatible(placed[i], proposal)) blockers.push(i);
-        if (blockers.length > MAX_BLOCKERS_TO_MOVE) break;
-      }
-
-      if (blockers.length === 0) {
-        // Nothing in the way after all — a later swap freed it up.
-        placed.push(proposal);
-        done = true;
-        break;
-      }
-
-      if (blockers.length > MAX_BLOCKERS_TO_MOVE) continue;
-      // The AD's flag wins over fitting one more dance in.
-      if (blockers.some((i) => placed[i].dance.priority)) continue;
-      // Moving two is the expensive case, so only the best few options of the
-      // stuck dance get it. They're score-ordered, so those are the ones
-      // worth having anyway.
-      if (blockers.length > 1 && s >= MAX_CHAIN_SLOTS) continue;
-
-      const moves = relocateAll(blockers, [proposal], placed, blockers);
-      if (!moves) continue;
-
-      for (const move of moves) placed[move.index] = move.entry;
-      placed.push(proposal);
-      done = true;
-    }
-
-    if (done) rescued.add(entry.danceId);
-  }
-
-  return rescued;
-}
+/* ------------------------------------------------------------------ *
+ * Displacement: asking placed dances to move.
+ * ------------------------------------------------------------------ */
 
 /** Finds somewhere for every one of `moving` to go, such that they and
  * everything in `fixed` can coexist.
  *
  * `fixed` holds the placement we're trying to make room for, plus whichever
- * dances have already been given a new slot earlier in this same rescue —
- * two dances shoved aside must not land on top of each other. */
+ * dances have already been given a new slot earlier in this same rescue — two
+ * dances shoved aside must not land on top of each other. */
 function relocateAll(
   moving: number[],
-  fixed: Entry[],
-  placed: Entry[],
+  fixed: Placed[],
+  placed: Placed[],
   allMoving: number[],
-): { index: number; entry: Entry }[] | null {
+): { index: number; entry: Placed }[] | null {
   if (moving.length === 0) return [];
 
   const [index, ...rest] = moving;
   const blocker = placed[index];
   const scan = allMoving.length > 1 ? MAX_CHAIN_SCAN : MAX_DISPLACEMENT_SCAN;
 
-  for (const alternative of blocker.dance.candidates.slice(0, scan)) {
-    const moved: Entry = { dance: blocker.dance, slot: alternative };
+  for (const slotIndex of blocker.prep.order.slice(0, scan)) {
+    const moved: Placed = { prep: blocker.prep, slotIndex };
     if (!fixed.every((f) => compatible(f, moved))) continue;
     // Everything staying put has to tolerate the new position too. Dances
     // being moved in this same rescue are excluded — they're in `fixed` once
@@ -881,201 +1009,589 @@ function relocateAll(
   return null;
 }
 
-/** Greedy ordering can leave an obvious improvement on the table: two dances
- * that would each be better off in the other's slot. Repeatedly try every
- * pair and keep any swap that raises the weighted total. */
-function improveBySwapping(
-  placed: Entry[],
+/** Second chance for dances the insertion pass couldn't fit: ask someone to
+ * move.
+ *
+ * This is the AD's rule made concrete — **a dance being on the schedule at all
+ * matters more than everyone making every practice.** Insertion stops as soon
+ * as a dance has no free slot left, which is the wrong place to stop: often
+ * the dance blocking it has somewhere else perfectly good to go, and moving it
+ * turns one unscheduled dance into two scheduled ones. The cost is that the
+ * dance which moved may land at a time a couple of its dancers can't make, and
+ * that trade is accepted on purpose — no attendance test is applied here, only
+ * legality. This is the one place in the solver where net utility is *not* the
+ * test, and it is deliberate.
+ *
+ * Up to three dances are moved to fit a fourth in.
+ *
+ * A dance the AD flagged as first pick is never the one asked to move. That
+ * flag exists precisely to say "this one keeps the slot it chose".
+ *
+ * Returns the dances it managed to place. */
+function rescueByDisplacement(state: State, stuck: Prepared[]): Set<Prepared> {
+  const rescued = new Set<Prepared>();
+
+  for (const prep of stuck) {
+    if (prep.dance.candidates.length === 0) continue;
+
+    const slots = prep.order.slice(0, MAX_DISPLACEMENT_SCAN);
+
+    for (let s = 0; s < slots.length; s++) {
+      const proposal: Placed = { prep, slotIndex: slots[s] };
+      const blockers: number[] = [];
+      for (let i = 0; i < state.placed.length; i++) {
+        if (!compatible(state.placed[i], proposal)) blockers.push(i);
+        if (blockers.length > MAX_BLOCKERS_TO_MOVE) break;
+      }
+
+      if (blockers.length === 0) {
+        // Nothing in the way after all — a later move freed it up.
+        add(state, prep, proposal.slotIndex);
+        rescued.add(prep);
+        break;
+      }
+
+      if (blockers.length > MAX_BLOCKERS_TO_MOVE) continue;
+      // The AD's flag wins over fitting one more dance in.
+      if (blockers.some((i) => state.placed[i].prep.dance.priority)) continue;
+      // Moving several is the expensive case, so only the best few options of
+      // the stuck dance get it. They're cost-ordered, so those are the ones
+      // worth having anyway.
+      if (blockers.length > 1 && s >= MAX_CHAIN_SLOTS) continue;
+
+      const moves = relocateAll(blockers, [proposal], state.placed, blockers);
+      if (!moves) continue;
+
+      // Apply through the state so absence and dead minutes both stay
+      // in step. Removing by descending index keeps the earlier ones valid.
+      const sorted = [...moves].sort((a, b) => b.index - a.index);
+      for (const move of sorted) remove(state, move.index);
+      for (const move of sorted) add(state, move.entry.prep, move.entry.slotIndex);
+      add(state, prep, proposal.slotIndex);
+      rescued.add(prep);
+      break;
+    }
+  }
+
+  return rescued;
+}
+
+/* ------------------------------------------------------------------ *
+ * Polish: swaps and reallocation, both judged on the whole week.
+ * ------------------------------------------------------------------ */
+
+/** Is this arrangement legal, given that it was legal before `changed` moved?
+ *
+ * Only the entries that actually moved need re-checking against the rest —
+ * everything else was already compatible with everything else and hasn't
+ * budged. That turns an O(n²) sweep into a handful of comparisons, which
+ * matters because the polish passes run thousands of times. */
+function stillLegal(entries: Placed[], changed: number[]): boolean {
+  for (const c of changed) {
+    for (let k = 0; k < entries.length; k++) {
+      if (k === c) continue;
+      if (!compatible(entries[c], entries[k])) return false;
+    }
+  }
+  return true;
+}
+
+/** Rebuild the week in place from a list of placements. Every derived total —
+ * absence, dead minutes — is recomputed by replaying `add`, so a
+ * trial arrangement can never leave the running figures out of step with the
+ * placements they describe. */
+function resetTo(
+  state: State,
   occupied: OccupiedInterval[],
-  history: AttendanceHistory | undefined,
-  deficitWeight: number,
+  entries: Placed[],
+): void {
+  const fresh = newState(occupied);
+  state.placed = fresh.placed;
+  state.absence = fresh.absence;
+  state.bySpace = fresh.bySpace;
+  state.deadBySpace = fresh.deadBySpace;
+  state.dead = fresh.dead;
+  for (const e of entries) add(state, e.prep, e.slotIndex);
+}
+
+/** Two dances that would each be better off in the other's slot. */
+function improveBySwapping(
+  state: State,
+  occupied: OccupiedInterval[],
 ): boolean {
   let everImproved = false;
+
   for (let pass = 0; pass < MAX_IMPROVEMENT_PASSES; pass++) {
     let improved = false;
 
-    for (let i = 0; i < placed.length; i++) {
-      for (let j = i + 1; j < placed.length; j++) {
-        const a = placed[i];
-        const b = placed[j];
+    for (let i = 0; i < state.placed.length; i++) {
+      for (let j = i + 1; j < state.placed.length; j++) {
+        const a = state.placed[i];
+        const b = state.placed[j];
 
         // Each dance has to actually be able to use the other's slot.
-        const aCanTakeB = a.dance.candidates.some(
-          (c) => sameSlot(c, b.slot),
+        const aTakesB = a.prep.indexByKey.get(
+          slotKey(b.prep.dance.candidates[b.slotIndex]),
         );
-        const bCanTakeA = b.dance.candidates.some(
-          (c) => sameSlot(c, a.slot),
+        const bTakesA = b.prep.indexByKey.get(
+          slotKey(a.prep.dance.candidates[a.slotIndex]),
         );
-        if (!aCanTakeB || !bCanTakeA) continue;
+        if (aTakesB === undefined || bTakesA === undefined) continue;
 
-        const swappedA = { dance: a.dance, slot: b.slot };
-        const swappedB = { dance: b.dance, slot: a.slot };
+        const before = scoreOf(state);
+        const base = snapshot(state);
+        const trial = base.map((e, k) =>
+          k === i
+            ? { prep: a.prep, slotIndex: aTakesB }
+            : k === j
+              ? { prep: b.prep, slotIndex: bTakesA }
+              : e,
+        );
+        if (!stillLegal(trial, [i, j])) continue;
+        if (!respectsFloor(base, trial)) continue;
 
-        const others = placed.filter((_, k) => k !== i && k !== j);
-        const legal =
-          compatible(swappedA, swappedB) &&
-          others.every(
-            (o) => compatible(o, swappedA) && compatible(o, swappedB),
-          );
-        if (!legal) continue;
-
-        // Both sides are measured the same way — attendance plus how well the
-        // pair packs into its rooms — so a swap that leaves a stranded gap
-        // has to buy more than a person's attendance to be worth taking.
-        const context = [...occupied, ...others.map((o) => asInterval(o.slot))];
-        const pairValue = (
-          x: { dance: DanceToPlace; slot: CandidateSlot },
-          y: { dance: DanceToPlace; slot: CandidateSlot },
-        ) =>
-          slotValue(x.dance, x.slot, history, deficitWeight) +
-          slotValue(y.dance, y.slot, history, deficitWeight) +
-          compactnessAdjustment(x.slot, [...context, asInterval(y.slot)]) +
-          compactnessAdjustment(y.slot, [...context, asInterval(x.slot)]);
-
-        const before = pairValue(a, b);
-        const after = pairValue(swappedA, swappedB);
-
-        if (after > before) {
-          placed[i] = swappedA;
-          placed[j] = swappedB;
+        resetTo(state, occupied, trial);
+        if (beats(scoreOf(state), before)) {
           improved = true;
           everImproved = true;
+        } else {
+          resetTo(state, occupied, base);
         }
       }
     }
 
     if (!improved) break;
   }
+
   return everImproved;
 }
 
 /** Gives each slot to the dance that gets the most out of it.
  *
  * Swapping only helps when two dances can each use the other's time. The case
- * it misses is the one the AD kept spotting: a slot where one dance would
- * have full attendance is sitting under a dance that merely *quite likes* it
- * and has somewhere else perfectly good to go. Nothing to swap — the second
- * dance's alternative is empty, not occupied — so the slot stays with
- * whoever was placed first, which is an accident of ordering rather than a
- * decision.
+ * it misses is the one the AD kept spotting: a slot where one dance would have
+ * full attendance is sitting under a dance that merely *quite likes* it and
+ * has somewhere else perfectly good to go. Nothing to swap — the second
+ * dance's alternative is empty, not occupied — so the slot stays with whoever
+ * was placed first, which is an accident of ordering rather than a decision.
  *
  * So: for every placed dance, look at the times it would rather have. If one
- * is free, take it. If exactly one other dance is in the way and that dance
- * can move somewhere else, move it — but only when the two of them together
- * come out ahead. A dance is never shunted somewhere worse unless the dance
- * taking its place gains more than it loses, and a First pick dance is never
- * shunted at all.
- *
- * Returns whether anything changed, so the caller knows to run another pass. */
+ * is free, take it. If one other dance is in the way and that dance can move
+ * elsewhere, move it — but only when the **week as a whole** comes out ahead.
+ * That is the net-utility test: a dance is never shunted somewhere worse
+ * unless the dance taking its place gains more than it loses, counting
+ * everybody's attendance and the rooms they sit in. A First pick
+ * dance is never shunted at all. */
 function improveByReallocation(
-  placed: Entry[],
-  history: AttendanceHistory | undefined,
-  deficitWeight: number,
+  state: State,
+  occupied: OccupiedInterval[],
 ): boolean {
   let everImproved = false;
 
-  for (let i = 0; i < placed.length; i++) {
-    const current = placed[i];
-    const currentValue = slotValue(
-      current.dance,
-      current.slot,
-      history,
-      deficitWeight,
-    );
+  for (let i = 0; i < state.placed.length; i++) {
+    const { prep } = state.placed[i];
+    const currentSlot = state.placed[i].slotIndex;
 
-    for (const wanted of current.dance.candidates.slice(0, MAX_DISPLACEMENT_SCAN)) {
-      // Only chase times that are genuinely better for this dance. Attendance
-      // alone here: a move that merely tidies the rooms is the swap pass's
-      // job, and chasing those would let this loop churn.
-      const gain =
-        slotValue(current.dance, wanted, history, deficitWeight) - currentValue;
-      if (gain <= 0) continue;
+    let tried = 0;
+    for (const wanted of prep.order) {
+      if (tried >= MAX_REALLOCATION_SCAN) break;
+      if (wanted === currentSlot) continue;
+      // Only chase times that are genuinely better for this dance's own
+      // people. `order` is sorted by exactly that, so once one fails to
+      // improve, none of the rest will either.
+      //
+      // This looks like the Pareto trap and isn't: it only decides which moves
+      // are worth *trying*. A dance already at full attendance never needs to
+      // initiate — the dance that wants its slot initiates instead, and this
+      // pass will happily shunt the first one somewhere worse if the week
+      // gains more than it loses. Destroy-and-repair covers what neither
+      // direction reaches.
+      if (prep.cost[wanted] >= prep.cost[currentSlot] - EPSILON) break;
+      tried++;
 
-      const proposal: Entry = { dance: current.dance, slot: wanted };
+      const before = scoreOf(state);
+      const base = snapshot(state);
+      const trial = base.map((e, k) =>
+        k === i ? { prep, slotIndex: wanted } : e,
+      );
+
       const blockers: number[] = [];
-      for (let k = 0; k < placed.length; k++) {
+      for (let k = 0; k < trial.length; k++) {
         if (k === i) continue;
-        if (!compatible(placed[k], proposal)) blockers.push(k);
+        if (!compatible(trial[k], trial[i])) blockers.push(k);
         if (blockers.length > 1) break;
       }
 
+      let accepted: Placed[] | null = null;
+
       if (blockers.length === 0) {
-        // Free all along — the dance simply hadn't been offered it, because
-        // whatever held it when this dance was placed has since moved.
-        placed[i] = proposal;
+        accepted = trial;
+      } else if (
+        blockers.length === 1 &&
+        !trial[blockers[0]].prep.dance.priority
+      ) {
+        // One dance in the way, and it isn't the AD's first pick. Offer it its
+        // own best alternative — `order` is cost-sorted, so the first legal
+        // one is the least it can be asked to give up.
+        const b = blockers[0];
+        const other = trial[b];
+        for (const alternative of other.prep.order.slice(0, MAX_CHAIN_SCAN)) {
+          if (alternative === other.slotIndex) continue;
+          const chain = trial.map((e, k) =>
+            k === b ? { prep: other.prep, slotIndex: alternative } : e,
+          );
+          if (stillLegal(chain, [i, b])) {
+            accepted = chain;
+            break;
+          }
+        }
+      }
+
+      if (!accepted) continue;
+      if (accepted === trial && !stillLegal(trial, [i])) continue;
+      if (!respectsFloor(base, accepted)) continue;
+
+      resetTo(state, occupied, accepted);
+      // The trade has to leave the **week** better off, not just the dance
+      // doing the asking. That is what stops a dance with a mild preference
+      // evicting one that would lose more than it gains.
+      if (beats(scoreOf(state), before)) {
         everImproved = true;
         break;
       }
-
-      if (blockers.length > 1) continue;
-      const other = blockers[0];
-      if (placed[other].dance.priority) continue;
-
-      const displaced = placed[other];
-      const displacedValue = slotValue(
-        displaced.dance,
-        displaced.slot,
-        history,
-        deficitWeight,
-      );
-
-      let moved = false;
-      for (const alternative of displaced.dance.candidates.slice(
-        0,
-        MAX_CHAIN_SCAN,
-      )) {
-        const relocated: Entry = { dance: displaced.dance, slot: alternative };
-        if (!compatible(relocated, proposal)) continue;
-        if (
-          !placed.every(
-            (p, k) => k === i || k === other || compatible(p, relocated),
-          )
-        )
-          continue;
-
-        // The trade has to be worth it for the pair, not just for the dance
-        // doing the asking. This is what stops a dance with a mild preference
-        // evicting one that would lose more than it gains.
-        const cost =
-          displacedValue -
-          slotValue(displaced.dance, alternative, history, deficitWeight);
-        if (gain - cost <= 0) continue;
-
-        placed[i] = proposal;
-        placed[other] = relocated;
-        moved = true;
-        break;
-      }
-
-      if (moved) {
-        everImproved = true;
-        break;
-      }
+      resetTo(state, occupied, base);
     }
   }
 
   return everImproved;
 }
 
-function sameSlot(a: CandidateSlot, b: CandidateSlot): boolean {
-  return (
-    a.spaceId === b.spaceId &&
-    a.startDateTime.getTime() === b.startDateTime.getTime() &&
-    a.endDateTime.getTime() === b.endDateTime.getTime()
-  );
+/* ------------------------------------------------------------------ *
+ * One attempt, and the search over attempts.
+ * ------------------------------------------------------------------ */
+
+type Attempt = { state: State; stuck: Prepared[] };
+
+function snapshot(state: State): { prep: Prepared; slotIndex: number }[] {
+  return state.placed.map((p) => ({ prep: p.prep, slotIndex: p.slotIndex }));
 }
 
-/** Turns raw attendance counts into the miss rates the solver weights by. */
+function restore(
+  occupied: OccupiedInterval[],
+  entries: { prep: Prepared; slotIndex: number }[],
+): State {
+  const state = newState(occupied);
+  for (const e of entries) add(state, e.prep, e.slotIndex);
+  return state;
+}
+
+/** Tear a few placements out and rebuild them.
+ *
+ * Swaps and single moves can only reach arrangements one step away. Ripping
+ * out three dances and re-inserting all three by regret reaches arrangements
+ * that no single step does — it is the cheapest way to escape a corner the
+ * insertion order painted the week into, and in practice it is where most of
+ * the late improvement comes from.
+ *
+ * Every round is kept only if the whole week comes out strictly better, so
+ * this can wander but never regress. */
+function destroyAndRepair(
+  state: State,
+  occupied: OccupiedInterval[],
+  rng: () => number,
+  deadline: number,
+): State {
+  let best = state;
+  let bestScore = scoreOf(best);
+
+  // A four-dance week has nothing like forty rounds' worth of rearrangements
+  // in it, and burning them anyway is most of what made the test suite slow.
+  const rounds = Math.min(LNS_ROUNDS, Math.max(6, best.placed.length * 4));
+
+  for (let round = 0; round < rounds; round++) {
+    if (Date.now() > deadline) break;
+    if (best.placed.length < LNS_MIN_DESTROY) break;
+    // Perfect: everybody is in every room they should be, nobody's day is
+    // stacked, and no booked hour is wasted. Nothing left to look for.
+    if (
+      bestScore.absence <= EPSILON &&
+      bestScore.dead <= EPSILON
+    ) {
+      break;
+    }
+
+    const size = Math.min(
+      best.placed.length,
+      LNS_MIN_DESTROY +
+        Math.floor(rng() * (LNS_MAX_DESTROY - LNS_MIN_DESTROY + 1)),
+    );
+
+    const trial = restore(occupied, snapshot(best));
+    const torn: Prepared[] = [];
+    for (let k = 0; k < size; k++) {
+      const at = Math.floor(rng() * trial.placed.length);
+      torn.push(remove(trial, at).prep);
+    }
+
+    const stuck = insertByRegret(trial, torn, 0.35, rng);
+    if (stuck.length > 0) rescueByDisplacement(trial, stuck);
+    improveByReallocation(trial, occupied);
+
+    // Without this the torn-and-rebuilt arrangement could reach exactly the
+    // hollowed-out week the two passes above now refuse, and be kept because
+    // the total improved.
+    if (!respectsFloor(best.placed, trial.placed)) continue;
+
+    const score = scoreOf(trial);
+    if (beats(score, bestScore)) {
+      best = trial;
+      bestScore = score;
+    }
+  }
+
+  return best;
+}
+
+/** One complete solve. Pure with respect to the prepared dances, so it can be
+ * run as many times as the budget allows. */
+function attemptWeek(
+  preps: Prepared[],
+  occupied: OccupiedInterval[],
+  noise: number,
+  rng: () => number,
+  deadline: number,
+): Attempt {
+  const state = newState(occupied);
+
+  const placeable = preps.filter((p) => p.dance.candidates.length > 0);
+  const stuck = insertByRegret(state, placeable, noise, rng);
+
+  // Coverage beats attendance: rescue what insertion left behind, even at a
+  // cost to the people already placed.
+  // Whatever it manages to place is reflected in the state; the leftovers are
+  // worked out from what's actually on the board at the end, after the polish
+  // passes have had their go too.
+  rescueByDisplacement(state, stuck);
+
+  for (let pass = 0; pass < MAX_IMPROVEMENT_PASSES; pass++) {
+    const swapped = improveBySwapping(state, occupied);
+    const moved = improveByReallocation(state, occupied);
+    if (!swapped && !moved) break;
+  }
+
+  const polished = destroyAndRepair(state, occupied, rng, deadline);
+
+  const placedPreps = new Set(polished.placed.map((p) => p.prep));
+  return {
+    state: polished,
+    stuck: preps.filter((p) => !placedPreps.has(p)),
+  };
+}
+
+export function solveWeek(input: OptimizerInput): OptimizerResult {
+  const deficitWeight = input.deficitWeight ?? DEFAULT_DEFICIT_WEIGHT;
+  const { history } = input;
+  const occupied = input.occupied ?? [];
+
+  const preps = prepare(input.dances, history, deficitWeight);
+  const rng = makeRng(seedFrom(input.dances));
+
+  const budget = input.timeBudgetMs ?? TIME_BUDGET_MS;
+  const deadline = Date.now() + budget;
+
+  // Attempt 0 is deterministic and noise-free, so the plain answer is the
+  // floor. Every later attempt has to be *strictly* better to replace it,
+  // which makes the search monotone: more time can match or beat what came
+  // before, never undercut it.
+  let best = attemptWeek(preps, occupied, 0, rng, deadline);
+  let bestScore = scoreOf(best.state);
+  let attempts = 1;
+
+  const maxRuns = Math.max(1, input.maxRuns ?? MAX_RUNS);
+  const stagnationLimit = attemptsWithoutGainAllowed(input.dances.length);
+  let sinceGain = 0;
+
+  while (attempts < maxRuns && sinceGain < stagnationLimit) {
+    if (Date.now() > deadline) break;
+    // Nothing left to find: every dance has a time, everybody can make it,
+    // and no room has a hole in it.
+    if (
+      best.stuck.length === 0 &&
+      bestScore.absence <= EPSILON &&
+      bestScore.dead <= EPSILON
+    ) {
+      break;
+    }
+
+    const attempt = attemptWeek(preps, occupied, 0.6, rng, deadline);
+    attempts++;
+    const score = scoreOf(attempt.state);
+    if (beats(score, bestScore)) {
+      best = attempt;
+      bestScore = score;
+      sinceGain = 0;
+    } else {
+      sinceGain++;
+    }
+  }
+
+  const placements: Placement[] = best.state.placed.map(
+    ({ prep, slotIndex }) => {
+      const slot = prep.dance.candidates[slotIndex];
+      const attendees = new Set(prep.attendees[slotIndex]);
+      return {
+        danceId: prep.dance.danceId,
+        danceName: prep.dance.danceName,
+        slot,
+        expectedCount: attendees.size,
+        castSize: prep.dance.cast.length,
+        missingUserIds: prep.dance.cast
+          .map((m) => m.userId)
+          .filter((id) => !attendees.has(id)),
+      };
+    },
+  );
+
+  // Report in the order the week runs, not the order they were solved.
+  placements.sort(
+    (a, b) => a.slot.startDateTime.getTime() - b.slot.startDateTime.getTime(),
+  );
+
+  // Explain the leftovers against the arrangement actually being shown, not
+  // against some attempt that was thrown away.
+  const unplaced = best.stuck.map((prep) => diagnose(prep, best.state.placed));
+
+  return {
+    placements,
+    unplaced,
+    totalCost: bestScore.absence,
+    deadMinutes: bestScore.dead,
+    totalExpectedAttendance: placements.reduce(
+      (sum, p) => sum + p.expectedCount,
+      0,
+    ),
+    attempts,
+  };
+}
+
+/** Works out *which* kind of stuck a dance is, once the rescue pass has
+ * failed, and says so in a sentence naming the thing to change.
+ *
+ * These are genuinely different problems with genuinely different fixes, and
+ * the AD can't tell them apart from the schedule. In particular
+ * `cast-double-booked` is the one that looks like a bug and isn't: those times
+ * show on the dance's own page — marked, because the AD may still want to see
+ * them — while the builder can't use them, since nobody can be in two rooms at
+ * once. Saying that out loud is the difference between "the tool is broken"
+ * and "of course, Maya's in Bhangra then". */
+function diagnose(prep: Prepared, placed: Placed[]): Unplaced {
+  const { dance } = prep;
+  const base = {
+    danceId: dance.danceId,
+    danceName: dance.danceName,
+  };
+
+  if (dance.candidates.length === 0) {
+    return {
+      ...base,
+      cause: dance.blockedByChoreographerGap ? "no-choreographer" : "no-slots",
+      blockingDanceNames: [],
+      reason: dance.blockedByChoreographerGap
+        ? "There are open times this week, but no choreographer for this dance can make any of them. A practice with nobody to run it is never drafted, so this one needs a choreographer to free something up — or excuse them for the week if it should go ahead without them."
+        : "Nowhere to put it. No room is booked for long enough this week, or every open hour is already taken by a practice.",
+    };
+  }
+
+  const blockingNames = new Set<string>();
+  let sawFirstPickBlocker: string | null = null;
+  let everySlotTangled = true;
+  let sawRoomClash = false;
+  let sawCastClash = false;
+
+  for (let slotIndex = 0; slotIndex < dance.candidates.length; slotIndex++) {
+    const proposal = { prep, slotIndex };
+    const blockers = placed.filter((p) => !compatible(p, proposal));
+    if (blockers.length === 0) continue;
+    // "Tangled" means more dances in the way than the rescue will ever move.
+    if (blockers.length <= MAX_BLOCKERS_TO_MOVE) everySlotTangled = false;
+
+    for (const blocker of blockers) {
+      blockingNames.add(blocker.prep.dance.danceName);
+      if (
+        spaceIdOf(blocker.prep, blocker.slotIndex) ===
+        dance.candidates[slotIndex].spaceId
+      ) {
+        sawRoomClash = true;
+      } else {
+        sawCastClash = true;
+      }
+    }
+
+    if (blockers.length <= MAX_BLOCKERS_TO_MOVE) {
+      const flagged = blockers.find((b) => b.prep.dance.priority);
+      if (flagged) sawFirstPickBlocker ??= flagged.prep.dance.danceName;
+    }
+  }
+
+  const names = Array.from(blockingNames).sort();
+  const list = names.join(", ");
+
+  let cause: UnplacedCause;
+  let reason: string;
+
+  if (sawFirstPickBlocker) {
+    cause = "blocked-by-first-pick";
+    reason = `The only time that works is held by ${sawFirstPickBlocker}, which you marked First pick — so it wasn't asked to move. Untick First pick on ${sawFirstPickBlocker} and rebuild to let them swap.`;
+  } else if (everySlotTangled) {
+    cause = "too-tangled";
+    reason = `Every open time has four or more dances in the way (${list}), and at most three are ever moved aside. Tick First pick on this dance and rebuild so it chooses before the others.`;
+  } else if (sawCastClash && !sawRoomClash) {
+    cause = "cast-double-booked";
+    reason = `Every open time overlaps a practice its own dancers are already in (${list}). Those times still show on this dance's own page with the clash marked, but nobody can be in two rooms at once, so the builder can't use them.`;
+  } else if (sawRoomClash && !sawCastClash) {
+    cause = "room-taken";
+    reason = `Every open time is in a room ${list} is using, and there is nowhere else for ${names.length === 1 ? "it" : "them"} to go this week.`;
+  } else {
+    cause = "too-tangled";
+    reason = `Every open time clashes with a dance already placed (${list}) — same room, or dancers in both — and the dance in the way had nowhere else to go.`;
+  }
+
+  return { ...base, cause, reason, blockingDanceNames: names };
+}
+
+/** Turns raw attendance counts into the three signals the solver weights by.
+ *
+ * `streak` and `termMisses` are optional so a caller with only the per-dance
+ * tally still gets sensible behaviour — the two corrections simply read as
+ * zero, which is what they were before they existed. */
 export function buildHistory(
-  rows: { userId: string; danceId: string; missed: number; total: number }[],
+  rows: {
+    userId: string;
+    danceId: string;
+    missed: number;
+    total: number;
+    /** Consecutive misses of this dance, counting back from the most recent
+     * practice. */
+    streak?: number;
+  }[],
+  termMisses: { userId: string; missed: number }[] = [],
 ): AttendanceHistory {
   const missRateByMemberDance = new Map<string, number>();
+  const missStreakByMemberDance = new Map<string, number>();
+
   for (const row of rows) {
     if (row.total <= 0) continue;
-    missRateByMemberDance.set(
-      `${row.userId}:${row.danceId}`,
-      row.missed / row.total,
-    );
+    const key = `${row.userId}:${row.danceId}`;
+    missRateByMemberDance.set(key, row.missed / row.total);
+    if (row.streak) missStreakByMemberDance.set(key, row.streak);
   }
-  return { missRateByMemberDance };
+
+  const termMissesByMember = new Map<string, number>();
+  for (const row of termMisses) termMissesByMember.set(row.userId, row.missed);
+
+  return {
+    missRateByMemberDance,
+    missStreakByMemberDance,
+    termMissesByMember,
+  };
 }

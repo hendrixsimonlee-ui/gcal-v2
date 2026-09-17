@@ -1,7 +1,7 @@
 import {
   buildHistory,
-  MAX_COMPACTNESS_ADJUSTMENT,
   MIN_MEMBER_WEIGHT,
+  STRANDED_GAP_MINUTES,
   solveWeek,
   type DanceToPlace,
   type OptimizerInput,
@@ -48,6 +48,23 @@ function slot(
     excludedCastMembers: [],
     choreographersMissing: 0,
     noChoreographerAvailable: false,
+  };
+}
+
+/** Same, but positioned and sized to the minute — for the tests about dead
+ * room time, where half-hours are the whole point. */
+function minuteSlot(
+  spaceId: string,
+  startMinutes: number,
+  durationMinutes: number,
+  conflicted: string[] = [],
+): CandidateSlot {
+  const base = Date.UTC(2026, 8, 14, 12, 0, 0);
+  const start = new Date(base + startMinutes * 60000);
+  return {
+    ...slot(0, spaceId, conflicted),
+    startDateTime: start,
+    endDateTime: new Date(start.getTime() + durationMinutes * 60000),
   };
 }
 
@@ -204,7 +221,255 @@ function dance(
   assertEqual(
     result.placements[0].expectedCount,
     3,
-    "fairness breaks ties but never beats three people against one",
+    "a term-long miss rate breaks ties but never beats three people against one",
+  );
+}
+
+// --- a run of misses escalates past the ordinary ceiling --------------------
+// A percentage can't break a streak. Someone who has missed three weeks
+// running of one dance used to cap out at two heads, which ties two people
+// missing for the first time and loses to two-and-a-bit — so they got
+// sacrificed a fourth time, which is the exact pattern the weighting exists to
+// stop. A run is its own step now, and it is allowed to outrank people who
+// have genuinely said they're busy.
+{
+  // Two in a row against two first-time absences. This is the case that failed
+  // before the step function existed: 2.0 against 2.0 was a tie, and the tie
+  // went to the earlier slot, stranding Pat for a third week.
+  const d = dance(
+    "TwoInARow",
+    ["pat", "x", "y"],
+    [
+      slot(0, "studio", ["x", "y"]), // two people missing for the first time
+      slot(2, "studio", ["pat"]), // Pat, two weeks into a run
+    ],
+  );
+  const result = solveWeek({
+    dances: [d],
+    history: buildHistory([
+      { userId: "pat", danceId: "TwoInARow", missed: 2, total: 8, streak: 2 },
+    ]),
+  });
+  assertEqual(
+    result.placements[0].missingUserIds.join(","),
+    "x,y",
+    "two weeks of missing the same dance in a row outweighs two first-time absences",
+  );
+}
+{
+  // Three in a row still beats two…
+  const beatsTwo = solveWeek({
+    dances: [
+      dance("ThreeVsTwo", ["pat", "x", "y"], [
+        slot(0, "studio", ["x", "y"]),
+        slot(2, "studio", ["pat"]),
+      ]),
+    ],
+    history: buildHistory([
+      { userId: "pat", danceId: "ThreeVsTwo", missed: 3, total: 9, streak: 3 },
+    ]),
+  });
+  assertEqual(
+    beatsTwo.placements[0].missingUserIds.join(","),
+    "x,y",
+    "three weeks in a row outweighs two first-time absences",
+  );
+
+  // …and deliberately stops short of beating four. Three heads is enough to
+  // tie three people; past that the builder starts producing weeks an AD
+  // can't defend — a practice most of the cast can't make, to bring back one
+  // person.
+  const losesToFour = solveWeek({
+    dances: [
+      dance("ThreeVsFour", ["pat", "w", "x", "y", "z"], [
+        slot(0, "studio", ["w", "x", "y", "z"]),
+        slot(2, "studio", ["pat"]),
+      ]),
+    ],
+    history: buildHistory([
+      { userId: "pat", danceId: "ThreeVsFour", missed: 3, total: 9, streak: 3 },
+    ]),
+  });
+  assertEqual(
+    losesToFour.placements[0].missingUserIds.join(","),
+    "pat",
+    "…but a run never outweighs four people who genuinely can't come",
+  );
+}
+
+// --- the other two ways of being the one left out ---------------------------
+// A rate alone can't tell three scattered misses from three in a row, and it
+// can't see somebody being squeezed out of four different dances a little at
+// a time. Both are counted, and both only start counting past what's ordinary.
+{
+  // Identical rates — three misses each out of four — so the rate signal
+  // ties. Pat's are a run that is still going; Quinn's were a while ago.
+  const d = dance(
+    "Streaks",
+    ["pat", "quinn"],
+    [slot(0, "studio", ["pat"]), slot(2, "studio", ["quinn"])],
+  );
+  const result = solveWeek({
+    dances: [d],
+    history: buildHistory([
+      { userId: "pat", danceId: "Streaks", missed: 3, total: 4, streak: 3 },
+      { userId: "quinn", danceId: "Streaks", missed: 3, total: 4, streak: 0 },
+    ]),
+  });
+  assertEqual(
+    result.placements[0].missingUserIds.join(","),
+    "quinn",
+    "between two equal rates, the one on a current run of misses is the one included",
+  );
+}
+{
+  // Same dance record for both. Pat has been missing practices all over the
+  // rest of the term, which this dance's own numbers can't see.
+  const d = dance(
+    "TermWide",
+    ["pat", "quinn"],
+    [slot(0, "studio", ["pat"]), slot(2, "studio", ["quinn"])],
+  );
+  const result = solveWeek({
+    dances: [d],
+    history: buildHistory(
+      [
+        { userId: "pat", danceId: "TermWide", missed: 1, total: 4 },
+        { userId: "quinn", danceId: "TermWide", missed: 1, total: 4 },
+      ],
+      [
+        { userId: "pat", missed: 9 },
+        { userId: "quinn", missed: 1 },
+      ],
+    ),
+  });
+  assertEqual(
+    result.placements[0].missingUserIds.join(","),
+    "quinn",
+    "somebody missing a lot across every dance is the one included, even where this dance looks level",
+  );
+}
+{
+  // One miss in a row and two across a term are ordinary life. Neither should
+  // move anything, so the tie falls back to the earlier slot.
+  const d = dance(
+    "Ordinary",
+    ["pat", "quinn"],
+    [slot(0, "studio", ["pat"]), slot(2, "studio", ["quinn"])],
+  );
+  const result = solveWeek({
+    dances: [d],
+    history: buildHistory(
+      [
+        { userId: "pat", danceId: "Ordinary", missed: 1, total: 10, streak: 1 },
+        { userId: "quinn", danceId: "Ordinary", missed: 0, total: 10 },
+      ],
+      [{ userId: "pat", missed: 2 }],
+    ),
+  });
+  assertEqual(
+    result.placements[0].slot.startDateTime.getTime(),
+    slot(0, "studio").startDateTime.getTime(),
+    "one miss in a row and two in a term are ordinary — neither shifts anything",
+  );
+}
+
+// --- no dance gets hollowed out to help the rest of the week ----------------
+// The cost model is a sum, so it will happily trade one dance's cast away for
+// a bigger gain elsewhere. A rehearsal with a third of the cast is not a third
+// of a rehearsal though, it is a wasted room, and nothing in a linear sum can
+// see that.
+{
+  // Small has the whole cast at noon. Big is stuck at 6pm missing three. Big
+  // would gain 3 by taking noon; Small would lose only 2 by moving to 2pm — so
+  // the week improves by 1 and the trade is taken on the arithmetic. But it
+  // leaves Small at one dancer out of three.
+  const small = dance("Small", ["s1", "s2", "s3"], [
+    slot(0, "studio"),
+    slot(2, "studio", ["s2", "s3"]),
+    slot(4, "studio", ["s2", "s3"]),
+  ]);
+  const big = dance("Big", ["b1", "b2", "b3", "b4", "b5", "b6", "b7", "b8"], [
+    slot(0, "studio"),
+    slot(6, "studio", ["b1", "b2", "b3"]),
+  ]);
+
+  const result = solveWeek({ dances: [small, big], maxRuns: 1 });
+  const smallPlaced = result.placements.find((p) => p.danceId === "Small");
+
+  assertEqual(result.placements.length, 2, "both dances are still placed");
+  assertEqual(
+    smallPlaced?.expectedCount,
+    3,
+    "a dance is not moved below half its cast to improve the week's total",
+  );
+}
+{
+  // The same shape, except the move only costs Small two of six — still above
+  // half. This one *must* go through: the floor must not have quietly turned
+  // into "attendance may never drop", which is the strict-Pareto trap the swap
+  // rules exist to avoid. A dance at full attendance has to be willing to give
+  // up its slot when the other dance gains more than it loses.
+  const medium = dance("Medium", ["m1", "m2", "m3", "m4", "m5", "m6"], [
+    slot(0, "studio"),
+    slot(2, "studio", ["m5", "m6"]),
+    slot(4, "studio", ["m5", "m6"]),
+  ]);
+  const big = dance("Big", ["b1", "b2", "b3", "b4", "b5", "b6", "b7", "b8"], [
+    slot(0, "studio"),
+    slot(6, "studio", ["b1", "b2", "b3"]),
+  ]);
+
+  const result = solveWeek({ dances: [medium, big], maxRuns: 1 });
+  const mediumPlaced = result.placements.find((p) => p.danceId === "Medium");
+  const bigPlaced = result.placements.find((p) => p.danceId === "Big");
+
+  assertEqual(
+    mediumPlaced?.expectedCount,
+    4,
+    "a dance above the floor still gives up its slot when the week gains more",
+  );
+  assertEqual(
+    bigPlaced?.expectedCount,
+    8,
+    "…and the dance that gains more gets it",
+  );
+}
+{
+  // Coverage still overrides. This dance has exactly one workable time and
+  // most of its cast can't make it; a thin rehearsal beats no rehearsal, so
+  // the floor is not consulted when *placing* a dance.
+  const result = solveWeek({
+    dances: [
+      dance("Thin", ["t1", "t2", "t3", "t4"], [
+        slot(0, "studio", ["t2", "t3", "t4"]),
+      ]),
+    ],
+    maxRuns: 1,
+  });
+  assertEqual(
+    result.placements.length,
+    1,
+    "a dance is still placed below half its cast when that is the only option",
+  );
+  assertEqual(
+    result.placements[0]?.expectedCount,
+    1,
+    "…with the real headcount reported",
+  );
+}
+{
+  // A dance with nobody in it divides by zero on the way to a share. It must
+  // not come back NaN, which compares false against everything and would pin
+  // the dance in place for the rest of the solve.
+  const result = solveWeek({
+    dances: [dance("Empty", [], [slot(0, "studio"), slot(2, "studio")])],
+    maxRuns: 1,
+  });
+  assertEqual(
+    result.placements.length,
+    1,
+    "a dance with no cast doesn't wedge the solver",
   );
 }
 
@@ -418,16 +683,22 @@ function booked(spaceId: string, startHour: number, minutes: number) {
 }
 {
   // Nothing to choose between these on attendance, and the earlier one would
-  // normally win — but it butts straight up against a practice already in the
-  // room, so it wins by more.
+  // normally win — but it would leave ten unusable minutes in front of the
+  // practice already in the room, and the later one butts straight up against
+  // it instead.
   const flush = solveWeek({
-    dances: [dance("Solo", ["a"], [slot(0, "studio"), slot(2, "studio")])],
+    dances: [
+      dance("Solo", ["a"], [
+        minuteSlot("studio", 110, 90), // 13:50–15:20, strands 10 minutes
+        minuteSlot("studio", 120, 90), // 14:00–15:30, flush
+      ]),
+    ],
     // 15:30–17:00, i.e. starting exactly when the 14:00 slot ends.
     occupied: [booked("studio", 3.5, 90)],
   });
   assertEqual(
     flush.placements[0]?.slot.startDateTime.getTime(),
-    slot(2, "studio").startDateTime.getTime(),
+    minuteSlot("studio", 120, 90).startDateTime.getTime(),
     "a slot that sits flush against an existing practice is preferred",
   );
 }
@@ -705,11 +976,112 @@ function booked(spaceId: string, startHour: number, minutes: number) {
     "…so nobody is left out to tidy up the room",
   );
 
-  // And the invariant itself, so it can't drift back. What matters is the
-  // swing between the best- and worst-packed slot, not the size of either.
+  // The invariant used to be a numeric one: keep the packing term smaller
+  // than one person's attendance and hope. It got that wrong once. Tidiness is
+  // now a separate tier that is only ever consulted between arrangements
+  // costing the same in people, so there is no exchange rate left to get
+  // wrong — and the way to check that is behaviour, not arithmetic.
+  //
+  // Here the tidy option is worth an absurd amount of dead time: a full hour
+  // of stranded room against one dancer. The dancer still wins.
+  const lopsided = solveWeek({
+    dances: [
+      dance("Quartet", ["a", "b", "c", "d"], [
+        minuteSlot("studio", 130, 90), // 14:10, strands 40 before and 20 after
+        minuteSlot("studio", 330, 90, ["d"]), // 17:30, flush, but without Dana
+      ]),
+    ],
+    occupied: [booked("studio", 0, 90), booked("studio", 4, 90)],
+    maxRuns: 1,
+  });
+  assertEqual(
+    lopsided.placements[0]?.expectedCount,
+    4,
+    "no amount of dead room time buys off a single dancer",
+  );
   assert(
-    2 * MAX_COMPACTNESS_ADJUSTMENT < MIN_MEMBER_WEIGHT,
-    `the whole packing swing (${2 * MAX_COMPACTNESS_ADJUSTMENT}) stays under one person (${MIN_MEMBER_WEIGHT})`,
+    MIN_MEMBER_WEIGHT >= 1,
+    `a missing person always costs at least ${MIN_MEMBER_WEIGHT}`,
+  );
+}
+
+// --- dead minutes are counted, not just noticed -----------------------------
+// The old term was a flat nudge per stranded neighbour, clamped so it couldn't
+// outweigh a person. That made a five-minute sliver and a forty-minute hole
+// score identically, and it saturated as soon as a slot had two neighbours.
+// The cost is now the wasted minutes themselves.
+{
+  // Both options strand a gap and nobody is missing from either, so the only
+  // thing separating them is how much room time each one wastes. The tidier
+  // option is the *later* one, so "ties go to the earlier slot" can't be what
+  // produces the answer.
+  const result = solveWeek({
+    dances: [
+      dance("Solo", ["a"], [
+        minuteSlot("studio", 2 * 60 + 5, 90), // strands 35 minutes
+        minuteSlot("studio", 3 * 60 + 25, 90), // strands 5 minutes
+      ]),
+    ],
+    occupied: [booked("studio", 0, 90), booked("studio", 5, 90)],
+    maxRuns: 1,
+  });
+
+  assertEqual(
+    result.placements[0]?.slot.startDateTime.getTime(),
+    minuteSlot("studio", 3 * 60 + 25, 90).startDateTime.getTime(),
+    "a 5-minute sliver is preferred to a 35-minute hole, not merely tied with it",
+  );
+  assertEqual(
+    result.deadMinutes,
+    5,
+    "…and the week reports the minutes it actually wasted",
+  );
+}
+{
+  // A gap at or over the threshold is bookable, so it isn't waste at all.
+  const roomy = solveWeek({
+    dances: [dance("Solo", ["a"], [minuteSlot("studio", 3 * 60, 90)])],
+    occupied: [booked("studio", 0, 90)],
+    maxRuns: 1,
+  });
+  assertEqual(
+    roomy.deadMinutes,
+    0,
+    `a gap of ${STRANDED_GAP_MINUTES} minutes or more is bookable, so it costs nothing`,
+  );
+}
+
+// --- how many rehearsals somebody has in a day is not scored ----------------
+// It was, briefly. The AD's call is that it doesn't matter, so the solver has
+// no opinion on it: with attendance and room time level, a fourth rehearsal in
+// one day is just another legal arrangement, and nothing is moved to avoid it.
+{
+  // Pat and Quinn are in all four dances. Three can only run today; the fourth
+  // could run today or tomorrow. Today is earlier, and with nothing to
+  // separate the two options the week fills from the front.
+  const shared = ["pat", "quinn"];
+  const result = solveWeek({
+    dances: [
+      dance("One", shared, [minuteSlot("a", 0, 60)]),
+      dance("Two", shared, [minuteSlot("b", 90, 60)]),
+      dance("Three", shared, [minuteSlot("c", 180, 60)]),
+      dance("Four", shared, [
+        minuteSlot("d", 270, 60),
+        minuteSlot("d", 24 * 60, 60),
+      ]),
+    ],
+    maxRuns: 1,
+  });
+
+  assertEqual(
+    result.placements.length,
+    4,
+    "every dance still gets a time when a day is already full",
+  );
+  assertEqual(
+    result.placements[3]?.slot.startDateTime.getTime(),
+    minuteSlot("d", 270, 60).startDateTime.getTime(),
+    "a fourth rehearsal in one day is not avoided — nothing is traded to spread a day out",
   );
 }
 

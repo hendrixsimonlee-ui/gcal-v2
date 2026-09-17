@@ -123,8 +123,19 @@ export default async function HelpPage() {
         </p>
         <p>
           This isn&rsquo;t tidiness. A website can only send you notifications
-          once it&rsquo;s on your home screen — that&rsquo;s Apple&rsquo;s
-          rule, not ours.
+          once it&rsquo;s on your home screen. That&rsquo;s Apple&rsquo;s rule,
+          not ours.
+        </p>
+        <p>
+          <B>Then open PADT from your home screen and the app will ask you.</B>{" "}
+          Tap <B>Yes, turn them on</B>, and say yes again when your phone asks.
+          Two taps and you&rsquo;re done.
+        </p>
+        <p>
+          Installing it on its own isn&rsquo;t enough, which catches people
+          out. Until you say yes to that question you get nothing. The app
+          keeps asking every time you open it until you answer, and you can
+          press <B>Not now</B> as often as you like.
         </p>
         <p>
           <B>The app doesn&rsquo;t email you.</B>{" "}Notifications on your
@@ -145,7 +156,7 @@ export default async function HelpPage() {
             <B>A practice of yours is cancelled</B>
           </li>
           <li>
-            <B>Your dance starts in 15 minutes</B>, and where
+            <B>Your dance starts in 15 minutes</B>, and where it is
           </li>
           <li>
             <B>Practice has started</B>{" "}— check in
@@ -270,6 +281,14 @@ export default async function HelpPage() {
             may be picked anyway — with your conflict visible next to it. That
             is why writing what it actually is (&ldquo;CHEM 101 lab&rdquo;)
             helps more than leaving it blank.
+          </li>
+          <li>
+            <B>Practices get packed back to back on purpose.</B>{" "}The club pays
+            for a fixed number of room hours, and half an hour between two
+            rehearsals is time nobody can book. If your practice starts the
+            minute another one ends, that&rsquo;s why. This never costs anybody
+            their attendance — a room is only tidied up once everyone who could
+            come still can.
           </li>
           <li>
             <B>Every dance getting a rehearsal comes first.</B>{" "}A dance with no

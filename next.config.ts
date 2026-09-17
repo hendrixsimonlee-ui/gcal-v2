@@ -1,6 +1,15 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Leave the HiGHS solver alone rather than bundling it.
+  //
+  // It ships a .wasm alongside its JS, and the bundler treats that as a client
+  // asset URL — it lands in .next/static/media and never reaches the server
+  // function, so the loader can't find it at runtime on Vercel. Marking the
+  // package external makes it a plain require from node_modules, where the
+  // .wasm sits next to the .js exactly as the loader expects.
+  serverExternalPackages: ["highs"],
+
   images: {
     // Google profile photos.
     //

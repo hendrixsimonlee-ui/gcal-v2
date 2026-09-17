@@ -45,11 +45,34 @@ export type BuildWeekProposal = {
   }[];
   unplaced: Unplaced[];
   totalExpectedAttendance: number;
+  /** Minutes of booked room time this week leaves in holes too short to
+   * rebook. Shown because it is the one cost of a schedule that nobody
+   * notices until the term's room hours have run out. */
+  deadMinutes: number;
+  /** How many arrangements the solver got through before its time ran out.
+   * A week that only managed a handful is one where the AD should look
+   * harder at the result than usual. */
+  attempts: number;
 };
 
-/** How often each person has missed each dance, over the practices that have
- * actually been recorded. This is what stops the same person being the one
- * left out week after week. */
+/** Who keeps ending up as the one left out, in the three ways that shows up.
+ *
+ * All three come from the attendance rows that have actually been recorded —
+ * nothing is stored separately and there is nothing for the AD to maintain.
+ *
+ * - **Rate per dance** — what fraction of this dance they have missed. The
+ *   direct answer, and the one that carries most of the weight.
+ * - **Current streak** — how many of this dance's practices they have missed
+ *   *in a row*, counting back from the most recent. Three scattered across a
+ *   term and three in a row are different problems; the second is the one
+ *   where somebody quietly stops being part of the dance, and a rate alone
+ *   can't tell them apart.
+ * - **Term total** — how much they have missed across every dance they are
+ *   in. Somebody being squeezed out of four different dances looks
+ *   unremarkable in each one and is not unremarkable overall.
+ *
+ * Excused and unexcused both count. The question is who keeps ending up
+ * unable to come, not whose reason was better. */
 async function missRates(danceIds: string[]) {
   const rows = await prisma.attendance.findMany({
     where: {
@@ -58,27 +81,52 @@ async function missRates(danceIds: string[]) {
     select: {
       userId: true,
       status: true,
-      practice: { select: { danceId: true } },
+      practice: { select: { danceId: true, startDateTime: true } },
     },
+    // Oldest first, so walking backwards from the end of each person's list
+    // gives the run that is still going.
+    orderBy: { practice: { startDateTime: "asc" } },
   });
 
+  const missed = (status: string) =>
+    status === "UNEXCUSED_ABSENT" || status === "EXCUSED_ABSENT";
+
   const tally = new Map<string, { missed: number; total: number }>();
+  const sequence = new Map<string, boolean[]>();
+  const termMissesByUser = new Map<string, number>();
+
   for (const row of rows) {
     const key = `${row.userId}:${row.practice.danceId}`;
     const entry = tally.get(key) ?? { missed: 0, total: 0 };
     entry.total++;
-    // Only a genuine absence counts. Being excused is not a deficit to make
-    // up — the point is who keeps ending up unable to come.
-    if (row.status === "UNEXCUSED_ABSENT" || row.status === "EXCUSED_ABSENT") {
+    const absent = missed(row.status);
+    if (absent) {
       entry.missed++;
+      termMissesByUser.set(
+        row.userId,
+        (termMissesByUser.get(row.userId) ?? 0) + 1,
+      );
     }
     tally.set(key, entry);
+
+    const list = sequence.get(key) ?? [];
+    list.push(absent);
+    sequence.set(key, list);
   }
 
-  return Array.from(tally.entries()).map(([key, v]) => {
+  const perDance = Array.from(tally.entries()).map(([key, v]) => {
     const [userId, danceId] = key.split(":");
-    return { userId, danceId, missed: v.missed, total: v.total };
+    const list = sequence.get(key) ?? [];
+    let streak = 0;
+    for (let i = list.length - 1; i >= 0 && list[i]; i--) streak++;
+    return { userId, danceId, missed: v.missed, total: v.total, streak };
   });
+
+  const termMisses = Array.from(termMissesByUser.entries()).map(
+    ([userId, m]) => ({ userId, missed: m }),
+  );
+
+  return { perDance, termMisses };
 }
 
 /** Proposes a slot for every dance that isn't already scheduled in the given
@@ -121,7 +169,13 @@ export async function proposeWeek(
   });
 
   if (dances.length === 0) {
-    return { placements: [], unplaced: [], totalExpectedAttendance: 0 };
+    return {
+      placements: [],
+      unplaced: [],
+      totalExpectedAttendance: 0,
+      deadMinutes: 0,
+      attempts: 0,
+    };
   }
 
   const settings = await getAttendanceSettings();
@@ -229,11 +283,15 @@ export async function proposeWeek(
     endDateTime: p.endDateTime,
   }));
 
+  let history;
+  if (settings.useHistoricalWeighting) {
+    const { perDance, termMisses } = await missRates(dances.map((d) => d.id));
+    history = buildHistory(perDance, termMisses);
+  }
+
   const result = solveWeek({
     dances: toPlace,
-    history: settings.useHistoricalWeighting
-      ? buildHistory(await missRates(dances.map((d) => d.id)))
-      : undefined,
+    history,
     occupied,
   });
 
@@ -251,6 +309,8 @@ export async function proposeWeek(
     })),
     unplaced: result.unplaced,
     totalExpectedAttendance: result.totalExpectedAttendance,
+    deadMinutes: result.deadMinutes,
+    attempts: result.attempts,
   };
 }
 

@@ -138,8 +138,8 @@ export function PushToggle() {
 
       {state === "unsupported" && (
         <p className="text-ink-soft">
-          This browser can&rsquo;t do phone notifications. You&rsquo;ll still
-          get everything in the app and by email.
+          This browser can&rsquo;t do phone notifications. Everything still
+          reaches you inside the app — check the bell.
         </p>
       )}
     </div>

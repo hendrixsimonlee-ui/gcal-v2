@@ -155,6 +155,20 @@ export function BuildWeek({
             <span className="tabular-nums text-ink-soft">
               {proposal.totalExpectedAttendance} of {totalCast} people expected
             </span>
+            {/* Room waste is invisible until the term's booked hours have
+                gone, so it gets said out loud. Zero is the normal answer —
+                anything else means the only way to keep people in the room
+                left a hole too short to rebook. */}
+            <span className="tabular-nums text-ink-soft">
+              {proposal.deadMinutes === 0
+                ? "no room time wasted"
+                : `${proposal.deadMinutes} min of room time stranded`}
+            </span>
+            <span className="tabular-nums text-ink-soft">
+              {proposal.attempts === 1
+                ? "1 arrangement tried"
+                : `best of ${proposal.attempts} arrangements`}
+            </span>
           </div>
 
           {proposal.placements.length > 0 && (

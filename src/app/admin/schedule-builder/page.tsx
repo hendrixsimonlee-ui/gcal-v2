@@ -3,6 +3,14 @@ import { addDays } from "@/lib/dates";
 import { activeRange } from "@/lib/terms";
 import { ScheduleBuilder } from "@/components/schedule-builder/schedule-builder";
 
+/** Build the week is allowed to think for ten seconds, at the AD's request,
+ * and the server actions on this page run inside this route's function. The
+ * platform default is ten seconds too, which would kill the request at the
+ * exact moment the solver was finishing and return nothing at all — much
+ * worse than a slightly worse schedule. Thirty gives the solver its ten plus
+ * room for the database work either side of it. */
+export const maxDuration = 30;
+
 export default async function ScheduleBuilderPage() {
   // The whole term, not a window around today.
   //
