@@ -4,6 +4,9 @@ import {
   notifyAttendanceDue,
   notifyCheckInOpen,
   notifyConflictsDue,
+  notifyConflictsDueSoon,
+  CONFLICTS_DUE_NOW_PREFIX,
+  CONFLICTS_DUE_SOON_PREFIX,
   notifyPracticeStartingSoon,
 } from "@/lib/notify";
 import { settleAttendance } from "@/lib/actions/attendance";
@@ -15,6 +18,14 @@ import { zonedParts } from "@/lib/timezone";
  * notification type is de-duplicated by its own notification rows rather
  * than by timing. */
 const LOOKBACK_MINUTES = 15;
+
+/** How far ahead of the deadline the heads-up goes out.
+ *
+ * Two hours, because a reminder that lands *at* the deadline arrives when
+ * there is nothing useful left to do about it. This is measured back from
+ * whatever time the AD set, so moving the deadline moves both messages and
+ * they can't drift apart. */
+const HEADS_UP_MINUTES = 120;
 
 /** How far ahead the "starts soon" nudge looks.
  *
@@ -109,7 +120,7 @@ export async function GET(request: NextRequest) {
     attendanceSent++;
   }
 
-  const conflictsNudged = await runConflictNudge(now);
+  const conflictsNudged = await runConflictReminders(now);
 
   return NextResponse.json({
     soonSent,
@@ -120,16 +131,22 @@ export async function GET(request: NextRequest) {
   });
 }
 
-/** The weekly "your conflicts aren't in yet" nudge, at the day and time the
- * AD picked in Settings.
+/** The conflicts deadline, in two messages.
  *
- * It nudges about the week starting the following Monday — the one the AD is
- * about to build — and only the people who haven't submitted for it. If
- * everybody has, nobody is messaged.
+ * The AD sets one time in Settings: when conflicts are due. Two things hang
+ * off it, both only to the people who haven't submitted for the week the AD
+ * is about to build:
  *
- * Off unless the AD turns it on: this is the only message in the app that
- * arrives without them pressing anything. */
-async function runConflictNudge(now: Date): Promise<number> {
+ * - **Two hours before**, a heads-up, while there is still time to act on it.
+ * - **At the deadline**, the urgent one, naming the two presses that matter.
+ *
+ * Deriving the first from the second is the point. A second configurable time
+ * would be one more thing to set and one more thing to leave stale when the
+ * deadline moves.
+ *
+ * Off unless the AD turns it on: these are the only messages in the app that
+ * arrive without somebody pressing something. */
+async function runConflictReminders(now: Date): Promise<number> {
   const settings = await prisma.appSettings.findUnique({
     where: { id: "singleton" },
     select: {
@@ -141,28 +158,87 @@ async function runConflictNudge(now: Date): Promise<number> {
   });
   if (!settings?.conflictNudgeEnabled) return 0;
 
-  // Eastern, like everything else — the AD picks "Thursday 6pm" and means
+  // Eastern, like everything else. The AD picks "Thursday noon" and means
   // their own clock, not the server's.
   const here = zonedParts(now);
-  if (here.weekday !== settings.conflictNudgeWeekday) return 0;
-
-  const dueMinutes = settings.conflictNudgeHour * 60 + settings.conflictNudgeMinute;
   const nowMinutes = here.hour * 60 + here.minute;
-  // Same window as everything else here: the job runs every five minutes, so
-  // it has to catch the tick it lands on rather than an exact minute.
-  if (nowMinutes < dueMinutes || nowMinutes > dueMinutes + LOOKBACK_MINUTES) {
-    return 0;
+  const dueMinutes =
+    settings.conflictNudgeHour * 60 + settings.conflictNudgeMinute;
+
+  // The job runs every five minutes, so each message has to catch the tick it
+  // lands on rather than an exact minute.
+  const landsOn = (weekday: number, minutes: number) =>
+    here.weekday === weekday &&
+    nowMinutes >= minutes &&
+    nowMinutes <= minutes + LOOKBACK_MINUTES;
+
+  let sent = 0;
+
+  if (landsOn(settings.conflictNudgeWeekday, dueMinutes)) {
+    sent += await fireConflictReminder(
+      now,
+      0,
+      CONFLICTS_DUE_NOW_PREFIX,
+      notifyConflictsDue,
+    );
   }
 
-  const weekOf = addDays(startOfWeek(now), 7);
+  // Two hours earlier, which can fall on the previous day if the AD set a
+  // deadline before 2am. Rare, but a wrapped time would otherwise silently
+  // never fire.
+  let soonMinutes = dueMinutes - HEADS_UP_MINUTES;
+  let soonWeekday = settings.conflictNudgeWeekday;
+  let dayShift = 0;
+  if (soonMinutes < 0) {
+    soonMinutes += 24 * 60;
+    soonWeekday = (soonWeekday + 6) % 7;
+    dayShift = 1;
+  }
 
-  // Once a week, whatever happens. The notification rows are the record, same
-  // as the per-practice ones — no extra column to get out of step.
+  if (landsOn(soonWeekday, soonMinutes)) {
+    sent += await fireConflictReminder(
+      now,
+      dayShift,
+      CONFLICTS_DUE_SOON_PREFIX,
+      notifyConflictsDueSoon,
+    );
+  }
+
+  return sent;
+}
+
+/** Sends one of the two, if it hasn't already gone out for this week.
+ *
+ * `dayShift` moves the anchor forward when the heads-up falls the day before
+ * the deadline, so both messages talk about the same week.
+ *
+ * De-duplication is on the notification rows themselves, same as the
+ * per-practice ones, so there is no extra column to get out of step. The two
+ * messages share a type and are told apart by how they open — which is why
+ * those openings are exported constants rather than typed out twice. */
+async function fireConflictReminder(
+  now: Date,
+  dayShift: number,
+  prefix: string,
+  send: (userIds: string[], weekLabel: string) => Promise<number>,
+): Promise<number> {
+  const anchor = dayShift === 0 ? now : addDays(now, dayShift);
+  const weekOf = addDays(startOfWeek(anchor), 7);
+  const label = formatWeekLabel(weekOf);
+
+  // A week the AD has switched off, such as a break. Nobody needs chasing
+  // about conflicts for a week the troupe isn't rehearsing.
+  const skipped = await prisma.conflictReminderSkip.findUnique({
+    where: { weekOf },
+    select: { weekOf: true },
+  });
+  if (skipped) return 0;
+
   const already = await prisma.notification.findFirst({
     where: {
       type: "CONFLICTS_DUE",
       createdAt: { gte: addDays(now, -3) },
-      message: { contains: formatWeekLabel(weekOf) },
+      message: { startsWith: prefix, contains: label },
     },
     select: { id: true },
   });
@@ -172,13 +248,13 @@ async function runConflictNudge(now: Date): Promise<number> {
     where: { weekOf, submittedAt: { not: null } },
     select: { userId: true },
   });
-  const done = new Set(submitted.map((s) => s.userId));
+  const done = new Set(submitted.map((sub) => sub.userId));
 
   const roster = await prisma.user.findMany({ select: { id: true } });
   const missing = roster.map((u) => u.id).filter((id) => !done.has(id));
   if (missing.length === 0) return 0;
 
-  return notifyConflictsDue(missing, formatWeekLabel(weekOf));
+  return send(missing, label);
 }
 
 /** De-duplication without a "notified" column: the notification rows carry

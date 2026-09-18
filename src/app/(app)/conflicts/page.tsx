@@ -2,7 +2,12 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { WeekNav } from "@/components/week-nav";
 import { ConflictsCalendar } from "@/components/conflicts-calendar";
-import { addDays, formatWeekLabel, parseWeekParam, toDateParam } from "@/lib/dates";
+import {
+  addDays,
+  formatWeekLabel,
+  parseConflictWeekParam,
+  toDateParam,
+} from "@/lib/dates";
 import {
   deleteConflict,
 } from "@/lib/actions/conflicts";
@@ -28,7 +33,7 @@ export default async function MyConflictsPage({
   const session = await auth();
   const userId = session!.user.id;
 
-  const weekStart = parseWeekParam(week);
+  const weekStart = parseConflictWeekParam(week);
 
   const [me, weekConflicts, calendarConflicts, submission] =
     await Promise.all([

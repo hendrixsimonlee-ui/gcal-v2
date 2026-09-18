@@ -8,12 +8,14 @@ import {
   toggleAdmin,
   updateRosterMember,
 } from "@/lib/actions/roster";
+import { setFinanceAdmin } from "@/lib/actions/dues";
 
 export interface RosterPerson {
   id: string;
   name: string | null;
   email: string;
   isAdmin: boolean;
+  isFinanceAdmin: boolean;
   danceCount: number;
   hasSignedIn: boolean;
   calendarName: string | null;
@@ -120,17 +122,43 @@ export function RosterRow({ person }: { person: RosterPerson }) {
         )}
       </td>
       <td className="px-4 py-2">
-        <form action={toggleAdmin.bind(null, person.id, !person.isAdmin)}>
-          <button
-            type="submit"
-            className={`rounded px-2 py-0.5 text-xs font-medium ${ person.isAdmin
-                ? "bg-accent text-on-accent"
-                : "border border-line-strong text-ink-soft"
-            }`}
-          >
-            {person.isAdmin ? "Admin" : "Make admin"}
-          </button>
-        </form>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <form action={toggleAdmin.bind(null, person.id, !person.isAdmin)}>
+            <button
+              type="submit"
+              className={`rounded px-2 py-0.5 text-xs font-medium ${ person.isAdmin
+                  ? "bg-accent text-on-accent"
+                  : "border border-line-strong text-ink-soft"
+              }`}
+            >
+              {person.isAdmin ? "Admin" : "Make admin"}
+            </button>
+          </form>
+
+          {/* The dues ledger on its own. An admin already has it, so offering
+              it beside the Admin badge would only invite someone to think it
+              takes anything away. */}
+          {!person.isAdmin && (
+            <form
+              action={setFinanceAdmin.bind(
+                null,
+                person.id,
+                !person.isFinanceAdmin,
+              )}
+            >
+              <button
+                type="submit"
+                title="Lets this dancer open Late charges. Nothing else in the admin console."
+                className={`rounded px-2 py-0.5 text-xs font-medium ${ person.isFinanceAdmin
+                    ? "bg-info-soft text-info"
+                    : "border border-line-strong text-ink-faint"
+                }`}
+              >
+                {person.isFinanceAdmin ? "Late charges" : "Give late charges"}
+              </button>
+            </form>
+          )}
+        </div>
       </td>
       <td className="px-4 py-2 text-right">
         <button

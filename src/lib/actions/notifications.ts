@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireAdmin, requireUser } from "@/lib/authz";
+import { addDays, startOfWeek } from "@/lib/dates";
+import { parseAppDateTime } from "@/lib/timezone";
 
 export async function markAllNotificationsRead() {
   const user = await requireUser();
@@ -32,6 +34,8 @@ export async function getConflictNudgeSchedule(): Promise<{
   weekday: number;
   hour: number;
   minute: number;
+  /** Mondays, as yyyy-mm-dd, of the weeks the AD has switched off. */
+  skippedWeeks: string[];
 }> {
   await requireAdmin();
   const settings = await prisma.appSettings.findUnique({
@@ -43,12 +47,58 @@ export async function getConflictNudgeSchedule(): Promise<{
       conflictNudgeMinute: true,
     },
   });
+  // Only weeks still ahead. A break that has already passed is clutter, and
+  // the rows are harmless to leave in the table.
+  const skips = await prisma.conflictReminderSkip.findMany({
+    where: { weekOf: { gte: addDays(startOfWeek(new Date()), -7) } },
+    orderBy: { weekOf: "asc" },
+    select: { weekOf: true },
+  });
+
   return {
-    enabled: settings?.conflictNudgeEnabled ?? false,
+    // These fall back to the schema defaults rather than the old ones. A
+    // mismatch here is invisible until the settings row is missing, at which
+    // point the screen would show a schedule the cron job isn't using.
+    enabled: settings?.conflictNudgeEnabled ?? true,
     weekday: settings?.conflictNudgeWeekday ?? 4,
-    hour: settings?.conflictNudgeHour ?? 18,
+    hour: settings?.conflictNudgeHour ?? 12,
     minute: settings?.conflictNudgeMinute ?? 0,
+    skippedWeeks: skips.map((s) => s.weekOf.toISOString().slice(0, 10)),
   };
+}
+
+/** Switch the reminders off for one week, such as a break.
+ *
+ * The AD picks any date; it is stored as the Monday of that week, so picking
+ * the Wednesday of winter break does what they meant rather than nothing. */
+export async function skipConflictReminderWeek(formData: FormData) {
+  await requireAdmin();
+
+  const dateKey = String(formData.get("weekOf") ?? "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) return;
+
+  // Eastern, like every other date in the app. Parsing the bare key as UTC
+  // would land on the previous evening and could pick the wrong Monday.
+  const weekOf = startOfWeek(parseAppDateTime(dateKey));
+
+  await prisma.conflictReminderSkip.upsert({
+    where: { weekOf },
+    update: {},
+    create: { weekOf },
+  });
+  revalidatePath("/admin/settings");
+}
+
+export async function unskipConflictReminderWeek(formData: FormData) {
+  await requireAdmin();
+
+  const dateKey = String(formData.get("weekOf") ?? "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) return;
+
+  await prisma.conflictReminderSkip.deleteMany({
+    where: { weekOf: startOfWeek(parseAppDateTime(dateKey)) },
+  });
+  revalidatePath("/admin/settings");
 }
 
 export async function setConflictNudgeSchedule(formData: FormData) {

@@ -185,11 +185,44 @@ export async function announcePracticeChanges(
   return perUser.size;
 }
 
-/** "Your conflicts for next week aren't in yet." The AD's nudge, sent only to
- * the people who haven't submitted — never to the whole roster. */
+/** Both halves of the conflicts deadline, sent only to the people who
+ * haven't submitted. Never to the whole roster.
+ *
+ * Two messages rather than one because a single reminder at the deadline
+ * arrives when there is nothing useful left to do about it. The first is a
+ * heads-up with time to act; the second is the deadline itself and says so
+ * plainly.
+ *
+ * Both are worded around the two presses that actually matter. "Add your
+ * conflicts" was the old wording and it let people think putting a class in
+ * Google Calendar was the whole job — the app never sees it until they press
+ * Sync, and the AD can't tell a clear week from an unchecked one until they
+ * press Submit. */
+export async function notifyConflictsDueSoon(
+  userIds: string[],
+  weekLabel: string,
+): Promise<number> {
+  return sendConflictReminder(
+    userIds,
+    `Heads up: your conflicts for the week of ${weekLabel} are due in 2 hours`,
+  );
+}
+
 export async function notifyConflictsDue(
   userIds: string[],
   weekLabel: string,
+): Promise<number> {
+  return sendConflictReminder(
+    userIds,
+    `Conflicts are due now for the week of ${weekLabel}. Open the app, press Sync, then press Submit.`,
+  );
+}
+
+/** The two messages above differ only in their words, and the cron job tells
+ * them apart by how they start. Keep the openings distinct. */
+async function sendConflictReminder(
+  userIds: string[],
+  message: string,
 ): Promise<number> {
   if (userIds.length === 0) return 0;
   const users = await prisma.user.findMany({
@@ -197,16 +230,12 @@ export async function notifyConflictsDue(
     select: { id: true, email: true },
   });
 
-  await notify(
-    users,
-    "CONFLICTS_DUE",
-    `Please add your conflicts for the week of ${weekLabel}`,
-    {
-      href: "/conflicts",
-    },
-  );
+  await notify(users, "CONFLICTS_DUE", message, { href: "/conflicts" });
   return users.length;
 }
+
+export const CONFLICTS_DUE_SOON_PREFIX = "Heads up:";
+export const CONFLICTS_DUE_NOW_PREFIX = "Conflicts are due now";
 
 /** "Bhangra isn't practising the week of Aug 3." Sent only when the AD asks
  * for it, never as a side effect of marking the week off. */

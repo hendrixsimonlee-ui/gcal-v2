@@ -13,6 +13,7 @@ const ADMIN_NAV: NavItem[] = [
   { href: "/admin/conflicts", label: "Conflict Review" },
   { href: "/admin/schedule-builder", label: "Schedule Builder" },
   { href: "/admin/attendance", label: "Attendance Review" },
+  { href: "/admin/attendance-charges", label: "Late charges" },
   { href: "/admin/settings", label: "Settings" },
   { href: "/admin/help", label: "How it works" },
 ];
@@ -44,9 +45,10 @@ export default async function AdminLayout({
           items={ADMIN_NAV}
           switchLink={{ href: "/schedule", label: "← My Schedule" }}
         />
-        {/* pb-24 on phones clears the fixed tab bar; the max-width keeps
-            text from running the full width of a desktop monitor. */}
-        <main className="flex-1 overflow-y-auto px-4 pb-32 pt-5 sm:px-6 sm:pb-8 sm:pt-6">
+        {/* The max-width keeps text from running the full width of a desktop
+            monitor. The admin console never had a fixed bottom bar, so the
+            padding that used to clear one is gone from here too. */}
+        <main className="flex-1 overflow-y-auto px-4 pb-8 pt-5 sm:px-6 sm:pt-6">
           <div className="mx-auto w-full max-w-5xl">{children}</div>
         </main>
       </div>

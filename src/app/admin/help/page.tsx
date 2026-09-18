@@ -147,6 +147,15 @@ export default function AdminHelpPage() {
           it can never quietly make a slot look better than it is.
         </p>
         <p>
+          <B>Both conflict screens open on next week</B>, yours and theirs, and
+          roll over every Monday at 6am. The schedule is built a week ahead, so
+          the week worth looking at on Thursday is the one starting the
+          following Monday — the same week the reminders chase, so you and the
+          team are never looking at different weeks while talking to each
+          other. The date bar still moves freely and any week can still be
+          submitted.
+        </p>
+        <p>
           <B>Submitting</B>{" "}is how somebody says &ldquo;I&rsquo;ve looked at
           this week&rdquo;. It&rsquo;s what separates a genuinely free week from
           one nobody checked. If people haven&rsquo;t submitted you can nudge
@@ -937,19 +946,195 @@ export default function AdminHelpPage() {
         </p>
 
         <h3 className="mt-2 font-semibold text-ink">
-          The weekly conflicts reminder
+          The conflicts deadline
         </h3>
         <p>
-          The only message that goes out without you pressing anything, so
-          it&rsquo;s off until you switch it on in{" "}
-          <Nav href="/admin/settings">Settings</Nav>. Pick a day and a time
-          and it goes to everyone who hasn&rsquo;t submitted for the week
-          starting the following Monday.
+          You set <B>one</B>{" "}time in{" "}
+          <Nav href="/admin/settings">Settings</Nav>: when conflicts are due.
+          It is currently <B>Thursday at noon</B>. Two messages hang off it,
+          and both go only to the people who haven&rsquo;t submitted for the
+          week starting the following Monday:
+        </p>
+        <ul>
+          <li>
+            <B>Two hours before</B>{" "}(10am) &mdash; &ldquo;Heads up: your
+            conflicts are due in 2 hours&rdquo;. Early enough to actually do
+            something about.
+          </li>
+          <li>
+            <B>At the deadline</B>{" "}(noon) &mdash; &ldquo;Conflicts are due
+            now. Open the app, press Sync, then press Submit.&rdquo;
+          </li>
+        </ul>
+        <p>
+          <B>Move the deadline and both move with it.</B>{" "}The heads-up is
+          always two hours before whatever you set, so there is no second time
+          to keep in step and nothing to leave stale.
+        </p>
+        <p>
+          <B>These are the only messages the app sends without you pressing
+          anything</B>, so they are worth knowing about. They were off by
+          default and are now on. To stop them, untick the reminder in
+          Settings.
         </p>
         <p>
           People who have already submitted are left alone, and if everyone
-          has, nothing sends. It goes once a week whatever happens — you
-          can&rsquo;t accidentally send it twice.
+          has, nothing sends at all. Each goes once a week whatever happens, so
+          you can&rsquo;t accidentally double up.
+        </p>
+        <h3 className="mt-2 font-semibold text-ink">
+          Skipping a week, such as a break
+        </h3>
+        <p>
+          Under the schedule in <Nav href="/admin/settings">Settings</Nav>{" "}
+          there&rsquo;s <B>Weeks to skip</B>. Pick any date in a week and both
+          reminders stay quiet for it. Every other week carries on as normal.
+        </p>
+        <p>
+          This exists so you don&rsquo;t switch the whole thing off for winter
+          break and then forget to switch it back on in January, which is the
+          version of this that goes wrong.
+        </p>
+        <p>
+          <B>The date means the week people would be submitting conflicts
+          for</B>, not the week the reminder would be sent in. So to silence
+          the reminders about the week of December 22, skip December 22 —
+          they&rsquo;d otherwise have gone out on the Thursday before.
+        </p>
+        <p>
+          Weeks in the past drop off the list on their own. To put one back,
+          press <B>Remind after all</B>.
+        </p>
+
+        <p>
+          <B>The wording names both presses on purpose.</B>{" "}It used to say
+          &ldquo;add your conflicts&rdquo;, which let people think putting a
+          class in Google Calendar was the whole job. The app never sees it
+          until they press Sync, and you can&rsquo;t tell a clear week from an
+          unchecked one until they press Submit.
+        </p>
+      </Section>
+
+      <Section title="Late charges">
+        <p>
+          Late charges come out of the check-in records on their own. The only
+          things anybody types are who has paid and what people earned back.
+        </p>
+        <p>
+          <B>The ladder it starts with:</B>{" "}under 5 minutes free, 5 to 9 is
+          $1, 10 to 14 is $2, 15 to 29 is $5, 30 or more is $10. Not turning up
+          costs nothing here, and somebody with an agreed late arrival is
+          measured from the time they agreed, so keeping to it is free. You can
+          change all of these — see <B>Rates &amp; credits</B> below.
+        </p>
+        <p>
+          <B>Credits:</B>{" "}the app ships with leading Pan-Asian time or a
+          workshop at $1 off and attending one at 50c, and you can add your own.
+          They come off the oldest charges first and roll forward within a
+          semester. Nothing carries into the next one.
+        </p>
+        <p>Four tabs, because they are four different jobs:</p>
+        <ul>
+          <li>
+            <B>Monthly ledger</B>{" "}— chasing one month. Two tables: every
+            late arrival on its own line with the dance, the time and when they
+            walked in, then what each person owes with the ticks for Venmo
+            requested and Paid.
+          </li>
+          <li>
+            <B>Semester summary</B>{" "}— every dancer, their charges month by
+            month, what was collected and what is still out. Sorted with the
+            biggest outstanding amount at the top, so the people to chase are
+            the people you see first. The spreadsheet export is here.
+          </li>
+          <li>
+            <B>Credits &amp; workshops</B>{" "}— plus and minus buttons for
+            logging during a meeting.
+          </li>
+          <li>
+            <B>Rates &amp; credits</B>{" "}— what being late costs and what
+            earns money back. Yours alone; the treasurer doesn&rsquo;t see this
+            tab.
+          </li>
+        </ul>
+        <p>
+          <B>Fixing a charge you disagree with.</B>{" "}On the Monthly ledger
+          there is a <B>Fix</B>{" "}button at the end of every line. It does
+          three things:
+        </p>
+        <ul>
+          <li>
+            <B>Change the minutes.</B>{" "}For when the sheet says twelve
+            minutes because the rehearsal didn&rsquo;t start on time. The charge
+            re-prices itself at whatever the rates were that day. Take it under
+            the free threshold and the line disappears, because there is no
+            charge left to show — the record is still on the practice&rsquo;s
+            attendance sheet.
+          </li>
+          <li>
+            <B>Waive it.</B>{" "}Type a reason and the charge goes to zero. The
+            reason shows on that person&rsquo;s own page, so you are not the
+            only one who remembers why. You can put it back later.
+          </li>
+          <li>
+            <B>Open the attendance sheet</B>{" "}for that practice, to change
+            who was there or when it really started. Changing the real start
+            time recalculates everybody at that practice at once, which is
+            usually the right fix when a rehearsal ran late.
+          </li>
+        </ul>
+        <p>
+          <B>Only you can do any of that.</B>{" "}A treasurer sees the same
+          charges and ticks the same boxes, but cannot change minutes, waive
+          anything, or touch the rates.
+        </p>
+        <p>
+          <B>Changing what being late costs.</B>{" "}On{" "}
+          <B>Rates &amp; credits</B>, each set of rates starts on a date. Press{" "}
+          <B>New rates from a date</B>, set the date and the steps, and save.
+          Charges are priced by whichever set was running on the day of the
+          rehearsal, so raising the rates in October leaves September exactly as
+          people were told it. Editing a set that is already in use does
+          re-price everything under it, so add a new dated set rather than
+          editing the old one unless you are fixing a typo.
+        </p>
+        <p>
+          <B>Changing what earns money back.</B>{" "}Same tab, second list. Add a
+          category, give it a name and an amount, and it appears as a column on{" "}
+          <B>Credits &amp; workshops</B>{" "}straight away. Changing an amount
+          only affects credits logged from then on — each one keeps what it was
+          worth on the day it was earned. Removing a category that people have
+          already earned keeps it on their ledger and just takes it off the
+          list.
+        </p>
+        <p>
+          <B>No total is stored anywhere.</B>{" "}Everything is worked out from
+          the attendance records each time you open the page, so editing a
+          practice updates the money with it and nothing can drift out of step.
+          The one exception is a month you have marked paid, which remembers
+          what it cost at that moment so a later edit can&rsquo;t move a
+          receipt.
+        </p>
+        <p>
+          <B>Charges start from August 2026.</B>{" "}Nothing recorded before
+          then is ever billed, so switching this on didn&rsquo;t hand anybody a
+          surprise bill for old rehearsals.
+        </p>
+        <p>
+          <B>What the team sees.</B>{" "}Each dancer gets their own charges on{" "}
+          <Nav href="/my-attendance">My Attendance</Nav>, under a{" "}
+          <B>Late charges</B>{" "}tab, with their practice record on a second
+          tab beside it. They see their own and nobody else&rsquo;s. Expect to
+          be asked about waivers, because the reason you type is the reason they
+          read.
+        </p>
+        <p>
+          <B>Letting somebody else run it.</B>{" "}On{" "}
+          <Nav href="/admin/roster">Roster</Nav> there&rsquo;s a{" "}
+          <B>Give late charges</B>{" "}button next to each person. It opens this
+          one page for them and nothing else: no casting, no room bookings, no
+          schedule builder, no conflict notes. They keep their normal dancer
+          navigation with one extra link added.
         </p>
       </Section>
 

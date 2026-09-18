@@ -5,6 +5,9 @@ import { getAttendanceSettings } from "@/lib/actions/attendance";
 import { getPersonAttendance } from "@/lib/attendance-data";
 import { AttendanceBadge } from "@/components/status-badges";
 import { APP_TIME_ZONE } from "@/lib/timezone";
+import { MyDues } from "@/components/dues/my-dues";
+import { currentTerm } from "@/lib/actions/dues";
+import { termLabel } from "@/lib/attendance-fees";
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", {
   timeZone: APP_TIME_ZONE,
@@ -22,8 +25,20 @@ const timeFormatter = new Intl.DateTimeFormat("en-US", {
  *
  * Every practice is a link through to that practice's full record, so if
  * there's ever a question about who was there, both sides can open the same
- * page and look at the same thing. */
-export default async function MyAttendancePage() {
+ * page and look at the same thing.
+ *
+ * Two tabs rather than one scroll. Money and attendance are two different
+ * questions — "do I owe anything" and "how much have I missed" — and stacking
+ * a term of practice records under a five-dollar charge meant people scrolled
+ * past one looking for the other. Charges are first because that is what
+ * people arrive on this page worrying about. */
+export default async function MyAttendancePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string }>;
+}) {
+  const { tab } = await searchParams;
+  const showing = tab === "record" ? "record" : "charges";
   const session = await auth();
   const userId = session!.user.id;
 
@@ -55,35 +70,76 @@ export default async function MyAttendancePage() {
           My Attendance
         </h1>
         <p className="mt-1 text-sm text-ink-soft">
-          Every practice you&rsquo;ve had, and what was recorded. Tap any one
-          to see the full record for that practice.
-          {totalMinutesLate > 0 &&
-            ` You're ${totalMinutesLate} minutes late in total so far.`} </p>
+          What you owe, and every practice you&rsquo;ve had.
+        </p>
       </div>
 
-      {groups.length === 0 && (
-        <p className="rounded-xl border border-dashed border-line-strong px-4 py-8 text-center text-sm text-ink-soft">
-          You&rsquo;re not in any dances yet.
-        </p>
-      )}
+      <nav className="flex flex-wrap gap-1 border-b border-line">
+        <Tab href="/my-attendance" active={showing === "charges"}>
+          Late charges
+        </Tab>
+        <Tab href="/my-attendance?tab=record" active={showing === "record"}>
+          My record
+        </Tab>
+      </nav>
 
-      {current.map((group) => (
-        <DanceHistory key={group.danceId} group={group} />
-      ))}
+      {showing === "charges" ? (
+        <MyDues term={termLabel(await currentTerm())} />
+      ) : (
+        <>
+          <p className="text-sm text-ink-soft">
+            Tap any practice to see the full record for it.
+            {totalMinutesLate > 0 &&
+              ` You're ${totalMinutesLate} minutes late in total so far.`}
+          </p>
 
-      {past.length > 0 && (
-        <details className="rounded-xl border border-line bg-surface p-4">
-          <summary className="cursor-pointer text-sm font-semibold text-ink">
-            Past seasons ({past.length})
-          </summary>
-          <div className="mt-3 flex flex-col gap-4">
-            {past.map((group) => (
-              <DanceHistory key={group.danceId} group={group} bare />
-            ))}
-          </div>
-        </details>
+          {groups.length === 0 && (
+            <p className="rounded-xl border border-dashed border-line-strong px-4 py-8 text-center text-sm text-ink-soft">
+              You&rsquo;re not in any dances yet.
+            </p>
+          )}
+
+          {current.map((group) => (
+            <DanceHistory key={group.danceId} group={group} />
+          ))}
+
+          {past.length > 0 && (
+            <details className="rounded-xl border border-line bg-surface p-4">
+              <summary className="cursor-pointer text-sm font-semibold text-ink">
+                Past seasons ({past.length})
+              </summary>
+              <div className="mt-3 flex flex-col gap-4">
+                {past.map((group) => (
+                  <DanceHistory key={group.danceId} group={group} bare />
+                ))}
+              </div>
+            </details>
+          )}
+        </>
       )}
     </div>
+  );
+}
+
+function Tab({
+  href,
+  active,
+  children,
+}: {
+  href: string;
+  active: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <Link
+      href={href}
+      className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors ${ active
+          ? "border-accent text-accent-ink"
+          : "border-transparent text-ink-soft hover:text-ink"
+      }`}
+    >
+      {children}
+    </Link>
   );
 }
 

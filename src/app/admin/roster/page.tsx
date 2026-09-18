@@ -92,6 +92,7 @@ export default async function RosterPage() {
                   name: user.name,
                   email: user.email,
                   isAdmin: user.isAdmin,
+                  isFinanceAdmin: user.isFinanceAdmin,
                   danceCount: user._count.memberships,
                   hasSignedIn: user._count.accounts > 0,
                   calendarName: user.conflictCalendarName,

@@ -34,6 +34,7 @@ export default async function AdminSettingsPage() {
         weekday={nudge.weekday}
         hour={nudge.hour}
         minute={nudge.minute}
+        skippedWeeks={nudge.skippedWeeks}
       />
 
       <form
@@ -66,7 +67,7 @@ export default async function AdminSettingsPage() {
         </p>
         <p className="text-xs text-ink-soft">
           Only unexcused absences count toward the flag — an excused conflict
-          or a logged out-of-town window never counts against someone.
+          never counts against someone, including an all-day one.
         </p>
 
         <hr className="border-line" />

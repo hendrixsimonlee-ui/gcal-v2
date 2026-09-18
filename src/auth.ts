@@ -197,6 +197,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       if (session.user) {
         session.user.id = user.id;
         session.user.isAdmin = (user as { isAdmin?: boolean }).isAdmin ?? false;
+        session.user.isFinanceAdmin =
+          (user as { isFinanceAdmin?: boolean }).isFinanceAdmin ?? false;
       }
       return session;
     },

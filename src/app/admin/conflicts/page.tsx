@@ -1,5 +1,9 @@
 import { prisma } from "@/lib/prisma";
-import { formatWeekLabel, parseWeekParam, toDateParam } from "@/lib/dates";
+import {
+  formatWeekLabel,
+  parseConflictWeekParam,
+  toDateParam,
+} from "@/lib/dates";
 import { ConflictReview } from "@/components/conflict-review";
 
 /** The AD's weekly triage. Grouped by person, title first, one decision per
@@ -11,7 +15,7 @@ export default async function AdminConflictsPage({
   searchParams: Promise<{ week?: string }>;
 }) {
   const { week } = await searchParams;
-  const weekStart = parseWeekParam(week);
+  const weekStart = parseConflictWeekParam(week);
 
   const [conflicts] = await Promise.all([
     prisma.conflict.findMany({

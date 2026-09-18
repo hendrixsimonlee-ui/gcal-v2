@@ -4,7 +4,11 @@
  * npm test), because the bug being guarded against is exactly "works on my
  * laptop, wrong on the server". Every assertion here failed before
  * src/lib/timezone.ts existed. */
-import { calendarDateFormatter, calendarDateFromInput } from "./dates";
+import {
+  calendarDateFormatter,
+  calendarDateFromInput,
+  defaultConflictWeek,
+} from "./dates";
 import {
   addDaysInApp,
   appDateKey,
@@ -240,6 +244,55 @@ assertEqual(midnight.weekday, 6, "4 July 2026 is a Saturday");
     forced.format(stored),
     "19",
     "…and an attempt to override the zone is ignored",
+  );
+}
+
+// --- which week the conflicts screens open on ---------------------------------
+// The schedule is built a week ahead, so these screens open on next week
+// rather than the one already scheduled. It rolls over at 6am Monday, not
+// midnight, so somebody opening the app late on Sunday night still sees the
+// week they were being chased about.
+{
+  // Eastern is UTC-4 in September, so 06:00 Eastern is 10:00 UTC.
+  const openOn = (iso: string) => appDateKey(defaultConflictWeek(new Date(iso)));
+
+  assertEqual(
+    openOn("2026-09-14T09:59:00Z"),
+    "2026-09-14",
+    "just before 6am Monday it still opens on the week that was being chased",
+  );
+  assertEqual(
+    openOn("2026-09-14T10:00:00Z"),
+    "2026-09-21",
+    "at 6am Monday it rolls onto the following week",
+  );
+  assertEqual(
+    openOn("2026-09-17T16:00:00Z"),
+    "2026-09-21",
+    "on the Thursday the reminders go out, it is the week they are about",
+  );
+  assertEqual(
+    openOn("2026-09-20T23:30:00Z"),
+    "2026-09-21",
+    "late on Sunday night it is still the same week, not two ahead",
+  );
+  assertEqual(
+    openOn("2026-09-21T10:00:00Z"),
+    "2026-09-28",
+    "the next Monday at 6am it moves on again",
+  );
+
+  // Eastern is UTC-5 in January, so 06:00 Eastern is 11:00 UTC. A fixed
+  // offset would put this an hour out and flip the answer.
+  assertEqual(
+    openOn("2027-01-11T10:59:00Z"),
+    "2027-01-11",
+    "the 6am rollover follows the clocks: still before it in winter",
+  );
+  assertEqual(
+    openOn("2027-01-11T11:00:00Z"),
+    "2027-01-18",
+    "…and lands on it an hour later than it would in summer",
   );
 }
 

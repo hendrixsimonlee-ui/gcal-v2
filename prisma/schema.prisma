@@ -60,6 +60,158 @@ enum PracticeStatus {
   CONFIRMED
 }
 
+/// Weeks the AD has switched the conflict reminders off for, one row per week.
+///
+/// Keyed by the Monday of the week the conflicts are *for*, which is the week
+/// the reminder talks about rather than the week it is sent in. That is how
+/// the AD thinks about it: "no reminder for the week of Dec 22" means the week
+/// people would be submitting conflicts for.
+///
+/// A row here suppresses both messages, the heads-up and the deadline one.
+/// Breaks are the case it exists for: nobody needs chasing about a week the
+/// troupe isn't rehearsing.
+model ConflictReminderSkip {
+  weekOf    DateTime @id @db.Date
+  createdAt DateTime @default(now())
+}
+
+/// One revision of the late fee ladder.
+///
+/// A revision rather than a set of editable numbers, because changing what
+/// lateness costs must not rewrite history. Somebody who was invoiced $5 in
+/// September was told $5; if the AD raises it to $7 in October, September has
+/// to keep saying $5 or the ledger disagrees with what was actually collected.
+///
+/// A charge is priced with whichever schedule was in force on the day of the
+/// practice: the one with the latest `effectiveFrom` on or before it.
+model FeeSchedule {
+  id            String    @id @default(cuid())
+  effectiveFrom DateTime  @db.Date
+  note          String?
+  createdAt     DateTime  @default(now())
+  createdById   String?
+  tiers         FeeTier[]
+
+  @@index([effectiveFrom])
+}
+
+/// One rung: "from this many minutes late, this many cents".
+model FeeTier {
+  id          String      @id @default(cuid())
+  scheduleId  String
+  schedule    FeeSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  fromMinutes Int
+  cents       Int
+
+  @@unique([scheduleId, fromMinutes])
+}
+
+/// Something a dancer can do that earns money off their charges.
+///
+/// A table rather than an enum so the AD can add "helped at auditions" without
+/// a deploy. Retired ones are archived rather than deleted: credits already
+/// earned against a category still have to say what they were for.
+model CreditCategory {
+  id         String    @id @default(cuid())
+  name       String
+  cents      Int
+  sortOrder  Int       @default(0)
+  archivedAt DateTime?
+
+  credits AttendanceCredit[]
+
+  @@index([archivedAt])
+}
+
+/// One thing a dancer did that earns credit against their late charges.
+///
+/// A row per occurrence rather than a running count, so the ledger can show
+/// *when* somebody earned something and the AD can take back a single entry
+/// logged by mistake without recounting the rest.
+model AttendanceCredit {
+  id         String         @id @default(cuid())
+  userId     String
+  user       User           @relation("CreditEarner", fields: [userId], references: [id], onDelete: Cascade)
+  categoryId String
+  category   CreditCategory @relation(fields: [categoryId], references: [id])
+
+  /// What it was worth when it was earned, in cents.
+  ///
+  /// Copied from the rate table rather than looked up on read. If the troupe
+  /// ever decides a workshop is worth a dollar, last term's ledger must keep
+  /// saying what it actually said at the time.
+  cents Int
+
+  /// "Fall 2026". Credits never cross a term, and storing the label rather
+  /// than deriving it from the date means a correction logged in January for
+  /// something that happened in December still belongs to the autumn.
+  term String
+
+  /// The day it happened, which is not always the day it was typed in.
+  occurredOn DateTime @db.Date
+
+  note String?
+
+  loggedById String?
+  loggedBy   User?    @relation("CreditLogger", fields: [loggedById], references: [id])
+  createdAt  DateTime @default(now())
+
+  @@index([userId, term])
+  @@index([term])
+  @@index([categoryId])
+}
+
+/// A charge the AD has written off, with the reason why.
+///
+/// Keyed to the attendance row rather than storing an adjusted amount, so the
+/// underlying record stays exactly what happened and the money is the thing
+/// that changed. The reason is required and shows on the dancer's own page:
+/// "why was mine waived and not hers" is a question somebody will ask, and the
+/// answer should already be written down.
+model ChargeWaiver {
+  id           String     @id @default(cuid())
+  attendanceId String     @unique
+  attendance   Attendance @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
+  reason       String
+  waivedById   String?
+  createdAt    DateTime   @default(now())
+}
+
+/// Whether one dancer has settled up for one month.
+///
+/// **Only the settlement state lives here.** What they owe is worked out from
+/// the attendance records and credits every time it is asked for, rather than
+/// being written into a column. That is the whole reason this exists instead
+/// of the spreadsheet: totals stored next to the things they total are
+/// totals that drift, and the tracker this replaces was full of #REF!.
+///
+/// The one exception is `settledCents`, which records what was actually
+/// collected at the moment it was marked paid. A practice edited afterwards
+/// changes what the month *would* cost today, and the receipt should not move
+/// with it.
+model MonthlyDuesSettlement {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation("DuesSubject", fields: [userId], references: [id], onDelete: Cascade)
+
+  month Int
+  year  Int
+  term  String
+
+  venmoRequested Boolean   @default(false)
+  isPaid         Boolean   @default(false)
+  paidAt         DateTime?
+
+  /// What was owed when it was marked paid. Null until then.
+  settledCents Int?
+
+  updatedAt   DateTime @updatedAt
+  updatedById String?
+
+  @@unique([userId, month, year])
+  @@index([term])
+}
+
 enum NotificationType {
   SCHEDULE_FINALIZED
   REMINDER
@@ -110,24 +262,36 @@ model User {
   accounts Account[]
   sessions Session[]
 
-  memberships         DanceMembership[]
-  conflicts           Conflict[]
-  weeklyExclusions    WeeklyExclusion[]
-  attendanceRecords   Attendance[]                @relation("AttendanceSubject")
-  attendanceMarkedBy  Attendance[]                @relation("AttendanceMarker")
-  attendanceSubmitted Practice[]                  @relation("AttendanceSubmitter")
-  conflictsReviewed   Conflict[]                  @relation("ConflictReviewer")
-  plannedArrivals     PlannedArrival[]
-  notesWritten        PracticeNote[]              @relation("NoteAuthor")
-  notesAbout          PracticeNote[]              @relation("NoteSubject")
-  pushSubscriptions   PushSubscription[]
-  notifications       Notification[]
-  conflictSubmissions ConflictSubmission[]
-  conflictSubmissionsMadeForOthers ConflictSubmission[] @relation("ConflictSubmissionSubmitter")
-  danceWeekPrioritiesSet DanceWeekPriority[] @relation("DanceWeekPrioritySetter")
-  practiceCalendarExports PracticeCalendarExport[]
-  exclusionsAuthored  WeeklyExclusion[]           @relation("ExclusionAuthor")
-  weeksReviewed       AttendanceWeekReview[]      @relation("WeekReviewer")
+  memberships      DanceMembership[]
+  conflicts        Conflict[]
+  weeklyExclusions WeeklyExclusion[]
+  /// Lets one dancer run the dues ledger without being an admin.
+  ///
+  /// Deliberately a flag rather than a role: the treasurer is an ordinary
+  /// member of the troupe who happens to chase Venmo requests, and making
+  /// them an admin would hand them casting, room bookings and everybody's
+  /// conflict notes to get at one page.
+  isFinanceAdmin   Boolean           @default(false)
+
+  attendanceCredits       AttendanceCredit[]      @relation("CreditEarner")
+  attendanceCreditsLogged AttendanceCredit[]      @relation("CreditLogger")
+  duesSettlements         MonthlyDuesSettlement[] @relation("DuesSubject")
+
+  attendanceRecords                Attendance[]             @relation("AttendanceSubject")
+  attendanceMarkedBy               Attendance[]             @relation("AttendanceMarker")
+  attendanceSubmitted              Practice[]               @relation("AttendanceSubmitter")
+  conflictsReviewed                Conflict[]               @relation("ConflictReviewer")
+  plannedArrivals                  PlannedArrival[]
+  notesWritten                     PracticeNote[]           @relation("NoteAuthor")
+  notesAbout                       PracticeNote[]           @relation("NoteSubject")
+  pushSubscriptions                PushSubscription[]
+  notifications                    Notification[]
+  conflictSubmissions              ConflictSubmission[]
+  conflictSubmissionsMadeForOthers ConflictSubmission[]     @relation("ConflictSubmissionSubmitter")
+  danceWeekPrioritiesSet           DanceWeekPriority[]      @relation("DanceWeekPrioritySetter")
+  practiceCalendarExports          PracticeCalendarExport[]
+  exclusionsAuthored               WeeklyExclusion[]        @relation("ExclusionAuthor")
+  weeksReviewed                    AttendanceWeekReview[]   @relation("WeekReviewer")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -149,10 +313,10 @@ model Dance {
   /// can show the expected length before anything is booked.
   defaultDurationMinutes Int @default(90)
 
-  memberships   DanceMembership[]
-  practices     Practice[]
-  exclusions    WeeklyExclusion[]
-  weeksOff      DanceWeekOff[]
+  memberships    DanceMembership[]
+  practices      Practice[]
+  exclusions     WeeklyExclusion[]
+  weeksOff       DanceWeekOff[]
   weekPriorities DanceWeekPriority[]
 
   createdAt DateTime @default(now())
@@ -175,7 +339,7 @@ model DanceWeekOff {
   pendingCancellationNotice Boolean @default(false)
   /// How many published practices were cleared, so the prompt can say what it
   /// is asking about.
-  cancelledPracticeCount Int @default(0)
+  cancelledPracticeCount    Int     @default(0)
 
   dance Dance @relation(fields: [danceId], references: [id], onDelete: Cascade)
 
@@ -287,8 +451,6 @@ model Conflict {
   @@index([status])
 }
 
-
-
 model Practice {
   id      String @id @default(cuid())
   danceId String
@@ -399,6 +561,8 @@ model Attendance {
   /// record shows the difference between what happened and what was decided.
   isOverride Boolean @default(false)
 
+  waiver ChargeWaiver?
+
   markedById String?
   markedBy   User?    @relation("AttendanceMarker", fields: [markedById], references: [id])
   markedAt   DateTime @default(now())
@@ -487,9 +651,9 @@ model AppSettings {
   ///
   /// Off by default: this is the one message that arrives without the AD
   /// pressing anything, so it stays opt-in.
-  conflictNudgeEnabled Boolean @default(false)
+  conflictNudgeEnabled Boolean @default(true)
   conflictNudgeWeekday Int     @default(4)
-  conflictNudgeHour    Int     @default(18)
+  conflictNudgeHour    Int     @default(12)
   conflictNudgeMinute  Int     @default(0)
 
   /// The one calendar every room's bookings live on. It is the only source of

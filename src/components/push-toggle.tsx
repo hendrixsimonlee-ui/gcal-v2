@@ -1,19 +1,17 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
-import {
-  getPushPublicKey,
-  removePushSubscription,
-  savePushSubscription,
-} from "@/lib/actions/push";
+import { removePushSubscription } from "@/lib/actions/push";
 
 type State = "loading" | "unsupported" | "needs-install" | "off" | "on" | "blocked";
 
-/** Turns on phone notifications for practice start and attendance reminders.
+/** The off switch for phone notifications, and the line that says they are on.
  *
- * On iPhone a web app can only receive push once it's been added to the home
- * screen — Apple's rule, not a setting. So this detects that case and says so
- * plainly rather than offering a button that would silently do nothing. */
+ * Turning them *on* is handled by the app-wide prompt above every screen,
+ * which asks on every visit until it gets an answer. This used to do both, and
+ * for a while the two sat one above the other on My Schedule asking the same
+ * question twice. So this now renders nothing at all unless notifications are
+ * already on, which is the only state the prompt has nothing to say about. */
 export function PushToggle() {
   const [state, setState] = useState<State>("loading");
   const [isPending, startTransition] = useTransition();
@@ -45,33 +43,6 @@ export function PushToggle() {
     check().catch(() => setState("unsupported"));
   }, []);
 
-  function enable() {
-    startTransition(async () => {
-      const key = await getPushPublicKey();
-      if (!key) {
-        setState("unsupported");
-        return;
-      }
-      const permission = await Notification.requestPermission();
-      if (permission !== "granted") {
-        setState("blocked");
-        return;
-      }
-      const registration = await navigator.serviceWorker.ready;
-      const subscription = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(key),
-      });
-      const json = subscription.toJSON();
-      await savePushSubscription({
-        endpoint: subscription.endpoint,
-        p256dh: json.keys?.p256dh ?? "",
-        auth: json.keys?.auth ?? "",
-      });
-      setState("on");
-    });
-  }
-
   function disable() {
     startTransition(async () => {
       const registration = await navigator.serviceWorker.ready;
@@ -84,74 +55,27 @@ export function PushToggle() {
     });
   }
 
-  if (state === "loading") return null;
+  // The app-wide prompt now owns asking. This is the off switch and the
+  // status line, so it stays out of the way until there is something to
+  // switch off — two cards on one screen both asking the same question was
+  // just noise.
+  if (state !== "on") return null;
 
   return (
     <div className="rounded-xl border border-line bg-surface px-4 py-3 text-sm">
-      {state === "on" && (
-        <div className="flex flex-wrap items-center gap-3">
-          <span className="text-ink-soft">
-            Phone notifications are on — you&rsquo;ll get a nudge when
-            practice starts.
-          </span>
-          <button
-            onClick={disable}
-            disabled={isPending}
-            className="ml-auto text-xs font-medium text-ink-soft hover:underline"
-          >
-            Turn off
-          </button>
-        </div>
-      )}
-
-      {state === "off" && (
-        <div className="flex flex-wrap items-center gap-3">
-          <span className="text-ink-soft">
-            Get a nudge on your phone when practice starts, so you never forget
-            to check in.
-          </span>
-          <button
-            onClick={enable}
-            disabled={isPending}
-            className="ml-auto rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-on-accent transition-colors hover:bg-accent-hover disabled:opacity-45"
-          >
-            {isPending ? "…" : "Turn on notifications"}
-          </button>
-        </div>
-      )}
-
-      {state === "needs-install" && (
-        <p className="text-ink-soft">
-          To get notifications on your iPhone, add this to your home screen
-          first: tap <strong>Share</strong>, then{" "}
-          <strong>Add to Home Screen</strong>. Then open it from there and come
-          back here.
-        </p>
-      )}
-
-      {state === "blocked" && (
-        <p className="text-ink-soft">
-          Notifications are blocked for this site in your browser settings.
-          You&rsquo;ll still see everything in the app.
-        </p>
-      )}
-
-      {state === "unsupported" && (
-        <p className="text-ink-soft">
-          This browser can&rsquo;t do phone notifications. Everything still
-          reaches you inside the app — check the bell.
-        </p>
-      )}
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="text-ink-soft">
+          Phone notifications are on. You will hear about the schedule, changes
+          to it, and each practice 15 minutes before it starts.
+        </span>
+        <button
+          onClick={disable}
+          disabled={isPending}
+          className="ml-auto text-xs font-medium text-ink-soft hover:underline"
+        >
+          Turn off
+        </button>
+      </div>
     </div>
   );
-}
-
-/** The VAPID key arrives base64url-encoded; the Push API wants bytes. */
-function urlBase64ToUint8Array(base64: string): Uint8Array<ArrayBuffer> {
-  const padding = "=".repeat((4 - (base64.length % 4)) % 4);
-  const normalized = (base64 + padding).replace(/-/g, "+").replace(/_/g, "/");
-  const raw = atob(normalized);
-  const output = new Uint8Array(new ArrayBuffer(raw.length));
-  for (let i = 0; i < raw.length; i++) output[i] = raw.charCodeAt(i);
-  return output;
 }

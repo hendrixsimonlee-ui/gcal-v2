@@ -10,6 +10,7 @@ import {
   addDaysInApp,
   appDateKey,
   parseAppDateTime,
+  zonedParts,
   startOfWeekInApp,
 } from "./timezone";
 
@@ -76,6 +77,51 @@ export function calendarWeekStartKey(date: Date): string {
  * read in Eastern so late-evening navigation doesn't jump a day. */
 export function toDateParam(date: Date): string {
   return appDateKey(date);
+}
+
+/** When the conflicts screens roll onto the next week, Eastern.
+ *
+ * 6am Monday, not midnight. Somebody opening the app late on Sunday night is
+ * still thinking about the week they were being chased about; jumping them a
+ * week ahead while they are mid-thought is how people submit for the wrong
+ * week. */
+const CONFLICT_WEEK_ROLLOVER_HOUR = 6;
+
+/** Which week the conflicts screens open on when nobody has picked one.
+ *
+ * **Next** week, not this one. The schedule is built a week ahead, so what
+ * the AD needs on Thursday is everybody's conflicts for the week starting the
+ * following Monday — and that is exactly the week the reminders chase. Having
+ * the page open on the week that has already been scheduled meant people
+ * filled in a week nobody was going to use, then wondered why their conflicts
+ * were ignored.
+ *
+ * Both conflicts screens use this, the dancer's and the AD's, so the two are
+ * never looking at different weeks while talking to each other.
+ *
+ * It only sets the *starting* week. The date bar still moves freely in both
+ * directions, and any week can still be submitted. */
+export function defaultConflictWeek(now: Date = new Date()): Date {
+  const thisWeek = startOfWeek(now);
+  const here = zonedParts(now);
+  const beforeRollover =
+    here.weekday === 1 && here.hour < CONFLICT_WEEK_ROLLOVER_HOUR;
+  return beforeRollover ? thisWeek : addDays(thisWeek, 7);
+}
+
+/** `parseWeekParam`, but falling back to next week rather than this one.
+ *
+ * Deliberately separate: Spaces and the calendar feed mean "the week I am
+ * looking at now" by default, and moving them a week forward would be wrong.
+ * Only the conflicts screens look ahead. */
+export function parseConflictWeekParam(value: string | undefined): Date {
+  if (value) {
+    const parsed = parseAppDateTime(value);
+    if (!Number.isNaN(parsed.getTime())) {
+      return startOfWeek(parsed);
+    }
+  }
+  return defaultConflictWeek();
 }
 
 export function parseWeekParam(value: string | undefined): Date {

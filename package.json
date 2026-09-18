@@ -4,10 +4,10 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && PRISMA_SCHEMA_DISABLE_ADVISORY_LOCK=true prisma migrate deploy && next build",
+    "build": "prisma generate && if [ -n \"$DATABASE_URL\" ]; then PRISMA_SCHEMA_DISABLE_ADVISORY_LOCK=true prisma migrate deploy; else echo \"No DATABASE_URL, so migrations were skipped. That is expected for a local build.\"; fi && next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "TZ=UTC tsx src/lib/timezone.test.ts && TZ=UTC tsx src/lib/google-events.test.ts && TZ=UTC tsx src/lib/scheduling.test.ts && TZ=UTC tsx src/lib/attendance.test.ts && TZ=UTC tsx src/lib/optimizer.test.ts && TZ=UTC tsx src/lib/google-reconnect.test.ts",
+    "test": "TZ=UTC tsx src/lib/timezone.test.ts && TZ=UTC tsx src/lib/google-events.test.ts && TZ=UTC tsx src/lib/scheduling.test.ts && TZ=UTC tsx src/lib/attendance.test.ts && TZ=UTC tsx src/lib/attendance-fees.test.ts && TZ=UTC tsx src/lib/optimizer.test.ts && TZ=UTC tsx src/lib/google-reconnect.test.ts",
     "seed:demo": "tsx --env-file=.env prisma/seed-demo.ts",
     "postinstall": "prisma generate"
   },
@@ -28,7 +28,8 @@
     "prisma": "7.9.1",
     "react": "19.2.4",
     "react-dom": "19.2.4",
-    "web-push": "^3.6.7"
+    "web-push": "^3.6.7",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

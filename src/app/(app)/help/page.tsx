@@ -143,7 +143,7 @@ export default async function HelpPage() {
           at it. Skip this step and you&rsquo;ll only find things out by
           opening the app and checking the bell.
         </p>
-        <p>There are five, and that&rsquo;s the lot:</p>
+        <p>There are six, and that&rsquo;s the lot:</p>
         <ul>
           <li>
             <B>The schedule is published</B>{" "}— your practices are set
@@ -160,6 +160,10 @@ export default async function HelpPage() {
           </li>
           <li>
             <B>Practice has started</B>{" "}— check in
+          </li>
+          <li>
+            <B>Your conflicts are due</B>{" "}— Thursday, and only if you
+            haven&rsquo;t submitted yet
           </li>
         </ul>
         <p>
@@ -186,6 +190,27 @@ export default async function HelpPage() {
           Add it. Your week stays submitted.
         </p>
         <p>
+          <B>The deadline is Thursday at noon.</B>{" "}If you haven&rsquo;t
+          submitted by then you get a heads-up at 10am and a last call at
+          noon. Submit and they both stop — they only go to people who
+          haven&rsquo;t.
+        </p>
+        <p>
+          <B>Syncing is not submitting.</B>{" "}Two presses, both needed: Sync
+          pulls your calendar in, Submit tells the AD you&rsquo;ve checked.
+          Putting a class in Google Calendar on its own does nothing until you
+          press Sync.
+        </p>
+        <p>
+          <B>The page opens on next week, not this one.</B>{" "}The schedule is
+          built a week ahead, so the week worth filling in is the one starting
+          the following Monday. It moves on every Monday at 6am.
+        </p>
+        <p>
+          You can still go back and forward as much as you like with the date
+          bar, and submit any week. That&rsquo;s only which week it starts on.
+        </p>
+        <p>
           To check a different week, use the date bar at the top of the page:
           the single arrows move a week, the double arrows move a month, and
           the date box jumps straight to any week you pick.
@@ -203,6 +228,52 @@ export default async function HelpPage() {
           already there instead of adding duplicates, and removes anything that
           got cancelled. There&rsquo;s a <B>Take them back out</B>{" "}button if you
           change your mind.
+        </p>
+      </Section>
+
+      <Section title="Late charges">
+        <p>
+          Being late to a rehearsal costs money, and the app works it out from
+          your check-in. Nobody types it in.
+        </p>
+        <ul>
+          <li>
+            <B>Under 5 minutes is free.</B>{" "}5 to 9 is $1, 10 to 14 is $2, 15
+            to 29 is $5, and half an hour or more is $10. The AD can change
+            these, and the exact steps are always printed under the charges on
+            their screen.
+          </li>
+          <li>
+            <B>Not turning up at all costs nothing here.</B>{" "}This is about
+            lateness, not absence.
+          </li>
+          <li>
+            <B>If you agreed in advance to arrive late, you are measured from
+            the time you agreed.</B>{" "}Turning up when you said you would is
+            on time, so it is free.
+          </li>
+        </ul>
+        <p>
+          <B>You can earn it back.</B>{" "}Leading Pan-Asian time or a workshop
+          takes off $1, and attending a workshop takes off 50c. The AD can add
+          other things the club credits people for. Credits come off your oldest
+          charges first, and anything left over rolls into the next month. They
+          don&rsquo;t carry into a new semester.
+        </p>
+        <p>
+          Your total is on the <B>Late charges</B>{" "}tab of{" "}
+          <Nav href="/my-attendance">My Attendance</Nav>, with each month
+          underneath. Open a month to see exactly which rehearsals, what time
+          you arrived and what each one cost.{" "}
+          <B>You only ever see your own.</B>{" "}Your practice record is on the{" "}
+          <B>My record</B>{" "}tab next to it.
+        </p>
+        <p>
+          <B>If a charge looks wrong, tell the AD.</B>{" "}A rehearsal that
+          started fifteen minutes late is the usual reason, and they can correct
+          the minutes or write the charge off. If they write one off you will
+          see it struck through with their reason next to it, so you are not
+          left guessing whether they did it.
         </p>
       </Section>
 
