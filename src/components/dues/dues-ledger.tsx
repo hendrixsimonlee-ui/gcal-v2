@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import {
   currentTerm,
   getCreditLedger,
+  getLedgerAccess,
   getMonthlyDuesLedger,
   getRateSettings,
   getTermSummary,
@@ -21,6 +22,7 @@ import { SettlementToggle } from "@/components/dues/settlement-toggles";
 import { CreditStepper } from "@/components/dues/credit-stepper";
 import { ChargeRow } from "@/components/dues/charge-controls";
 import { RateSettingsPanel } from "@/components/dues/rate-settings";
+import { LedgerAccess } from "@/components/dues/ledger-access";
 
 /** Late charges: what people owe, and whether it came in.
  *
@@ -71,12 +73,15 @@ export async function DuesLedger({
 
   return (
     <div className="flex flex-col gap-5">
-      <header className="flex flex-col gap-1">
-        <h1 className="text-xl font-semibold text-ink">Late charges</h1>
-        <p className="max-w-2xl text-sm text-ink-soft">
-          Charges work themselves out from check-ins. Nothing here is typed in
-          by hand except who has paid and what people earned back.
-        </p>
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-xl font-semibold text-ink">Late charges</h1>
+          <p className="max-w-2xl text-sm text-ink-soft">
+            Charges work themselves out from check-ins. Nothing here is typed
+            in by hand except who has paid and what people earned back.
+          </p>
+        </div>
+        {isAdmin && <LedgerAccess people={await getLedgerAccess()} />}
       </header>
 
       <TermSwitcher basePath={basePath} term={term} tab={active} />

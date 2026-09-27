@@ -68,8 +68,27 @@ export function CheckInCard({ initial }: { initial: CheckInWindow[] }) {
             <span className="text-xs text-ink-soft">
               {timeFormatter.format(new Date(w.startDateTime))}–
               {timeFormatter.format(new Date(w.endDateTime))}
-              {w.spaceName ? ` · ${w.spaceName}` : ""} {w.plannedArriveAt &&
-                ` · you're due at ${timeFormatter.format(new Date(w.plannedArriveAt))}`} </span>
+              {w.spaceName ? ` · ${w.spaceName}` : ""}
+              {w.plannedArriveAt &&
+                ` · you're due at ${timeFormatter.format(new Date(w.plannedArriveAt))}`}
+            </span>
+            {/* The button used to hide itself from anyone who had logged a
+                conflict, which meant somebody whose class finished early and
+                walked over had no way to say so and was marked absent for a
+                rehearsal they attended. It shows for everyone now, with a line
+                saying where they stand so it isn't a confusing offer. */}
+            {!w.alreadyCheckedInAt && w.standing === "EXCUSED" && (
+              <span className="mt-0.5 text-xs font-medium text-good">
+                You&rsquo;re excused from this one. Check in anyway if
+                you&rsquo;re here — it won&rsquo;t cost you a late charge.
+              </span>
+            )}
+            {!w.alreadyCheckedInAt && w.standing === "NOT_COMING" && (
+              <span className="mt-0.5 text-xs font-medium text-warn">
+                You&rsquo;re down as not coming. Check in if you made it after
+                all.
+              </span>
+            )}
           </div>
 
           <div className="ml-auto">

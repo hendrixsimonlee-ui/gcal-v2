@@ -7,13 +7,19 @@ import {
 import { AttendanceArchive } from "@/components/attendance-archive";
 import {
   getChronicAbsenceFlags,
+  getDanceTrends,
   getOverallAbsenceFlags,
   getPastPracticesWithAttendance,
   getLatenessBySemester,
+  getLatenessRechecks,
   getPersonRollups,
-  getUnexcusedAbsences,
+  getRecentUnexcused,
   getWeeklyRollupByDance,
 } from "@/lib/attendance-data";
+import { getOpenFlags } from "@/lib/actions/attendance-flags";
+import { graceMinutes } from "@/lib/attendance-fees";
+import { RecheckPanel } from "@/components/attendance/recheck-panel";
+import { FlagQueue } from "@/components/attendance/flag-queue";
 import { AttendanceBadge } from "@/components/status-badges";
 import { formatWeekLabel } from "@/lib/dates";
 import { APP_TIME_ZONE } from "@/lib/timezone";
@@ -25,14 +31,19 @@ const dateFormatter = new Intl.DateTimeFormat("en-US", {
   day: "numeric",
 });
 
-type View = "person" | "lateness" | "unexcused" | "weekly" | "practices";
+type View = "attention" | "people" | "dances";
 
+/** Three tabs, in the order the AD said they think about this screen: what has
+ * gone wrong, then how each person is doing, then how each piece is doing.
+ *
+ * There were five, split by the shape of the data rather than by any question
+ * anybody had — "Lateness by month" and "By dance, week by week" describe
+ * tables, not problems. They are all still here, folded inside whichever tab
+ * answers the question they belong to. */
 const VIEWS: { key: View; label: string }[] = [
-  { key: "person", label: "By person" },
-  { key: "lateness", label: "Lateness by month" },
-  { key: "unexcused", label: "Unexcused only" },
-  { key: "weekly", label: "By dance, week by week" },
-  { key: "practices", label: "Every practice" },
+  { key: "attention", label: "Needs attention" },
+  { key: "people", label: "People" },
+  { key: "dances", label: "Dances" },
 ];
 
 export default async function AdminAttendancePage({
@@ -43,27 +54,14 @@ export default async function AdminAttendancePage({
   const { view: rawView } = await searchParams;
   const view: View = VIEWS.some((v) => v.key === rawView)
     ? (rawView as View)
-    : "person";
+    : "attention";
 
   const settings = await getAttendanceSettings();
-  const weeks = await getAttendanceWeeks();
-  const [flags, overallFlags] = await Promise.all([
-    getChronicAbsenceFlags(
-      settings.chronicAbsenceThreshold,
-      settings.chronicAbsenceWindow,
-    ),
-    getOverallAbsenceFlags(
-      settings.chronicAbsenceThreshold,
-      settings.chronicAbsenceWindow,
-    ),
-  ]);
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-5">
       <div>
-        <h1 className="text-xl font-semibold text-ink">
-          Attendance Review
-        </h1>
+        <h1 className="text-xl font-semibold text-ink">Attendance Review</h1>
         <p className="mt-1 text-sm text-ink-soft">
           Flags trip at {settings.chronicAbsenceThreshold}{" "}
           unexcused absences out of a dancer&rsquo;s last{" "}
@@ -75,82 +73,14 @@ export default async function AdminAttendancePage({
         </p>
       </div>
 
-      <AttendanceArchive weeks={weeks} />
-
-      {/* Always rendered, even when empty — a dashboard that disappears when
-          there's nothing to report just reads as a missing feature. */}
-      <div className="grid gap-4 md:grid-cols-2">
-          <section className="rounded-lg border border-bad/35 bg-bad-soft p-4">
-            <h2 className="text-sm font-semibold text-bad">
-              Letting down a specific dance ({flags.length})
-            </h2>
-            <p className="mb-2 text-xs text-bad">
-              Counted within one dance, so a choreographer can see who
-              keeps missing <em>their</em> rehearsals.
-            </p>
-            {flags.length === 0 ? (
-              <p className="text-sm text-bad">
-                Nobody over the threshold.
-              </p>
-            ) : (
-              <ul className="flex flex-col gap-1">
-                {flags.map((flag) => (
-                  <li
-                    key={`${flag.userId}-${flag.danceId}`}
-                    className="flex flex-wrap items-center justify-between gap-2 text-sm text-bad"
-                  >
-                    <span className="font-medium">{flag.name}</span>
-                    <span>{flag.danceName}</span>
-                    <span className="text-xs">
-                      {flag.unexcusedInWindow} of last {flag.windowSize}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-
-          <section className="rounded-lg border border-warn/35 bg-warn-soft p-4">
-            <h2 className="text-sm font-semibold text-warn">
-              Slipping overall ({overallFlags.length})
-            </h2>
-            <p className="mb-2 text-xs text-warn">
-              Counted across everything they&rsquo;re in — catches someone
-              missing one practice of each piece, which no single dance sees.
-            </p>
-            {overallFlags.length === 0 ? (
-              <p className="text-sm text-warn">
-                Nobody over the threshold.
-              </p>
-            ) : (
-              <ul className="flex flex-col gap-1">
-                {overallFlags.map((flag) => (
-                  <li
-                    key={flag.userId}
-                    className="flex flex-wrap items-center justify-between gap-2 text-sm text-warn"
-                  >
-                    <span className="font-medium">{flag.name}</span>
-                    <span className="text-xs">
-                      {flag.danceNames.join(", ")}
-                    </span>
-                    <span className="text-xs">
-                      {flag.unexcusedInWindow} of last {flag.windowSize}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-        </section>
-      </div>
-
-      <nav className="flex flex-wrap gap-2 border-b border-line pb-2">
+      <nav className="flex flex-wrap gap-1 border-b border-line">
         {VIEWS.map((v) => (
           <Link
             key={v.key}
             href={`/admin/attendance?view=${v.key}`}
-            className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${ v.key === view
-                ? "bg-accent text-on-accent"
-                : "text-ink-soft hover:bg-surface-3  "
+            className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors ${ v.key === view
+                ? "border-accent text-accent-ink"
+                : "border-transparent text-ink-soft hover:text-ink"
             }`}
           >
             {v.label}
@@ -158,17 +88,304 @@ export default async function AdminAttendancePage({
         ))}
       </nav>
 
-      {view === "person" && (
-        <ByPersonView
+      {view === "attention" && (
+        <AttentionView
           threshold={settings.chronicAbsenceThreshold}
           windowSize={settings.chronicAbsenceWindow}
         />
       )}
-      {view === "lateness" && <LatenessView />}
-      {view === "unexcused" && <UnexcusedView />}
-      {view === "weekly" && <WeeklyView />}
-      {view === "practices" && <EveryPracticeView />}
+      {view === "people" && (
+        <PeopleView
+          threshold={settings.chronicAbsenceThreshold}
+          windowSize={settings.chronicAbsenceWindow}
+        />
+      )}
+      {view === "dances" && <DancesView />}
     </div>
+  );
+}
+
+/** What has gone wrong, in the order it needs dealing with.
+ *
+ * The AD's own priority: unexcused absences first, everything else after. The
+ * two things that need a decision — flags raised by choreographers, and
+ * lateness the old bug erased — sit above the reading material, because a
+ * queue below a table is a queue nobody works through. */
+async function AttentionView({
+  threshold,
+  windowSize,
+}: {
+  threshold: number;
+  windowSize: number;
+}) {
+  const [rechecks, flags, unexcused, weeks, danceFlags, overallFlags] =
+    await Promise.all([
+      getLatenessRechecks(graceMinutes()),
+      getOpenFlags(),
+      getRecentUnexcused(),
+      getAttendanceWeeks(),
+      getChronicAbsenceFlags(threshold, windowSize),
+      getOverallAbsenceFlags(threshold, windowSize),
+    ]);
+
+  return (
+    <div className="flex flex-col gap-4">
+      <RecheckPanel
+        items={rechecks.map((r) => ({
+          attendanceId: r.attendanceId,
+          practiceId: r.practiceId,
+          danceName: r.danceName,
+          startIso: r.startDateTime.toISOString(),
+          name: r.name,
+          chargedMinutes: r.chargedMinutes,
+          measuredMinutes: r.measuredMinutes,
+        }))}
+      />
+
+      <FlagQueue flags={flags} />
+
+      <section className="rounded-xl border border-bad/35 bg-bad-soft p-4">
+        <h2 className="text-sm font-semibold text-bad">
+          Unexcused absences ({unexcused.length})
+        </h2>
+        <p className="mt-0.5 text-xs text-bad">
+          Newest first. Somebody who didn&rsquo;t come and didn&rsquo;t have a
+          reason you accepted.
+        </p>
+        {unexcused.length === 0 ? (
+          <p className="mt-2 text-sm text-bad">
+            Nobody has missed a rehearsal without an excuse.
+          </p>
+        ) : (
+          <ul className="mt-2.5 flex flex-col gap-1">
+            {unexcused.map((row) => (
+              <li
+                key={`${row.practiceId}-${row.userId}`}
+                className="flex flex-wrap items-baseline gap-x-3 rounded-lg bg-surface px-3 py-1.5 text-sm"
+              >
+                <Link
+                  href={`/admin/roster/${row.userId}`}
+                  className="font-medium text-ink underline decoration-line-strong decoration-1 underline-offset-2 hover:decoration-accent"
+                >
+                  {row.name}
+                </Link>
+                <span className="text-ink-soft">{row.danceName}</span>
+                <span className="ml-auto text-xs text-ink-faint">
+                  {dateFormatter.format(row.startDateTime)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <FlagCard
+          tone="bad"
+          title={`Letting down a specific dance (${danceFlags.length})`}
+          blurb="Counted within one dance, so a choreographer can see who keeps missing their rehearsals."
+          empty="Nobody over the threshold."
+          rows={danceFlags.map((f) => ({
+            key: `${f.userId}-${f.danceId}`,
+            name: f.name,
+            middle: f.danceName,
+            right: `${f.unexcusedInWindow} of last ${f.windowSize}`,
+          }))}
+        />
+        <FlagCard
+          tone="warn"
+          title={`Slipping overall (${overallFlags.length})`}
+          blurb="Counted across everything they're in — catches someone missing one practice of each piece, which no single dance sees."
+          empty="Nobody over the threshold."
+          rows={overallFlags.map((f) => ({
+            key: f.userId,
+            name: f.name,
+            middle: f.danceNames.join(", "),
+            right: `${f.unexcusedInWindow} of last ${f.windowSize}`,
+          }))}
+        />
+      </div>
+
+      <AttendanceArchive weeks={weeks} />
+    </div>
+  );
+}
+
+function FlagCard({
+  tone,
+  title,
+  blurb,
+  empty,
+  rows,
+}: {
+  tone: "bad" | "warn";
+  title: string;
+  blurb: string;
+  empty: string;
+  rows: { key: string; name: string; middle: string; right: string }[];
+}) {
+  const skin =
+    tone === "bad"
+      ? { box: "border-bad/35 bg-bad-soft", text: "text-bad" }
+      : { box: "border-warn/35 bg-warn-soft", text: "text-warn" };
+  return (
+    <section className={`rounded-xl border p-4 ${skin.box}`}>
+      <h2 className={`text-sm font-semibold ${skin.text}`}>{title}</h2>
+      <p className={`mb-2 text-xs ${skin.text}`}>{blurb}</p>
+      {rows.length === 0 ? (
+        <p className={`text-sm ${skin.text}`}>{empty}</p>
+      ) : (
+        <ul className="flex flex-col gap-1">
+          {rows.map((r) => (
+            <li
+              key={r.key}
+              className={`flex flex-wrap items-center justify-between gap-2 text-sm ${skin.text}`}
+            >
+              <span className="font-medium">{r.name}</span>
+              <span className="text-xs">{r.middle}</span>
+              <span className="text-xs">{r.right}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+/** Everyone, and how they are doing. Lateness folds in underneath rather than
+ * living on a tab of its own — it is a column on this question, not a
+ * separate one. */
+async function PeopleView({
+  threshold,
+  windowSize,
+}: {
+  threshold: number;
+  windowSize: number;
+}) {
+  return (
+    <div className="flex flex-col gap-4">
+      <ByPersonView threshold={threshold} windowSize={windowSize} />
+      <details className="rounded-xl border border-line bg-surface p-4">
+        <summary className="cursor-pointer text-sm font-semibold text-ink">
+          Minutes late, month by month
+        </summary>
+        <div className="mt-3">
+          <LatenessView />
+        </div>
+      </details>
+    </div>
+  );
+}
+
+/** Each piece, and whether it is holding its people.
+ *
+ * The question the AD couldn't answer before: a list of who was absent each
+ * week doesn't say whether that is a lot, because it never says what normal
+ * looks like for that dance. */
+async function DancesView() {
+  const trends = await getDanceTrends();
+
+  if (trends.length === 0) {
+    return <Empty message="No attendance has been marked yet." />;
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <p className="text-sm text-ink-soft">
+        Turnout per dance, against that dance&rsquo;s own normal. Excused
+        absences are left out — somebody you let off was never expected in the
+        room, and counting them would make a good week look thin.
+      </p>
+
+      <div className="flex flex-col gap-2">
+        {trends.map((trend) => (
+          <section
+            key={trend.danceId}
+            className="rounded-xl border border-line bg-surface p-4"
+          >
+            <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <h2 className="font-semibold text-ink">{trend.danceName}</h2>
+              <span className="text-sm text-ink-soft">
+                {trend.castSize} in the cast
+              </span>
+              <span className="ml-auto flex items-baseline gap-2 text-sm">
+                <span className="text-ink-soft">
+                  latest{" "}
+                  <span className="font-semibold tabular-nums text-ink">
+                    {trend.latestPercent}%
+                  </span>
+                </span>
+                <span className="text-ink-faint">
+                  usually {trend.averagePercent}%
+                </span>
+                {trend.deltaPercent !== null && (
+                  <Delta value={trend.deltaPercent} />
+                )}
+              </span>
+            </div>
+
+            <ul className="mt-3 flex flex-wrap items-end gap-1">
+              {trend.weeks.map((week) => (
+                <li
+                  key={week.weekOf.toISOString()}
+                  className="flex w-14 flex-col items-center gap-1"
+                  title={`Week of ${formatWeekLabel(week.weekOf)} — ${week.present} of ${week.expected}`}
+                >
+                  {/* A bar rather than a number, because the shape of six
+                      weeks side by side is the thing worth seeing. */}
+                  <span
+                    className={`w-full rounded-t ${ week.percent >= 80
+                        ? "bg-good"
+                        : week.percent >= 60
+                          ? "bg-warn"
+                          : "bg-bad"
+                    }`}
+                    style={{ height: `${Math.max(3, Math.round(week.percent * 0.44))}px` }}
+                  />
+                  <span className="text-[10px] tabular-nums text-ink-faint">
+                    {week.percent}%
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))}
+      </div>
+
+      <details className="rounded-xl border border-line bg-surface p-4">
+        <summary className="cursor-pointer text-sm font-semibold text-ink">
+          Who was missing, week by week
+        </summary>
+        <div className="mt-3">
+          <WeeklyView />
+        </div>
+      </details>
+
+      <details className="rounded-xl border border-line bg-surface p-4">
+        <summary className="cursor-pointer text-sm font-semibold text-ink">
+          Every practice
+        </summary>
+        <div className="mt-3">
+          <EveryPracticeView />
+        </div>
+      </details>
+    </div>
+  );
+}
+
+function Delta({ value }: { value: number }) {
+  if (value === 0) {
+    return <span className="text-xs text-ink-faint">no change</span>;
+  }
+  const worse = value < 0;
+  return (
+    <span
+      className={`rounded px-1.5 py-0.5 text-xs font-medium tabular-nums ${ worse ? "bg-bad-soft text-bad" : "bg-good-soft text-good"
+      }`}
+    >
+      {worse ? "−" : "+"}
+      {Math.abs(value)} pts
+    </span>
   );
 }
 
@@ -389,63 +606,6 @@ async function ByPersonView({
             </tbody>
           </table>
         </details>
-      ))}
-    </div>
-  );
-}
-
-async function UnexcusedView() {
-  const rows = await getUnexcusedAbsences();
-
-  if (rows.length === 0) {
-    return <Empty message="No unexcused absences. Everyone's been accounted for." />;
-  }
-
-  // Group by person so repeat offenders are obvious at a glance.
-  const byPerson = new Map<string, typeof rows>();
-  for (const row of rows) {
-    if (!byPerson.has(row.userId)) byPerson.set(row.userId, []);
-    byPerson.get(row.userId)!.push(row);
-  }
-  const grouped = Array.from(byPerson.values()).sort(
-    (a, b) => b.length - a.length,
-  );
-
-  return (
-    <div className="flex flex-col gap-3">
-      <p className="text-sm text-ink-soft">
-        Only absences with no excused conflict logged — {rows.length} in total.
-      </p>
-      {grouped.map((personRows) => (
-        <section
-          key={personRows[0].userId}
-          className="rounded-lg border border-line bg-surface p-3"
-        >
-          <div className="mb-2 flex items-center justify-between">
-            <span className="font-medium text-ink">
-              {personRows[0].name}
-            </span>
-            <span className="rounded bg-bad-soft px-2 py-0.5 text-xs font-medium text-bad">
-              {personRows.length} unexcused
-            </span>
-          </div>
-          <ul className="flex flex-col gap-1">
-            {personRows.map((row) => (
-              <li
-                key={`${row.practiceId}-${row.userId}`}
-                className="flex items-center justify-between rounded-lg bg-surface-2 px-3 py-1.5 text-sm bg-surface"
-              >
-                <span className="text-ink-soft">
-                  {row.danceName}
-                </span>
-                <span className="text-ink-soft">
-                  {dateFormatter.format(row.startDateTime)}
-                </span>
-                <AttendanceBadge status="UNEXCUSED_ABSENT" />
-              </li>
-            ))}
-          </ul>
-        </section>
       ))}
     </div>
   );

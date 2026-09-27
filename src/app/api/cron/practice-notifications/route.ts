@@ -7,6 +7,8 @@ import {
   notifyConflictsDueSoon,
   CONFLICTS_DUE_NOW_PREFIX,
   CONFLICTS_DUE_SOON_PREFIX,
+  notifyAttendanceOverdue,
+  notifyAttendanceReviewDue,
   notifyPracticeStartingSoon,
 } from "@/lib/notify";
 import { settleAttendance } from "@/lib/actions/attendance";
@@ -36,12 +38,21 @@ const HEADS_UP_MINUTES = 120;
 const STARTING_SOON_MIN = 15;
 const STARTING_SOON_MAX = 20;
 
+/** When the AD is asked to go through last week. Monday at nine, Eastern.
+ *
+ * Fixed rather than configurable: unlike the conflicts deadline, which the AD
+ * genuinely moves around a term, this one has no reason to change, and every
+ * setting that exists is a setting somebody has to understand. */
+const ATTENDANCE_REVIEW_HOUR = 9;
+
 /** Fires everything that happens on a clock rather than because the AD
  * pressed something:
  *
  * - "starts in 15 minutes", to the cast
  * - "practice started, check in", to the cast
  * - "confirm attendance", to the choreographers, when it ends
+ * - "still waiting", to the same choreographers, a day later if it's untouched
+ * - the AD's Monday morning prompt to go through last week
  * - the weekly conflicts nudge, at the day and time the AD set
  *
  * A web app can't wake itself up, so this is driven by a scheduled request
@@ -120,15 +131,97 @@ export async function GET(request: NextRequest) {
     attendanceSent++;
   }
 
+  const overdueChased = await chaseOverdueAttendance(now);
+  const reviewNudged = await runWeeklyAttendanceReview(now);
   const conflictsNudged = await runConflictReminders(now);
 
   return NextResponse.json({
     soonSent,
     checkInSent,
     attendanceSent,
+    overdueChased,
+    reviewNudged,
     conflictsNudged,
     checkedAt: now.toISOString(),
   });
+}
+
+/** Chases a choreographer a day after a practice they still haven't submitted.
+ *
+ * The window is deliberately open-ended at the far end: anything that ended
+ * more than a day ago and is still unsubmitted qualifies, not just things that
+ * crossed the 24-hour line in the last five minutes. A cron that missed a run
+ * — a deploy, a cold start, an outage — would otherwise skip that practice
+ * forever, and "the reminder only works if nothing went wrong" is not a
+ * reminder. The per-practice de-duplication is what keeps it to one message.
+ *
+ * Bounded to a fortnight so switching this on doesn't chase a whole term's
+ * backlog at once. Anything older than that is the AD's to chase in person. */
+async function chaseOverdueAttendance(now: Date): Promise<number> {
+  const aDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  const aFortnightAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+
+  const stale = await prisma.practice.findMany({
+    where: {
+      status: "CONFIRMED",
+      endDateTime: { lt: aDayAgo, gte: aFortnightAgo },
+      attendanceSubmittedAt: null,
+      dance: { archivedAt: null },
+    },
+    select: { id: true },
+    orderBy: { endDateTime: "asc" },
+  });
+
+  let sent = 0;
+  for (const practice of stale) {
+    if (await alreadySent(practice.id, "ATTENDANCE_OVERDUE")) continue;
+    sent += await notifyAttendanceOverdue(practice.id);
+  }
+  return sent;
+}
+
+/** The AD's Monday morning prompt about last week.
+ *
+ * Nine o'clock Eastern, like everything else on a clock here. It lands on the
+ * same lookback window the other timed messages use, so a run that arrives a
+ * few minutes late still catches it, and the notification rows stop it firing
+ * twice. */
+async function runWeeklyAttendanceReview(now: Date): Promise<number> {
+  const here = zonedParts(now);
+  const MONDAY = 1;
+  const nowMinutes = here.hour * 60 + here.minute;
+  const dueMinutes = ATTENDANCE_REVIEW_HOUR * 60;
+
+  if (here.weekday !== MONDAY) return 0;
+  if (nowMinutes < dueMinutes || nowMinutes > dueMinutes + LOOKBACK_MINUTES) {
+    return 0;
+  }
+
+  const lastWeek = addDays(startOfWeek(now), -7);
+  const label = formatWeekLabel(lastWeek);
+
+  const already = await prisma.notification.findFirst({
+    where: {
+      type: "ATTENDANCE_REVIEW_DUE",
+      message: { contains: label },
+    },
+    select: { id: true },
+  });
+  if (already) return 0;
+
+  const [unsubmitted, flags] = await Promise.all([
+    prisma.practice.count({
+      where: {
+        status: "CONFIRMED",
+        startDateTime: { gte: lastWeek, lt: startOfWeek(now) },
+        attendanceSubmittedAt: null,
+        dance: { archivedAt: null },
+      },
+    }),
+    prisma.attendanceFlag.count({ where: { resolvedAt: null } }),
+  ]);
+
+  return notifyAttendanceReviewDue(label, unsubmitted, flags);
 }
 
 /** The conflicts deadline, in two messages.
@@ -261,9 +354,9 @@ async function fireConflictReminder(
  * the practice's link, so their existence is the record that it went out. */
 async function alreadySent(
   practiceId: string,
-  type: "CHECK_IN_OPEN" | "ATTENDANCE_DUE" | "REMINDER",
+  type: "CHECK_IN_OPEN" | "ATTENDANCE_DUE" | "ATTENDANCE_OVERDUE" | "REMINDER",
 ): Promise<boolean> {
-  if (type === "ATTENDANCE_DUE") {
+  if (type === "ATTENDANCE_DUE" || type === "ATTENDANCE_OVERDUE") {
     const existing = await prisma.notification.findFirst({
       where: { type, href: `/attendance/${practiceId}` },
       select: { id: true },

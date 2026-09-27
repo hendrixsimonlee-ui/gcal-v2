@@ -10,6 +10,13 @@ const timeFormatter = new Intl.DateTimeFormat("en-US", {
   minute: "2-digit",
 });
 
+const dayFormatter = new Intl.DateTimeFormat("en-US", {
+  timeZone: APP_TIME_ZONE,
+  weekday: "long",
+  month: "long",
+  day: "numeric",
+});
+
 const dateFormatter = new Intl.DateTimeFormat("en-US", {
   timeZone: APP_TIME_ZONE,
   weekday: "long",
@@ -424,6 +431,86 @@ export async function notifyAttendanceDue(practiceId: string) {
     },
   );
 }
+
+/** "You still haven't ticked off Bhangra."
+ *
+ * A day after a practice ended, to its choreographers, when nobody has
+ * submitted. The nudge when it ends is easy to swipe away mid-rehearsal; this
+ * is the one that catches the practice nobody came back to.
+ *
+ * Sent once and never again. A choreographer who is genuinely not going to do
+ * it needs chasing by a person, not by a phone buzzing every morning, and the
+ * AD sees the backlog on their own home page. */
+export async function notifyAttendanceOverdue(practiceId: string) {
+  const practice = await prisma.practice.findUnique({
+    where: { id: practiceId },
+    include: {
+      dance: {
+        include: {
+          memberships: {
+            where: { role: "CHOREOGRAPHER" },
+            include: { user: true },
+          },
+        },
+      },
+    },
+  });
+  if (!practice) return 0;
+
+  const when = dayFormatter.format(practice.startDateTime);
+  const recipients = practice.dance.memberships.map((m) => m.user);
+  await notify(
+    recipients,
+    "ATTENDANCE_OVERDUE",
+    `${ATTENDANCE_OVERDUE_PREFIX} ${practice.dance.name} from ${when} still needs attendance. It takes a minute.`,
+    { href: `/attendance/${practiceId}` },
+  );
+  return recipients.length;
+}
+
+export const ATTENDANCE_OVERDUE_PREFIX = "Still waiting:";
+
+/** The AD's Monday morning prompt to go through last week.
+ *
+ * Attendance is the one job that piles up rather than being done in a sitting:
+ * choreographers submit at their own pace, flags arrive mid-week, and nothing
+ * about it is urgent enough to interrupt anybody on the day. So it gets a
+ * fixed hour, and the message says how much is actually waiting — a prompt
+ * that says "have a look" when there is nothing to look at is one people learn
+ * to ignore. */
+export async function notifyAttendanceReviewDue(
+  weekLabel: string,
+  unsubmitted: number,
+  flags: number,
+) {
+  const admins = await prisma.user.findMany({
+    where: { isAdmin: true },
+    select: { id: true, email: true },
+  });
+  if (admins.length === 0) return 0;
+
+  const bits: string[] = [];
+  if (unsubmitted > 0) {
+    bits.push(
+      `${unsubmitted} practice${unsubmitted === 1 ? "" : "s"} nobody has signed off`,
+    );
+  }
+  if (flags > 0) {
+    bits.push(`${flags} flag${flags === 1 ? "" : "s"} waiting on you`);
+  }
+
+  await notify(
+    admins,
+    "ATTENDANCE_REVIEW_DUE",
+    bits.length > 0
+      ? `${ATTENDANCE_REVIEW_PREFIX} ${weekLabel}: ${bits.join(" and ")}.`
+      : `${ATTENDANCE_REVIEW_PREFIX} ${weekLabel}: everything is signed off. Nothing to do.`,
+    { href: "/admin/attendance?view=attention" },
+  );
+  return admins.length;
+}
+
+export const ATTENDANCE_REVIEW_PREFIX = "Attendance for the week of";
 
 /** A published practice moved or was cancelled. Everyone in that dance hears
  * about it — the shared calendar updating silently isn't enough. */

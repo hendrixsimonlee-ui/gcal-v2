@@ -1,189 +1,182 @@
+<div align="center">
+
+<img src="public/icon.png" width="100" alt="PADT Calendar logo">
+
 # PADT Calendar
 
-A shared web app for scheduling dance team practices around conflicts,
-rehearsal space availability, and choreographer requirements.
+**Rehearsal scheduling for a 40-person dance company.**
+
+Collects everyone's conflicts, solves the whole week around them in one press,
+and runs attendance, notifications and dues off the same record.
+
+![Next.js](https://img.shields.io/badge/Next.js-16-000000?style=flat-square&logo=nextdotjs&logoColor=white)
+![React](https://img.shields.io/badge/React-19-087EA4?style=flat-square&logo=react&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=flat-square&logo=postgresql&logoColor=white)
+![Prisma](https://img.shields.io/badge/Prisma-7-2D3748?style=flat-square&logo=prisma&logoColor=white)
+![Tailwind](https://img.shields.io/badge/Tailwind-4-06B6D4?style=flat-square&logo=tailwindcss&logoColor=white)
+
+</div>
+
+---
+
+Penn Asian Dance Troupe ran on a group chat and a spreadsheet. Every week the
+artistic director hunted for a two-hour window a whole cast could make, across
+several rooms and a term's worth of classes, jobs and interviews — then did it
+again for the next piece, by which point the good slots were gone.
+
+This replaces that with one button. It is in production at
+[padtcal.vercel.app](https://padtcal.vercel.app), running the season for a
+troupe of about forty.
+
+<table>
+<tr>
+<td width="50%"><img src="docs/screenshots/schedule-builder.png" alt="Schedule Builder: a week grid with room availability shaded, a published practice, a draft, and ranked slot suggestions listing who can't make each one"></td>
+<td width="50%"><img src="docs/screenshots/attendance-review.png" alt="Attendance Review: turnout per dance week by week, each piece measured against its own normal so a dance quietly losing people is visible"></td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/late-charges.png" alt="Late charges: every late arrival on its own line with the dance, the time and the charge, then what each person owes"></td>
+<td align="center"><img src="docs/screenshots/my-schedule-mobile.png" width="270" alt="A dancer's phone view: this week's rehearsals, with one tap to push the whole term into Google Calendar"></td>
+</tr>
+</table>
+
+## The scheduler
+
+The interesting problem. Placing dances one at a time means whichever dance you
+open first takes the best slot, and a dance that only ever had two workable
+times finds both gone. **Build the week** solves them together.
+
+A week is judged on three things, **lexicographically** — each one settled
+before the next is consulted, with no exchange rate between them:
+
+1. **How many dances got a time.** Never traded away.
+2. **Who can't be there.** Weighted: choreographers count for more, and so does
+   anyone the schedule has already made miss out — with an escalating penalty
+   for a run of misses, so the same person is never quietly sacrificed a fourth
+   week running.
+3. **Dead minutes in the booked rooms.** A 30-minute hole is a room the club is
+   paying for that nobody can use.
+
+The search is regret-first insertion, then displacement chains up to three
+deep, then destroy-and-repair, restarted from randomised starts inside a
+10-second budget. Two properties it holds on to:
+
+- **No dance is ever improved below half its cast.** A rehearsal with a third
+  of the room isn't a third of a rehearsal. Coverage still overrides — a dance
+  that would otherwise go unscheduled ignores the floor.
+- **Deterministic.** The first attempt is noise-free and a rival has to be
+  *strictly* better to replace it, so more time can match or beat the plain
+  answer but never undercut it. Randomness is seeded from the input: the same
+  week always solves the same way.
 
 ## What it does
 
-**Everyone**
+**Dancers** sync a term of conflicts from one shared Google Calendar in a tap,
+check in when a rehearsal starts, and see their own attendance and charges.
+Installable to a phone home screen, with push notifications when the schedule
+is posted, when a practice moves, and 15 minutes before each one.
 
-- A **How this works** page in the header, written for someone who's just
-  been handed the link — different sections appear depending on whether you
-  also choreograph or run the schedule.
-- Sign in with Google. **My Schedule** greets you by name and shows every
-  dance you're in, grouped per piece.
-- While a practice is running, a **Check in** button sits at the top of that
-  screen. Tapping it records the time and works out how late you were —
-  under five minutes counts as on time. Nobody is chased about a practice
-  they already logged a conflict for.
-- **My Attendance** is a full history: every practice you've had, what was
-  recorded, and how late you were. Tap any one to open that practice's whole
-  record — so if there's ever a question about who was there, everyone
-  involved can look at the same page. Finished pieces move to "Past seasons"
-  rather than disappearing.
-- **My Conflicts** points at the PADT conflict calendar you were given at the
-  start of the year. Sync the whole term in one tap and you never type a
-  conflict twice. You can also add one by dragging on the calendar — just a
-  title and a time, no categories to pick.
-- **Add this week to my calendar** downloads every practice that week as one
-  file, which imports into Google, Apple Calendar or Outlook in a single go.
-- Installable from any phone browser. Add it to your home screen and you get
-  notifications when practice starts.
+**Choreographers** see who's coming before it happens — expected, excused, and
+coming late with the time each person agreed — watch check-ins land live,
+record that a rehearsal actually started late so nobody is penalised for it,
+and sign off the recap.
 
-**Choreographers** (for their own dances)
+**The artistic director** gets a weekly checklist, conflict review, room
+availability with Google Calendar import, the week builder, one-press publish
+that writes every practice to the team calendar and sends one message per
+person, attendance review with chronic-absence flags, and a late-charge ledger
+with dated fee schedules and a spreadsheet export.
 
-- See who's coming before it happens: **Expected**, **Excused**, and
-  **Coming late** with the time each person agreed to arrive.
-- Watch check-ins land during the practice, with minutes late per person.
-- Record that the practice actually started late — everyone's lateness is
-  recalculated from the real start, so nobody is penalised for a practice
-  that hadn't begun.
-- Write notes on the practice, or on one person in it.
-- When the practice ends, a notification asks you to review the recap and
-  **Submit**. There's no deadline; come back days later if you need to.
+## Engineering notes
 
-**The AD**
+| | |
+| --- | --- |
+| **Time** | One Eastern-time module every date passes through. The server runs UTC, so a stray `getHours()` silently moves a 7pm rehearsal — the tests pin `TZ=UTC` to keep that honest. |
+| **Money** | Integer cents throughout; dollars exist only at the display and export edges. Fee schedules are effective-dated, so raising the rates in October leaves September priced as people were told. |
+| **Notifications** | Deduplicated against the notification rows themselves rather than against timing, so the cron endpoint is safe to call as often as you like. Publishing is the only thing that notifies; editing a published practice stages the change. |
+| **Calendar** | Two-way with Google: conflicts import from a shared calendar, published practices are written out and updated in place when they move. |
+| **Tests** | 319 assertions across 7 suites — plain `tsx` scripts, no framework — covering slot scoring, the solver's tiers and floors, lateness maths against agreed arrivals, and the dues waterfall. |
 
-- **This week** — a checklist of the week's work in the order it happens:
-  review conflicts → sort the spaces → build the schedule → publish → check
-  attendance. Each step shows how far along it is.
-- **Conflict Review** — everything logged this week, grouped by person, with
-  the conflict's own title front and centre. One tap marks it excused or
-  unexcused; there's a button to do a whole person's week at once, and a
-  running count of what's still unreviewed.
-- **Spaces** — the usual weekly hours per room, one-off changes grouped by
-  week, and a calendar view of what the scheduler will actually treat as
-  bookable. Link a room's Google Calendar and its bookings import
-  themselves.
-- **Schedule Builder** — a Google-Calendar-style grid with drag-to-create and
-  drag-to-move, ranked slot suggestions across every room at once, a
-  cast-conflict side panel, and a week tracker listing every dance as
-  scheduled / needs a room / needs scheduling / not practising. A conflict
-  that clips the front of a practice is offered as a **late arrival** in one
-  tap rather than an absence.
-- **Publish** flips the whole draft schedule at once, notifies everyone with
-  a single summary each, and writes every practice onto the shared team
-  Google Calendar — titled *"Bhangra 7"*, located at the studio, described
-  with who's excused, who isn't and who's coming late. Move or cancel a
-  practice later and that event updates itself.
-- **Attendance Review** — by person, **lateness by month**, unexcused only,
-  per dance week by week, or every practice. The lateness view breaks minutes
-  out per dance and sums them for each month and each semester. Chronic
-  absence is flagged both within a dance and across everything someone is in;
-  lateness is reported on its own and never trips a flag.
-- **A page per person** — click any name on the Roster or in Attendance
-  Review: every practice they've had, their conflicts, their out-of-town
-  windows, minutes late month by month, and notes about them, with the
-  override on each row. This is the screen for settling "I was definitely
-  there".
-- **Dances** — archive a finished piece and it leaves every screen while all
-  its history stays in the database.
-- **Settings** — chronic-absence threshold, when someone counts as late, the
-  team calendar, and an off-switch for using past attendance in scheduling.
+~30k lines of TypeScript, 30 Prisma models, 20 migrations.
 
-## Tests
+## Stack
 
-`npm test` runs the scheduling and attendance logic suites (plain `tsx`
-scripts, no test framework needed) — 63 assertions covering the parts where
-a silent bug would be most costly: slot scoring and hard constraints,
-one-off space changes, multi-space search, lateness maths against agreed
-arrivals and recorded late starts, who has to check in at all,
-chronic-absence thresholds, and the bounds on historical weighting.
+Next.js 16 (App Router, server actions) · React 19 · TypeScript · Tailwind 4 ·
+Prisma 7 on PostgreSQL · Auth.js with Google OAuth · Web Push · Google Calendar
+API · FullCalendar · SheetJS · deployed on Vercel and Neon.
 
-## Try it locally (start here)
+<details>
+<summary><b>Run it locally</b></summary>
 
-The fastest way to click through the app. You do **not** need to set up
-Google sign-in for this — there's a development-only login that lets you
-sign in as anyone on the roster.
+No Google OAuth setup needed — there's a development-only sign-in that lets you
+be anyone on the roster.
 
-**1. Install Node.js.** Download the LTS version from
-[nodejs.org](https://nodejs.org) and run the installer.
+**1.** Install [Node.js](https://nodejs.org) (LTS).
 
-**2. Get a free database.** Sign up at [neon.com](https://neon.com), create
-a project, and copy the connection string it gives you (starts with
-`postgresql://`). It takes about two minutes and no card. You'll reuse this
-same database when you deploy, so it isn't throwaway work.
+**2.** Get a free Postgres database at [neon.com](https://neon.com) and copy the
+connection string. Two minutes, no card.
 
-**3. Create a file named `.env`** in the project folder, containing:
+**3.** Create `.env` in the project folder:
 
 ```
-DATABASE_URL="paste-your-neon-connection-string-here"
+DATABASE_URL="your-neon-connection-string"
 NEXTAUTH_URL="http://localhost:3000"
-NEXTAUTH_SECRET="any-random-string-will-do-for-local"
+NEXTAUTH_SECRET="any-random-string-for-local"
 ALLOW_DEV_LOGIN="true"
 ```
 
-**4. In Terminal, from the project folder, run these one at a time:**
+**4.** Run these one at a time:
 
 ```bash
-npm install              # installs dependencies (a few minutes, once)
-npx prisma migrate deploy # creates the database tables
-npm run seed:demo        # fills it with a realistic example season
-npm run dev              # starts the app
+npm install
+npx prisma migrate deploy   # create the tables
+npm run seed:demo           # fill them with a realistic season
+npm run dev
 ```
 
-**5. Open [http://localhost:3000](http://localhost:3000).** The sign-in page
-will show a "Local development only" section — click any name to sign in as
-them. Good ones to try:
+**5.** Open <http://localhost:3000> and pick a name under "Local development
+only":
 
 | Sign in as | To see |
 | --- | --- |
-| **Priya Raman** | The AD — Schedule Builder, Attendance Review, Settings |
-| **Aisha Okonkwo** | A choreographer — one Hip Hop Fusion practice waiting to be submitted |
+| **Priya Raman** | The AD — Schedule Builder, Attendance Review, Late charges |
+| **Aisha Okonkwo** | A choreographer with a practice waiting to be signed off |
 | **Diego Alvarez** | A dancer with conflicts already logged |
 
-The seed leaves one Contemporary practice as an unconfirmed draft, so you
-can open the Schedule Builder, confirm it, and watch the notification reach
-the cast. It also leaves three conflicts unreviewed and each dance's most
-recent practice unsubmitted, so Conflict Review and the choreographer's
-queue both open with something in them.
+The seed leaves a Contemporary practice in draft, three conflicts unreviewed
+and each dance's most recent practice unsubmitted, so every queue opens with
+something in it.
 
-To make edits: change a file, save it, and the browser updates on its own.
-Stop the app with `Ctrl+C`.
+> Dev login needs `ALLOW_DEV_LOGIN=true` **and** a development build. `NODE_ENV`
+> is fixed to `production` in any real deployment, so it cannot be switched on
+> for a live site even by mistake.
 
-> **On the dev login:** it needs `ALLOW_DEV_LOGIN=true` *and* a development
-> build. `NODE_ENV` is fixed to `production` in any real deployment, so this
-> cannot be switched on for a live site even by mistake — verified by test.
+</details>
 
-## Deploying for real
+<details>
+<summary><b>Deploy it</b></summary>
 
-**[DEPLOYMENT.md](DEPLOYMENT.md) is the step-by-step walkthrough** — accounts
-to create, values to copy, in order. What follows is the summary.
+**[DEPLOYMENT.md](DEPLOYMENT.md)** is the step-by-step walkthrough. Beyond the
+local setup you'll need:
 
-Beyond the local setup above you'll need:
+- **Google Cloud OAuth client** for real sign-in — add
+  `<your-url>/api/auth/callback/google` as a redirect URI and enable the Google
+  Calendar API. Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`.
+- **`INITIAL_ADMIN_EMAIL`** — whoever signs in with it becomes the first admin.
+- **`VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT`** — push is the
+  only way the app reaches anyone who isn't looking at it. Generate with
+  `npx web-push generate-vapid-keys`. On iPhone these arrive only once the app
+  is on the home screen.
+- **`CRON_SECRET`** — guards `/api/cron/practice-notifications`, which something
+  outside the app calls every few minutes to send the timed reminders.
 
-- **A Google Cloud OAuth client** for real Sign in with Google. Create
-  credentials at
-  [console.cloud.google.com/apis/credentials](https://console.cloud.google.com/apis/credentials),
-  add `<your-url>/api/auth/callback/google` as an authorized redirect URI,
-  and enable the **Google Calendar API** for the project. Set
-  `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`.
-- **Hosting.** [Vercel](https://vercel.com) connects to the GitHub repo and
-  deploys on push; its free tier is ample for ~40 people.
-- **`INITIAL_ADMIN_EMAIL`** — set this to your own email. Whoever signs in
-  with it is made an admin automatically, which is how the first AD gets
-  created. After that the AD can promote others from the Roster screen.
-- **`VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT`** — set these.
-  They are what makes push work, and push is now the only way the app reaches
-  anyone off the app. Without them people only see notifications when they
-  open the app and look at the bell.
-  Generate with `npx web-push generate-vapid-keys`. On iPhone these only
-  arrive once the app is on the home screen.
-- **`CRON_SECRET`** — guards `/api/cron/practice-notifications`, the endpoint
-  that sends the "practice started, check in" and "submit attendance" pings.
-  Something outside the app has to call it every few minutes — see
-  [DEPLOYMENT.md](DEPLOYMENT.md#scheduled-notifications). Nothing else depends
-  on it: the Check in button appears on its own, and attendance can be
-  submitted at any time.
+Leave `ALLOW_DEV_LOGIN` unset. Vercel's free tier is ample for ~40 people.
 
-Leave `ALLOW_DEV_LOGIN` unset. `NEXTAUTH_URL` isn't needed — `trustHost` is
-on, so the site works out its own address.
+</details>
 
-## Navigation model
+## Tests
 
-Dancer and choreographer roles are unified into one personal view (My
-Schedule / My Conflicts / My Attendance), grouped by dance — a person can be
-a dancer in one piece and choreograph another without switching modes.
-Choreographing any dance simply adds **Attendance Check-off** for those
-dances to the same nav. Admin access is a separate mode, reached via an
-"Admin Console" toggle for anyone with `isAdmin` set.
+```bash
+npm test
+```
+

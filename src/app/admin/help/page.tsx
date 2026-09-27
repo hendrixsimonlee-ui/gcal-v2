@@ -1013,7 +1013,21 @@ export default function AdminHelpPage() {
           until they press Sync, and you can&rsquo;t tell a clear week from an
           unchecked one until they press Submit.
         </p>
-      </Section>
+              <p>
+          <B>A day after a practice, if nobody has submitted it</B>{" "}— to
+          that dance&rsquo;s choreographers, once. The nudge when a rehearsal
+          ends is easy to swipe away mid-rehearsal; this is the one that
+          catches the practice nobody came back to. It is sent once and never
+          again: somebody who isn&rsquo;t going to do it needs chasing by a
+          person, not by a phone buzzing every morning.
+        </p>
+        <p>
+          <B>Monday at 9am, to you</B>{" "}— what is still unsigned from last
+          week and how many flags are waiting. If everything is done it says so
+          rather than staying silent, because a prompt that only appears when
+          there is a problem is one you can&rsquo;t tell from a broken one.
+        </p>
+</Section>
 
       <Section title="Late charges">
         <p>
@@ -1129,12 +1143,13 @@ export default function AdminHelpPage() {
           read.
         </p>
         <p>
-          <B>Letting somebody else run it.</B>{" "}On{" "}
-          <Nav href="/admin/roster">Roster</Nav> there&rsquo;s a{" "}
-          <B>Give late charges</B>{" "}button next to each person. It opens this
-          one page for them and nothing else: no casting, no room bookings, no
-          schedule builder, no conflict notes. They keep their normal dancer
-          navigation with one extra link added.
+          <B>Letting somebody else run it.</B>{" "}Top right of this screen,{" "}
+          <B>Who can open this</B>. Tick a name and they get this one page and
+          nothing else: no casting, no room bookings, no schedule builder, no
+          conflict notes. They keep their normal dancer navigation with one
+          extra link added, and they can tick Venmo and Paid but not change the
+          rates or write a charge off. Untick to take it back. Admins already
+          have it, so their names are listed without a tick box.
         </p>
       </Section>
 
@@ -1145,16 +1160,117 @@ export default function AdminHelpPage() {
           no deadline.
         </p>
         <p>
-          Late and absent are different states. Someone who checks in after the
-          start is late; someone who told you in advance they&rsquo;d be late is
-          recorded as expected. Anyone you excluded from a week is marked
-          excused rather than absent, so leaving someone out never damages their
-          record.
+          <B>Choreographers submit, they don&rsquo;t edit.</B>{" "}
+          Before they submit they can do exactly one thing: mark somebody
+          present who never checked in, for the phone that died. After they
+          submit the sheet is read-only to them. Everything else they raise as
+          a flag, which lands on{" "}
+          <Nav href="/admin/attendance">Attendance Review</Nav> with their name
+          and their words on it, and you decide.
         </p>
         <p>
-          <Nav href="/admin/attendance">Attendance Review</Nav> shows the
-          cumulative picture and flags chronic absence at whatever threshold you
-          set in Settings.
+          <B>Why it changed.</B>{" "}The old sheet let them pick between Here,
+          Late, Excused and Unexcused. Picking Here also wiped the minutes, so
+          somebody fourteen minutes late became on time and their charge
+          vanished — silently, with nothing on screen to show it had happened.
+          Picking Late did the reverse and produced no charge at all.
+        </p>
+        <p>
+          <B>Late isn&rsquo;t a choice any more.</B>{" "}Nobody picks between
+          present and late, including you. It follows the minutes, and the
+          minutes come from the check-in. What anyone picks is{" "}
+          <B>Came</B>, <B>Excused</B>{" "}or <B>Didn&rsquo;t come</B>, and none
+          of those touches the number that costs money.
+        </p>
+        <p>
+          <B>Changing how late somebody was is yours alone.</B>{" "}The minutes
+          box sits on each person&rsquo;s row for you and nowhere else, and on{" "}
+          <Nav href="/admin/attendance-charges">Late charges</Nav> behind the
+          Fix button. Either way it re-prices at that day&rsquo;s rates and is
+          stamped as something you decided, so nothing recalculates over it
+          later.
+        </p>
+        <p>
+          <B>What the choreographer sees before a rehearsal.</B>{" "}Four groups
+          now: expected, coming late, excused, and not coming. People who
+          logged a conflict you haven&rsquo;t excused used to sit in the
+          expected list, so choreographers chased dancers you already knew
+          weren&rsquo;t turning up. The count line at the top is who should
+          actually walk through the door.
+        </p>
+        <p>
+          <B>Somebody excused who turns up anyway</B>{" "}is recorded present
+          and charged nothing — they had permission to miss it entirely, so
+          coming can&rsquo;t leave them worse off than staying home. It appears
+          in your queue so you know it happened.
+        </p>
+      </Section>
+
+      <Section title="Attendance Review">
+        <p>
+          Three tabs, in the order you said you think about this: what has gone
+          wrong, then how each person is doing, then how each piece is doing.
+        </p>
+        <ul>
+          <li>
+            <B>Needs attention</B>{" "}— unexcused absences newest first, the
+            flags waiting on you, the chronic-absence cards, and the weeks
+            still to sign off.
+          </li>
+          <li>
+            <B>People</B>{" "}— everyone, worst attendance first, with minutes
+            late folded in underneath.
+          </li>
+          <li>
+            <B>Dances</B>{" "}— turnout per piece, week by week, against that
+            piece&rsquo;s own normal. This is the one that answers &ldquo;is
+            this dance getting fewer people than it used to&rdquo;, because a
+            list of absent names never says what normal was. Excused absences
+            are left out: somebody you let off was never expected in the room,
+            and counting them makes a good week look thin.
+          </li>
+        </ul>
+        <p>
+          <B>Lateness to re-check.</B>{" "}At the top of Needs attention you may
+          find a list of people who checked in late but are being charged
+          nothing. That is the old bug above, caught after the fact: the
+          check-in times were never damaged, so the real minutes could be
+          worked out again. Nothing has moved — each row is{" "}
+          <B>Charge the 23</B>{" "}or <B>Leave it</B>, and what you press is
+          remembered so it never asks twice. Reinstating a term of charges on
+          its own would have handed people bills they were told they
+          didn&rsquo;t have.
+        </p>
+      </Section>
+
+      <Section title="This week — your home page">
+        <p>
+          A strip of the next four weeks, the week&rsquo;s calendar, and the
+          practices still waiting to be signed off. That&rsquo;s the page.
+        </p>
+        <p>
+          <B>The strip</B>{" "}is green when every dance in that week either has
+          a time or has been given the week off, and amber when it
+          doesn&rsquo;t. &ldquo;Scheduled, not published&rdquo; means
+          it&rsquo;s all placed but some of it is still a draft nobody has been
+          told about. Any of them opens the Schedule Builder.
+        </p>
+        <p>
+          <B>Attendance is grouped by the week it happened in</B>, oldest
+          first. A flat list of a month&rsquo;s practices reads as a backlog
+          with no shape; by week you can see that last week is done and the one
+          before isn&rsquo;t.
+        </p>
+        <p>
+          Click any rehearsal on the grid to open its attendance sheet. Page
+          back and forward with the arrows. Drafts are hatched; published
+          practices are solid.
+        </p>
+        <p>
+          <B>It doesn&rsquo;t list your jobs any more.</B>{" "}It used to be a
+          five-step checklist, then a written-out list of everything
+          outstanding. Both turned a glance into a paragraph, and every item on
+          them already had a screen of its own in the nav.
         </p>
       </Section>
 

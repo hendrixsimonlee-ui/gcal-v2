@@ -10,9 +10,10 @@ import {
 import {
   computeMinutesLate,
   effectivePracticeStart,
-  isExpectedToCheckIn,
   statusForNoCheckIn,
+  statusForOutcome,
   statusFromCheckIn,
+  type AttendanceOutcome,
   type AttendanceStatus,
 } from "@/lib/attendance";
 import { formatWeekLabel, startOfWeek } from "@/lib/dates";
@@ -84,6 +85,49 @@ export interface CheckInWindow {
   plannedArriveAt: Date | null;
   alreadyCheckedInAt: Date | null;
   minutesLate: number | null;
+  /** Where the app currently has them: excused from this one, down as not
+   * coming, or simply expected. Checking in overrides all three. */
+  standing: "EXPECTED" | "EXCUSED" | "NOT_COMING";
+}
+
+/** Where the app has somebody for a practice, before they check in.
+ *
+ * A conflict the AD excused means they were told they didn't have to come. An
+ * unreviewed or refused one still means the app expects them to be missing,
+ * but nobody has blessed it. Neither stops them turning up. */
+function standingFor(
+  userId: string,
+  start: Date,
+  end: Date,
+  conflicts: { userId: string; startDateTime: Date; endDateTime: Date; status: string }[],
+): "EXPECTED" | "EXCUSED" | "NOT_COMING" {
+  const overlapping = conflicts.filter(
+    (c) => c.userId === userId && c.startDateTime < end && start < c.endDateTime,
+  );
+  if (overlapping.length === 0) return "EXPECTED";
+  return overlapping.some((c) => c.status === "EXCUSED") ? "EXCUSED" : "NOT_COMING";
+}
+
+/** Was this person excused from this practice by the AD?
+ *
+ * Only an excused conflict counts. One nobody has reviewed is not permission,
+ * and treating it as permission would make "log a conflict, then turn up late"
+ * a way to arrive free. */
+async function wasExcusedFrom(
+  userId: string,
+  start: Date,
+  end: Date,
+): Promise<boolean> {
+  const excused = await prisma.conflict.findFirst({
+    where: {
+      userId,
+      status: "EXCUSED",
+      startDateTime: { lt: end },
+      endDateTime: { gt: start },
+    },
+    select: { id: true },
+  });
+  return excused !== null;
 }
 
 /** Practices the signed-in person can check into right now.
@@ -119,30 +163,27 @@ export async function getOpenCheckIns(): Promise<CheckInWindow[]> {
     prisma.conflict.findMany({ where: { userId: user.id } }),
   ]);
 
-  return practices
-    .filter((p) => {
-      // Someone who already checked in still sees it — that's how they know
-      // it worked, and it shows how late they were.
-      if (p.attendance.length > 0) return true;
-      // An agreed late arrival is exactly the case where they DO check in.
-      if (p.plannedArrivals.length > 0) return true;
-      return isExpectedToCheckIn(
-        user.id,
-        p.startDateTime,
-        p.endDateTime,
-        conflicts,
-      );
-    })
-    .map((p) => ({
-      practiceId: p.id,
-      danceName: p.dance.name,
-      spaceName: p.space?.name ?? null,
-      startDateTime: p.startDateTime,
-      endDateTime: p.endDateTime,
-      plannedArriveAt: p.plannedArrivals[0]?.arriveAt ?? null,
-      alreadyCheckedInAt: p.attendance[0]?.checkedInAt ?? null,
-      minutesLate: p.attendance[0]?.minutesLate ?? null,
-    }));
+  // Everybody in the cast sees the button, including people the app already
+  // knows aren't coming.
+  //
+  // It used to hide itself from anyone with a conflict over the practice,
+  // which was tidy and wrong: plans change, and somebody whose class finished
+  // early and walked over had no way to say so. They were marked absent for a
+  // rehearsal they attended. The button costs nothing to show, and pressing it
+  // is the person telling us something true.
+  return practices.map((p) => ({
+    practiceId: p.id,
+    danceName: p.dance.name,
+    spaceName: p.space?.name ?? null,
+    startDateTime: p.startDateTime,
+    endDateTime: p.endDateTime,
+    plannedArriveAt: p.plannedArrivals[0]?.arriveAt ?? null,
+    alreadyCheckedInAt: p.attendance[0]?.checkedInAt ?? null,
+    minutesLate: p.attendance[0]?.minutesLate ?? null,
+    // So the card can say where they stand rather than just offering a button
+    // to somebody who believes they're excused.
+    standing: standingFor(user.id, p.startDateTime, p.endDateTime, conflicts),
+  }));
 }
 
 export interface CheckInResult {
@@ -180,28 +221,70 @@ export async function checkIn(practiceId: string): Promise<CheckInResult> {
     practice.startDateTime,
     practice.actualStartTime,
   );
-  const minutesLate = computeMinutesLate(
+  const measured = computeMinutesLate(
     now,
     start,
     practice.plannedArrivals[0]?.arriveAt ?? null,
   );
+
+  // Were they already excused from this one? Then turning up is a bonus and
+  // costs nothing. Somebody with permission to miss a rehearsal entirely must
+  // never end up worse off for coming than for staying home — that would be
+  // the app charging people for doing the thing it wants.
+  const excused = await wasExcusedFrom(
+    user.id,
+    practice.startDateTime,
+    practice.endDateTime,
+  );
+  const minutesLate = excused ? 0 : measured;
   const status = statusFromCheckIn(minutesLate, settings.lateThresholdMinutes);
 
   await prisma.attendance.upsert({
     where: { practiceId_userId: { practiceId, userId: user.id } },
-    update: { status, checkedInAt: now, minutesLate, isOverride: false },
+    update: {
+      status,
+      checkedInAt: now,
+      minutesLate,
+      measuredMinutesLate: measured,
+      cameDespiteExcusal: excused,
+      isOverride: false,
+      // A fresh check-in supersedes any hand-set figure: they have just told
+      // us when they actually walked in.
+      lateMinutesSetById: null,
+      lateMinutesSetAt: null,
+    },
     create: {
       practiceId,
       userId: user.id,
       status,
       checkedInAt: now,
       minutesLate,
+      measuredMinutesLate: measured,
+      cameDespiteExcusal: excused,
     },
   });
+
+  // The AD asked to be told when this happens rather than have it pass
+  // silently, so it lands in their queue as a flag nobody had to raise.
+  if (excused) {
+    await prisma.attendanceFlag.create({
+      data: {
+        practiceId,
+        subjectUserId: user.id,
+        raisedById: user.id,
+        isAutomatic: true,
+        body:
+          measured > 0
+            ? `Was excused but came anyway, ${measured} minutes in. Not charged.`
+            : "Was excused but came anyway. Not charged.",
+      },
+    });
+  }
 
   revalidatePath("/schedule");
   revalidatePath("/my-attendance");
   revalidatePath(`/attendance/${practiceId}`);
+  revalidatePath("/admin/attendance");
   return { minutesLate, status };
 }
 
@@ -276,19 +359,73 @@ async function assertWeekOpen(startDateTime: Date) {
   }
 }
 
-/** A choreographer or admin correcting one person's record — they were there
- * but their phone died, or an absence deserves excusing after the fact. */
-export async function overrideAttendance(
+/** Recording that somebody came, or didn't, and why.
+ *
+ * This replaced an action that took a status — PRESENT, LATE, EXCUSED_ABSENT,
+ * UNEXCUSED_ABSENT — and wrote it straight down. That was the bug. Setting
+ * PRESENT also wrote `minutesLate = 0`, so marking somebody "here" deleted the
+ * fourteen minutes they had been late by and the fee with them; setting LATE
+ * left the minutes at zero, so nothing was ever charged. The two fields could
+ * disagree, and whichever was written last won.
+ *
+ * Now there are three outcomes and none of them is "late", because late isn't
+ * a decision anybody makes — it is what the minutes say. **This function never
+ * writes `minutesLate`.** Changing how late somebody was is `setMinutesLate`
+ * in the dues actions, which is the AD's alone and re-prices the charge.
+ *
+ * Who may call it:
+ *
+ * - **Admins**, for anything.
+ * - **Choreographers**, only before they submit, and only to say that somebody
+ *   who never checked in was in fact there. That covers the phone that died,
+ *   which is the case this has to keep handling, without handing back the
+ *   control that lost the money. Anything else they raise as a flag.
+ */
+export async function markAttendance(
   practiceId: string,
   userId: string,
-  status: AttendanceStatus,
+  outcome: AttendanceOutcome,
 ) {
   const practice = await prisma.practice.findUniqueOrThrow({
     where: { id: practiceId },
-    select: { danceId: true, startDateTime: true },
+    select: {
+      danceId: true,
+      startDateTime: true,
+      attendanceSubmittedAt: true,
+    },
   });
   const marker = await requireChoreographerOrAdmin(practice.danceId);
   await assertWeekOpen(practice.startDateTime);
+
+  const existing = await prisma.attendance.findUnique({
+    where: { practiceId_userId: { practiceId, userId } },
+    select: { checkedInAt: true, minutesLate: true },
+  });
+
+  if (!marker.isAdmin) {
+    if (practice.attendanceSubmittedAt) {
+      throw new Error(
+        "This has been submitted. Flag the problem and the AD can change it.",
+      );
+    }
+    if (outcome !== "CAME") {
+      throw new Error(
+        "Only the AD can mark somebody absent. Flag it and they'll sort it out.",
+      );
+    }
+    if (existing?.checkedInAt) {
+      throw new Error(
+        "They checked in themselves, so this is already right. If the time is wrong, flag it for the AD.",
+      );
+    }
+  }
+
+  const settings = await getAttendanceSettings();
+  const status = statusForOutcome(
+    outcome,
+    existing?.minutesLate ?? null,
+    settings.lateThresholdMinutes,
+  );
 
   await prisma.attendance.upsert({
     where: { practiceId_userId: { practiceId, userId } },
@@ -297,8 +434,8 @@ export async function overrideAttendance(
       isOverride: true,
       markedById: marker.id,
       markedAt: new Date(),
-      // Clearing an absence shouldn't leave a stale lateness behind.
-      ...(status === "PRESENT" ? { minutesLate: 0 } : {}),
+      // Deliberately absent: minutesLate. Saying somebody came says nothing
+      // about when, and guessing zero is exactly what deleted the charges.
     },
     create: {
       practiceId,
@@ -343,23 +480,42 @@ export async function setActualStartTime(
     practice.plannedArrivals.map((p) => [p.userId, p.arriveAt]),
   );
 
-  // Only rows that came from a real check-in: an override is somebody's
-  // decision and shouldn't be silently recomputed away.
+  // Every row with a real check-in gets its measurement redone — the
+  // measurement is arithmetic, and the inputs just changed.
   const checkIns = await prisma.attendance.findMany({
-    where: { practiceId, checkedInAt: { not: null }, isOverride: false },
+    where: { practiceId, checkedInAt: { not: null } },
   });
 
   for (const record of checkIns) {
-    const minutesLate = computeMinutesLate(
+    const measured = computeMinutesLate(
       record.checkedInAt!,
       start,
       plannedByUser.get(record.userId) ?? null,
     );
+
+    // What is charged follows the measurement, except where somebody has
+    // deliberately set it by hand, or where the person was excused and came
+    // anyway and is charged nothing on purpose. Recomputing over either of
+    // those would quietly undo a decision the AD made.
+    const keepCharged =
+      record.lateMinutesSetById !== null || record.cameDespiteExcusal;
+    const minutesLate = keepCharged ? record.minutesLate : measured;
+
     await prisma.attendance.update({
       where: { id: record.id },
       data: {
+        measuredMinutesLate: measured,
         minutesLate,
-        status: statusFromCheckIn(minutesLate, settings.lateThresholdMinutes),
+        // An absence stays an absence: a later start time says nothing about
+        // somebody who never came.
+        ...(record.status === "PRESENT" || record.status === "LATE"
+          ? {
+              status: statusFromCheckIn(
+                minutesLate ?? 0,
+                settings.lateThresholdMinutes,
+              ),
+            }
+          : {}),
       },
     });
   }

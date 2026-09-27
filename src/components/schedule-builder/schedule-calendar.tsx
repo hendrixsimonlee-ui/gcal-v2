@@ -13,6 +13,35 @@ import type {
 } from "@fullcalendar/core";
 import type { EventResizeDoneArg } from "@fullcalendar/interaction";
 import type { CandidateSlot } from "@/lib/scheduling";
+import { fromGridTime, toGridTime } from "@/lib/timezone";
+
+/* -------------------------------------------------------------------------
+ * Eastern in, Eastern out
+ *
+ * FullCalendar has no timezone of its own: it lays events out on whatever
+ * clock the browser is set to. Hand it a real instant and a 2pm Philadelphia
+ * rehearsal draws at 6pm for anybody on UTC.
+ *
+ * This grid was already half-converted without anyone meaning to. The green
+ * availability bands are built from a date and a time with no zone on them,
+ * so they have always drawn at Eastern hours; the practice blocks and the
+ * ranked-slot shading were real instants, so they drew at the viewer's hours.
+ * On an Eastern laptop the two agree, which is why a whole season went by
+ * without it showing. Anywhere else the rooms and the rehearsals in them slid
+ * apart.
+ *
+ * So everything goes in as Eastern wall-clock with the zone stripped, and
+ * everything the grid hands back gets read the same way. The pair has to stay
+ * a pair: convert one direction only and dragging a practice would save it at
+ * the wrong hour, which is far worse than drawing it at one.
+ *
+ * On an Eastern browser both functions are exact round trips, so this changes
+ * nothing at all for the people actually using it.
+ * ------------------------------------------------------------------------- */
+
+const toGrid = toGridTime;
+const fromGrid = fromGridTime;
+
 
 export interface PracticeEvent {
   id: string;
@@ -97,8 +126,8 @@ export function ScheduleCalendar({
     return {
       id: p.id,
       title: `${p.danceName}${p.spaceName ? ` · ${p.spaceName}` : ""}`,
-      start: p.startDateTime,
-      end: p.endDateTime,
+      start: toGrid(new Date(p.startDateTime)),
+      end: toGrid(new Date(p.endDateTime)),
       backgroundColor: color,
       borderColor: color,
       // A draft is hatched and dash-bordered; a published practice is a solid
@@ -122,8 +151,8 @@ export function ScheduleCalendar({
   const candidateEvents: EventInput[] = candidates.map((c, i) => ({
     id: `candidate-${i}`,
     title: `#${i + 1}`,
-    start: c.startDateTime.toISOString(),
-    end: c.endDateTime.toISOString(),
+    start: toGrid(c.startDateTime),
+    end: toGrid(c.endDateTime),
     display: "background",
     backgroundColor: c.score === 0 ? "#bbf7d0" : "#fef08a",
     editable: false,
@@ -218,22 +247,33 @@ export function ScheduleCalendar({
       events={[...availabilityEvents, ...practiceEvents, ...candidateEvents]}
       eventContent={renderEventContent}
       select={(info: DateSelectArg) => {
-        onSelectRange(info.start.toISOString(), info.end.toISOString());
+        onSelectRange(
+          fromGrid(info.start).toISOString(),
+          fromGrid(info.end).toISOString(),
+        );
       }}
       eventDrop={(info: EventDropArg) => {
         if (!info.event.start || !info.event.end || info.event.id.startsWith("candidate-")) return;
-        onEventMove(info.event.id, info.event.start.toISOString(), info.event.end.toISOString());
+        onEventMove(
+          info.event.id,
+          fromGrid(info.event.start).toISOString(),
+          fromGrid(info.event.end).toISOString(),
+        );
       }}
       eventResize={(info: EventResizeDoneArg) => {
         if (!info.event.start || !info.event.end) return;
-        onEventMove(info.event.id, info.event.start.toISOString(), info.event.end.toISOString());
+        onEventMove(
+          info.event.id,
+          fromGrid(info.event.start).toISOString(),
+          fromGrid(info.event.end).toISOString(),
+        );
       }}
       eventClick={(info) => {
         if (info.event.id.startsWith("candidate-")) return;
         if (!info.event.id) return;
         onEventClick(info.event.id);
       }}
-      datesSet={(arg) => onDatesSet(arg.start, arg.end)}
+      datesSet={(arg) => onDatesSet(fromGrid(arg.start), fromGrid(arg.end))}
       />
     </>
   );

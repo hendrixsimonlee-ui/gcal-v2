@@ -290,9 +290,31 @@ export default async function HelpPage() {
           rather than counted against you.
         </p>
         <p>
+          <B>Check in even if the app says you aren&rsquo;t coming.</B>{" "}
+          If you logged a conflict and then made it after all, the button is
+          still there and pressing it replaces the absence with a real record.
+          It used to hide itself from anybody with a conflict, which meant
+          people who turned up anyway were marked missing.
+        </p>
+        <p>
+          <B>If you were excused and came anyway, it costs you nothing.</B>{" "}
+          You had permission to miss the whole thing, so arriving late to
+          something you didn&rsquo;t have to attend is never charged. The AD is
+          told you came.
+        </p>
+        <p>
           Your own record is on{" "}
           <Nav href="/my-attendance">My Attendance</Nav>. Nobody else&rsquo;s
           record is visible to you.
+        </p>
+        <p>
+          <B>If your record is wrong, say so on the practice.</B>{" "}
+          Open the practice from{" "}
+          <Nav href="/my-attendance">My Attendance</Nav> and press{" "}
+          <B>Flag</B>{" "}next to your name — &ldquo;I was here on time, my
+          phone wouldn&rsquo;t load&rdquo;. It goes to the AD with your words
+          on it. Your choreographer can&rsquo;t change attendance themselves
+          any more, so this is the way it gets fixed.
         </p>
       </Section>
 
@@ -309,9 +331,19 @@ export default async function HelpPage() {
             <li>
               <B>Attendance</B> — tick off who came after a practice, then
               submit it. Until you submit, it&rsquo;s provisional. There&rsquo;s
-              no deadline.
+              no deadline, but if it&rsquo;s still untouched a day later
+              you&rsquo;ll get one reminder.
             </li>
           </ul>
+          <p>
+            <B>You can submit, but you can&rsquo;t change attendance.</B>{" "}
+            Before you submit you can mark somebody present who never checked
+            in — the phone that died. Anything else, press <B>Flag</B>{" "}next
+            to their name and say what happened; it goes to the AD and they
+            sort it. This changed because changing somebody to &ldquo;here&rdquo;
+            used to wipe how late they were, and the charge with it, without
+            anybody noticing.
+          </p>
           <p>
             You count more than a dancer when the app is choosing a time. If
             your dance has several choreographers, one of you being busy barely
@@ -391,6 +423,18 @@ export default async function HelpPage() {
           <li>
             <B>A rehearsal is in the app but not your Google Calendar</B> —
             press <B>Add all to my calendar</B>{" "}on My Schedule.
+          </li>
+          <li>
+            <B>You were marked absent for a rehearsal you went to</B> — open
+            that practice from <Nav href="/my-attendance">My Attendance</Nav>{" "}
+            and press <B>Flag</B>{" "}next to your name. The AD gets it and can
+            put it right.
+          </li>
+          <li>
+            <B>A late charge looks wrong</B> — same thing: flag it on the
+            practice, or tell the AD. They can correct the minutes or write the
+            charge off, and if they write it off you&rsquo;ll see the reason on
+            your own page.
           </li>
           <li>
             <B>Anything else</B> — tell the AD what the screen said. The

@@ -193,3 +193,41 @@ export function clampToSupportedRange(date: Date): Date {
 function pad(value: number): string {
   return String(value).padStart(2, "0");
 }
+
+
+/* ------------------------------------------------------------------ *
+ * Calendar grids
+ * ------------------------------------------------------------------ */
+
+/** An instant → the Eastern wall clock, with the zone stripped.
+ *
+ * FullCalendar has no timezone of its own: it lays events out on whatever
+ * clock the browser is set to. Handed a real instant, a 2pm Philadelphia
+ * rehearsal draws at 6pm for somebody on UTC and 3am the next day in Tokyo.
+ * Handed "2026-09-21T14:00:00" it draws at 2pm for everybody, which is what
+ * this app means by a time everywhere else. */
+export function toGridTime(instant: Date): string {
+  return `${appDateKey(instant)}T${appTimeKey(instant)}:00`;
+}
+
+/** The inverse, for whatever the grid hands back after a drag.
+ *
+ * FullCalendar parses our zone-less string on the browser's clock, so the
+ * Date it returns has the Eastern wall clock sitting in its *local* fields.
+ * Reading those fields and reinterpreting them as Eastern recovers the
+ * instant.
+ *
+ * **These two only work as a pair.** Convert going in and not coming out and
+ * a dragged practice saves at the wrong hour — which is much worse than
+ * drawing at the wrong hour, because the schedule is then actually wrong and
+ * forty people are told so. `timezone.test.ts` pins the round trip in several
+ * zones and across a daylight-saving boundary. */
+export function fromGridTime(gridDate: Date): Date {
+  return zonedTimeToInstant(
+    gridDate.getFullYear(),
+    gridDate.getMonth() + 1,
+    gridDate.getDate(),
+    gridDate.getHours(),
+    gridDate.getMinutes(),
+  );
+}

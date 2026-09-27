@@ -14,6 +14,8 @@ import {
   appDateKey,
   appTimeKey,
   clampToSupportedRange,
+  fromGridTime,
+  toGridTime,
   endOfDayInApp,
   isSameAppDay,
   parseAppDateTime,
@@ -294,6 +296,61 @@ assertEqual(midnight.weekday, 6, "4 July 2026 is a Saturday");
     "2027-01-18",
     "…and lands on it an hour later than it would in summer",
   );
+}
+
+// --- the calendar grid, both directions ------------------------------------
+//
+// FullCalendar has no timezone: it draws on the browser's clock. So times go
+// in as Eastern wall-clock with the zone stripped and come back the same way.
+// The pair has to round-trip exactly — convert going in and not coming out
+// and a dragged rehearsal saves at the wrong hour, which doesn't look wrong,
+// it *is* wrong, and forty people get told the wrong time.
+//
+// These run under TZ=UTC (npm test pins it), which is the case that used to
+// be broken: a browser four hours off Eastern.
+{
+  assert(
+    toGridTime(new Date("2026-09-21T18:00:00Z")) === "2026-09-21T14:00:00",
+    "a 2pm Eastern rehearsal is handed to the grid as 14:00, not 18:00",
+  );
+  assert(
+    toGridTime(new Date("2026-01-15T19:30:00Z")) === "2026-01-15T14:30:00",
+    "…and in winter, when Eastern is five hours off rather than four",
+  );
+
+  // The round trip. `new Date(naive)` is exactly what FullCalendar does with
+  // a zone-less string: parse it on the local clock.
+  for (const iso of [
+    "2026-09-21T18:00:00Z", // 2pm EDT
+    "2026-09-21T23:00:00Z", // 7pm EDT, the usual rehearsal hour
+    "2026-01-15T19:30:00Z", // 2:30pm EST, winter
+    "2026-03-08T12:00:00Z", // the morning the clocks go forward
+    "2026-11-01T12:00:00Z", // and the morning they go back
+  ]) {
+    const original = new Date(iso);
+    const backAgain = fromGridTime(new Date(toGridTime(original)));
+    assert(
+      backAgain.getTime() === original.getTime(),
+      `${iso} survives the trip to the grid and back`,
+    );
+  }
+
+  // Dragging two hours down the grid moves it two real hours, not two hours
+  // plus whatever the browser's offset happens to be.
+  {
+    const original = new Date("2026-09-21T18:00:00Z"); // 2pm Eastern
+    const onGrid = new Date(toGridTime(original));
+    const dragged = new Date(onGrid.getTime() + 2 * 60 * 60 * 1000);
+    const saved = fromGridTime(dragged);
+    assert(
+      saved.getTime() - original.getTime() === 2 * 60 * 60 * 1000,
+      "dragging a practice two rows down moves it exactly two hours",
+    );
+    assert(
+      appTimeKey(saved) === "16:00",
+      "…and it lands at 4pm Eastern, which is where it was dropped",
+    );
+  }
 }
 
 if (failures > 0) {

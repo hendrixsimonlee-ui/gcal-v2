@@ -3,9 +3,14 @@
 import { useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { overrideAttendance } from "@/lib/actions/attendance";
+import { markAttendance } from "@/lib/actions/attendance";
 import { AttendanceBadge } from "@/components/status-badges";
-import type { AttendanceStatus } from "@/lib/attendance";
+import {
+  OUTCOME_LABELS,
+  outcomeForStatus,
+  type AttendanceOutcome,
+  type AttendanceStatus,
+} from "@/lib/attendance";
 import { APP_TIME_ZONE } from "@/lib/timezone";
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", {
@@ -78,15 +83,20 @@ export function PersonAttendanceRow({
         {isOverride && (
           <span className="text-[10px] uppercase text-ink-faint">edited</span>
         )}
+        {/* Came, excused, or didn't come. "Late" isn't offered because it
+            isn't a decision — it is whatever the minutes say, and the minutes
+            are corrected on Late charges where the fee is visible. Offering
+            it here is what let somebody be marked present with fourteen
+            minutes still on the record, or late with none. */}
         <select
-          value={status ?? ""}
+          value={outcomeForStatus(status) ?? ""}
           disabled={isPending}
           onChange={(e) =>
             startTransition(async () => {
-              await overrideAttendance(
+              await markAttendance(
                 practiceId,
                 userId,
-                e.target.value as AttendanceStatus,
+                e.target.value as AttendanceOutcome,
               );
               router.refresh();
             })
@@ -96,10 +106,11 @@ export function PersonAttendanceRow({
           <option value="" disabled>
             Change…
           </option>
-          <option value="PRESENT">Here</option>
-          <option value="LATE">Late</option>
-          <option value="EXCUSED_ABSENT">Excused</option>
-          <option value="UNEXCUSED_ABSENT">Unexcused</option>
+          {(["CAME", "EXCUSED", "UNEXCUSED"] as const).map((o) => (
+            <option key={o} value={o}>
+              {OUTCOME_LABELS[o]}
+            </option>
+          ))}
         </select>
         <Link
           href={`/attendance/${practiceId}`}

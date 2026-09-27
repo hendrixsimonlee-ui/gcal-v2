@@ -3,7 +3,10 @@ import {
   effectivePracticeStart,
   isChronicallyAbsent,
   isExpectedToCheckIn,
+  needsLatenessRecheck,
+  outcomeForStatus,
   statusForNoCheckIn,
+  statusForOutcome,
   statusFromCheckIn,
   summarizePerson,
   summarizePractice,
@@ -249,6 +252,125 @@ const LATE_THRESHOLD = 5;
       5,
     ),
     "unexcused absences older than the window stop counting",
+  );
+}
+
+// --- outcomes, and the bug they exist to close -------------------------------
+//
+// The old sheet stored a status and minutes as two independent values. Setting
+// PRESENT wrote `minutesLate = 0`, so marking somebody "here" deleted the
+// fourteen minutes they had been late by and the fee with them; setting LATE
+// left the minutes alone, so nothing was charged. These pin both directions.
+{
+  const T = 5; // the late threshold
+
+  assert(
+    statusForOutcome("CAME", 14, T) === "LATE",
+    "somebody marked as having come, who walked in 14 minutes in, is late",
+  );
+  assert(
+    statusForOutcome("CAME", 0, T) === "PRESENT",
+    "…and on time if the minutes say they were",
+  );
+  assert(
+    statusForOutcome("CAME", 4, T) === "PRESENT",
+    "under the threshold is still on time",
+  );
+  assert(
+    statusForOutcome("CAME", 5, T) === "LATE",
+    "at the threshold it tips",
+  );
+  assert(
+    statusForOutcome("CAME", null, T) === "PRESENT",
+    "no recorded lateness is on time, not an error",
+  );
+  assert(
+    statusForOutcome("EXCUSED", 14, T) === "EXCUSED_ABSENT",
+    "an absence ignores the minutes entirely",
+  );
+  assert(
+    statusForOutcome("UNEXCUSED", null, T) === "UNEXCUSED_ABSENT",
+    "…either kind of absence",
+  );
+
+  // The heart of it: there is no outcome that turns 14 minutes into nothing.
+  const outcomes = ["CAME", "EXCUSED", "UNEXCUSED"] as const;
+  assert(
+    outcomes.every((o) => statusForOutcome(o, 14, T) !== "PRESENT"),
+    "no choice on the sheet can make somebody 14 minutes late 'present'",
+  );
+
+  assert(outcomeForStatus("PRESENT") === "CAME", "present reads back as came");
+  assert(outcomeForStatus("LATE") === "CAME", "so does late — same fact");
+  assert(
+    outcomeForStatus("EXCUSED_ABSENT") === "EXCUSED",
+    "excused reads back as excused",
+  );
+  assert(outcomeForStatus(null) === null, "nothing recorded reads back as nothing");
+
+  // Round trip: reading a status back and re-applying it must not move the
+  // record, which is what happens every time somebody opens the dropdown and
+  // closes it again.
+  for (const [status, minutes] of [
+    ["PRESENT", 0],
+    ["LATE", 14],
+    ["EXCUSED_ABSENT", null],
+    ["UNEXCUSED_ABSENT", null],
+  ] as const) {
+    const back = statusForOutcome(outcomeForStatus(status)!, minutes, T);
+    assert(back === status, `${status} survives a round trip through the sheet`);
+  }
+}
+
+// --- spotting the records the old bug ate -----------------------------------
+{
+  const GRACE = 5;
+  const base = {
+    checkedInAt: new Date("2026-09-11T19:23:00Z"),
+    minutesLate: 0,
+    measuredMinutesLate: 23,
+    lateMinutesSetById: null,
+    cameDespiteExcusal: false,
+  };
+
+  assert(
+    needsLatenessRecheck(base, GRACE),
+    "measured 23 minutes, charged nothing, nobody decided that: flag it",
+  );
+  assert(
+    !needsLatenessRecheck({ ...base, lateMinutesSetById: "priya" }, GRACE),
+    "the AD having set the figure by hand is a decision, not a bug",
+  );
+  assert(
+    !needsLatenessRecheck({ ...base, cameDespiteExcusal: true }, GRACE),
+    "somebody excused who came anyway is charged nothing on purpose",
+  );
+  assert(
+    !needsLatenessRecheck({ ...base, minutesLate: 23 }, GRACE),
+    "a record that already charges what it measured is fine",
+  );
+  assert(
+    !needsLatenessRecheck({ ...base, measuredMinutesLate: 1 }, GRACE),
+    "a minute of drift is not worth anybody's attention",
+  );
+  assert(
+    !needsLatenessRecheck({ ...base, checkedInAt: null }, GRACE),
+    "somebody who never checked in has nothing to measure against",
+  );
+  assert(
+    !needsLatenessRecheck({ ...base, measuredMinutesLate: null }, GRACE),
+    "…and neither does a row with no measurement",
+  );
+  assert(
+    needsLatenessRecheck({ ...base, minutesLate: null }, GRACE),
+    "a null charge is the same as a zero one for this purpose",
+  );
+  assert(
+    !needsLatenessRecheck(
+      { ...base, measuredMinutesLate: 5, minutesLate: 5 },
+      GRACE,
+    ),
+    "exactly at the grace threshold, and charged for it, is fine",
   );
 }
 

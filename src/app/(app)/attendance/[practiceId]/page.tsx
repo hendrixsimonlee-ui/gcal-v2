@@ -77,9 +77,14 @@ export default async function PracticePage({
       minutesLate: row.minutesLate,
       checkedInAt: row.checkedInAt?.toISOString() ?? null,
       isOverride: row.isOverride,
+      attendanceId: row.attendanceId,
+      measuredMinutesLate: row.measuredMinutesLate,
+      cameDespiteExcusal: row.cameDespiteExcusal,
       plannedArriveAt: arrivalByUser.get(row.userId)?.toISOString() ?? null,
-      conflictStatus:
-        conflict && conflict.status !== "NOT_REVIEWED" ? conflict.status : null,
+      // Unreviewed conflicts come through too now. Somebody who logged one the
+      // AD hasn't got to is still not turning up, and hiding that put them in
+      // the choreographer's Expected list to be chased for nothing.
+      conflictStatus: conflict?.status ?? null,
       conflictTitle: conflict?.title ?? null,
     };
   });
@@ -120,6 +125,7 @@ export default async function PracticePage({
         actualStartTime={practice.actualStartTime?.toISOString() ?? null}
         submittedAt={practice.attendanceSubmittedAt?.toISOString() ?? null}
         canManage={canManage}
+        isAdmin={user.isAdmin === true}
         viewerId={user.id}
         hasStarted={practice.startDateTime <= new Date()}
       />

@@ -33,6 +33,15 @@ export interface CastAttendanceRow {
   minutesLate: number | null;
   checkedInAt: Date | null;
   isOverride: boolean;
+  /** Null until a record exists. The AD needs it to correct the minutes, which
+   * is keyed on the record rather than on the person and practice. */
+  attendanceId: string | null;
+  /** What the check-in measured, where that differs from what is charged —
+   * so the sheet can show "23 min, charged as 3" rather than silently the one
+   * number, which is how the difference went unnoticed for a term. */
+  measuredMinutesLate: number | null;
+  /** Set when somebody excused turned up regardless. Never charged. */
+  cameDespiteExcusal: boolean;
 }
 
 export interface PracticeAttendance {
@@ -65,6 +74,9 @@ type PracticeWithRelations = {
   space: { name: string } | null;
   attendanceSubmittedAt: Date | null;
   attendance: {
+    id: string;
+    measuredMinutesLate: number | null;
+    cameDespiteExcusal: boolean;
     userId: string;
     status: AttendanceStatus;
     minutesLate: number | null;
@@ -88,6 +100,9 @@ function buildPracticeAttendance(
       minutesLate: record?.minutesLate ?? null,
       checkedInAt: record?.checkedInAt ?? null,
       isOverride: record?.isOverride ?? false,
+      attendanceId: record?.id ?? null,
+      measuredMinutesLate: record?.measuredMinutesLate ?? null,
+      cameDespiteExcusal: record?.cameDespiteExcusal ?? false,
     };
   });
 
@@ -845,4 +860,215 @@ export async function getUpcomingPracticesForDances(
       lateCount: late.size,
     };
   });
+}
+
+/* ------------------------------------------------------------------ *
+ * The three things the AD actually opens this screen for
+ * ------------------------------------------------------------------ */
+
+export interface RecheckRow {
+  attendanceId: string;
+  practiceId: string;
+  danceName: string;
+  startDateTime: Date;
+  userId: string;
+  name: string;
+  /** What is charged today. Almost always zero — that is the problem. */
+  chargedMinutes: number;
+  /** What the check-in time actually says. */
+  measuredMinutes: number;
+}
+
+/** Records where somebody was measurably late and is being charged nothing,
+ * with no sign that anybody decided that.
+ *
+ * This exists because of a bug that ran for a term: changing a status also
+ * wrote `minutesLate = 0`, so marking somebody "here" quietly deleted their
+ * lateness and the fee. The check-in times were never touched, so the real
+ * figure is recoverable — the migration recomputed it into
+ * `measuredMinutesLate` without moving a single charge.
+ *
+ * What comes back is the difference, for the AD to accept or leave. Nothing
+ * here changes what anybody owes on its own, deliberately: reinstating a term
+ * of charges silently would land people with bills they were told they didn't
+ * have. */
+export async function getLatenessRechecks(
+  graceMinutes: number,
+): Promise<RecheckRow[]> {
+  const rows = await prisma.attendance.findMany({
+    where: {
+      checkedInAt: { not: null },
+      lateMinutesSetById: null,
+      cameDespiteExcusal: false,
+      measuredMinutesLate: { gte: graceMinutes },
+      OR: [{ minutesLate: null }, { minutesLate: { lt: graceMinutes } }],
+      practice: { status: "CONFIRMED" },
+    },
+    select: {
+      id: true,
+      practiceId: true,
+      userId: true,
+      minutesLate: true,
+      measuredMinutesLate: true,
+      user: { select: { name: true, email: true } },
+      practice: {
+        select: { startDateTime: true, dance: { select: { name: true } } },
+      },
+    },
+    orderBy: { practice: { startDateTime: "desc" } },
+  });
+
+  return rows.map((r) => ({
+    attendanceId: r.id,
+    practiceId: r.practiceId,
+    danceName: r.practice.dance.name,
+    startDateTime: r.practice.startDateTime,
+    userId: r.userId,
+    name: r.user.name ?? r.user.email,
+    chargedMinutes: r.minutesLate ?? 0,
+    measuredMinutes: r.measuredMinutesLate ?? 0,
+  }));
+}
+
+export interface RecentUnexcused {
+  practiceId: string;
+  startDateTime: Date;
+  danceName: string;
+  userId: string;
+  name: string;
+}
+
+/** Every unexcused absence, newest first.
+ *
+ * The AD's own words for what matters most on this screen. Ordered by when it
+ * happened rather than by person, because the question is "what has gone wrong
+ * lately", and a name with one absence six weeks ago shouldn't sit above a
+ * name with three this week. */
+export async function getRecentUnexcused(limit = 60): Promise<RecentUnexcused[]> {
+  const rows = await prisma.attendance.findMany({
+    where: {
+      status: "UNEXCUSED_ABSENT",
+      practice: { status: "CONFIRMED", dance: { archivedAt: null } },
+    },
+    orderBy: { practice: { startDateTime: "desc" } },
+    take: limit,
+    select: {
+      practiceId: true,
+      userId: true,
+      user: { select: { name: true, email: true } },
+      practice: {
+        select: { startDateTime: true, dance: { select: { name: true } } },
+      },
+    },
+  });
+
+  return rows.map((r) => ({
+    practiceId: r.practiceId,
+    startDateTime: r.practice.startDateTime,
+    danceName: r.practice.dance.name,
+    userId: r.userId,
+    name: r.user.name ?? r.user.email,
+  }));
+}
+
+export interface DanceTrendWeek {
+  weekOf: Date;
+  /** Of the people who were supposed to be in the room, how many were. */
+  present: number;
+  expected: number;
+  percent: number;
+}
+
+export interface DanceTrend {
+  danceId: string;
+  danceName: string;
+  castSize: number;
+  /** Oldest first, so it reads left to right like a chart. */
+  weeks: DanceTrendWeek[];
+  /** The most recent week's turnout, and how it compares to the average of
+   * everything before it. Positive means better than usual. */
+  latestPercent: number | null;
+  averagePercent: number;
+  deltaPercent: number | null;
+}
+
+/** Turnout per dance, week by week, with the trend spelled out.
+ *
+ * "Is one piece getting a lot fewer people than normal" is a question the
+ * per-week absence list can't answer, because a list of names doesn't tell you
+ * what normal was. This subtracts the average from the latest week and says so
+ * in one number. */
+export async function getDanceTrends(): Promise<DanceTrend[]> {
+  const practices = await getPastPracticesWithAttendance();
+
+  const byDance = new Map<
+    string,
+    { danceName: string; castSize: number; weeks: Map<string, { present: number; expected: number }> }
+  >();
+
+  for (const practice of practices) {
+    if (!practice.isMarked) continue;
+    const entry = byDance.get(practice.danceId) ?? {
+      danceName: practice.danceName,
+      castSize: 0,
+      weeks: new Map<string, { present: number; expected: number }>(),
+    };
+    entry.castSize = Math.max(entry.castSize, practice.rows.length);
+
+    const key = startOfWeek(practice.startDateTime).toISOString();
+    const week = entry.weeks.get(key) ?? { present: 0, expected: 0 };
+    for (const row of practice.rows) {
+      if (row.status === null) continue;
+      // Somebody the AD excused was never expected in the room, so counting
+      // them as a no-show would make a well-attended week look thin.
+      if (row.status === "EXCUSED_ABSENT") continue;
+      week.expected += 1;
+      if (isPresent(row.status)) week.present += 1;
+    }
+    entry.weeks.set(key, week);
+    byDance.set(practice.danceId, entry);
+  }
+
+  const trends: DanceTrend[] = [];
+  for (const [danceId, entry] of byDance) {
+    const weeks: DanceTrendWeek[] = Array.from(entry.weeks.entries())
+      .map(([iso, w]) => ({
+        weekOf: new Date(iso),
+        present: w.present,
+        expected: w.expected,
+        percent: w.expected === 0 ? 0 : Math.round((w.present / w.expected) * 100),
+      }))
+      .filter((w) => w.expected > 0)
+      .sort((a, b) => a.weekOf.getTime() - b.weekOf.getTime());
+
+    if (weeks.length === 0) continue;
+
+    const latest = weeks[weeks.length - 1];
+    // The average of the weeks *before* the latest, so "compared to normal"
+    // doesn't include the week being compared and dilute itself.
+    const earlier = weeks.slice(0, -1);
+    const averagePercent =
+      earlier.length === 0
+        ? latest.percent
+        : Math.round(
+            earlier.reduce((t, w) => t + w.percent, 0) / earlier.length,
+          );
+
+    trends.push({
+      danceId,
+      danceName: entry.danceName,
+      castSize: entry.castSize,
+      weeks,
+      latestPercent: latest.percent,
+      averagePercent,
+      deltaPercent: earlier.length === 0 ? null : latest.percent - averagePercent,
+    });
+  }
+
+  // Worst slide first: the dance that has fallen furthest below its own normal
+  // is the one to ask about.
+  return trends.sort(
+    (a, b) => (a.deltaPercent ?? 0) - (b.deltaPercent ?? 0) ||
+      a.danceName.localeCompare(b.danceName),
+  );
 }

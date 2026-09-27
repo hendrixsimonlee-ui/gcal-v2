@@ -220,6 +220,15 @@ enum NotificationType {
   ATTENDANCE_DUE
   PRACTICE_CHANGED
   CONFLICTS_DUE
+
+  /// A practice that finished a day ago and still has nobody's name against
+  /// it. Distinct from ATTENDANCE_DUE so the two dedup separately: the nudge
+  /// when it ends and the chase the next day are different messages about the
+  /// same practice, and sharing a type would let one suppress the other.
+  ATTENDANCE_OVERDUE
+
+  /// The AD's weekly prompt to go through last week.
+  ATTENDANCE_REVIEW_DUE
 }
 
 /// Dancers no longer categorise their own conflicts — they type a title and
@@ -279,6 +288,10 @@ model User {
 
   attendanceRecords                Attendance[]             @relation("AttendanceSubject")
   attendanceMarkedBy               Attendance[]             @relation("AttendanceMarker")
+  lateMinutesSet                   Attendance[]             @relation("LateMinutesSetter")
+  attendanceFlagsRaised            AttendanceFlag[]         @relation("FlagRaiser")
+  attendanceFlagsAbout             AttendanceFlag[]         @relation("FlagSubject")
+  attendanceFlagsResolved          AttendanceFlag[]         @relation("FlagResolver")
   attendanceSubmitted              Practice[]               @relation("AttendanceSubmitter")
   conflictsReviewed                Conflict[]               @relation("ConflictReviewer")
   plannedArrivals                  PlannedArrival[]
@@ -479,6 +492,8 @@ model Practice {
   /// updates that event in place instead of creating a second one.
   googleEventId String?
 
+  attendanceFlags AttendanceFlag[]
+
   /// Copies of this practice living on individual people's calendars.
   calendarExports PracticeCalendarExport[]
 
@@ -552,14 +567,41 @@ model Attendance {
   /// The moment they tapped Check in. Null for anyone who never did.
   checkedInAt DateTime?
 
-  /// How late they were, in minutes, measured from the practice's real start
-  /// and against any agreed late arrival. Stored at minute resolution so
-  /// charge rules can be layered on later without re-collecting anything.
+  /// How late they were, in minutes. **This is the figure that costs money**,
+  /// and since the charge ladder reads it directly it is the one number that
+  /// must never be written by accident.
+  ///
+  /// Normally it equals what the check-in measured. It differs only when the
+  /// AD has deliberately corrected it, and `lateMinutesSetById` records that.
+  /// A status change never touches it — that is exactly the bug this column's
+  /// rules exist to prevent, where marking somebody "here" silently deleted
+  /// their fourteen minutes and the fee that went with them.
   minutesLate Int?
 
-  /// True when a person or admin changed what the check-in implied, so the
-  /// record shows the difference between what happened and what was decided.
+  /// What the arithmetic says, from `checkedInAt` against the practice's real
+  /// start and any agreed arrival. Written only by check-in and by the
+  /// recompute that follows a changed start time.
+  ///
+  /// Kept beside `minutesLate` rather than replacing it so the two can be
+  /// compared: where they disagree, somebody decided something, and the AD
+  /// can see what was decided and what was measured.
+  measuredMinutesLate Int?
+
+  /// Set when the AD overrides the minutes by hand, so a corrected figure is
+  /// never mistaken for a measured one.
+  lateMinutesSetById String?
+  lateMinutesSetBy   User?     @relation("LateMinutesSetter", fields: [lateMinutesSetById], references: [id])
+  lateMinutesSetAt   DateTime?
+
+  /// True when this record says something other than what the check-in
+  /// implied, so the sheet can show the difference between what happened and
+  /// what was decided.
   isOverride Boolean @default(false)
+
+  /// Set when somebody who was excused turned up anyway. Their absence was
+  /// already authorised, so arriving at all is a bonus and is never charged —
+  /// but the AD wants to see it, so it is a flag rather than a silent zero.
+  cameDespiteExcusal Boolean @default(false)
 
   waiver ChargeWaiver?
 
@@ -598,6 +640,43 @@ model PlannedArrival {
 /// cast can read it. Set, it's about that person — visible to them, their
 /// choreographers, and admins — which covers both "I'll be late, class runs
 /// over" written beforehand and "here's what she missed" written after.
+/// A choreographer saying "this record is wrong" without being able to change
+/// it themselves.
+///
+/// Choreographers used to edit attendance directly, which is how a fourteen
+/// minute lateness became "here" and a charge disappeared. They still know
+/// best what happened in the room, so they raise this instead and the AD
+/// decides. Unresolved flags queue on Attendance Review.
+model AttendanceFlag {
+  id         String   @id @default(cuid())
+  practiceId String
+  practice   Practice @relation(fields: [practiceId], references: [id], onDelete: Cascade)
+
+  /// Who the flag is about. Always somebody in the cast — a flag with no
+  /// subject would be a note, and notes already exist.
+  subjectUserId String
+  subject       User   @relation("FlagSubject", fields: [subjectUserId], references: [id], onDelete: Cascade)
+
+  raisedById String
+  raisedBy   User   @relation("FlagRaiser", fields: [raisedById], references: [id], onDelete: Cascade)
+
+  /// What they say happened, in their words.
+  body String
+
+  /// Raised by the app rather than a person: somebody excused turned up
+  /// anyway, which the AD asked to be told about.
+  isAutomatic Boolean @default(false)
+
+  resolvedAt   DateTime?
+  resolvedById String?
+  resolvedBy   User?     @relation("FlagResolver", fields: [resolvedById], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@index([practiceId])
+  @@index([resolvedAt])
+}
+
 model PracticeNote {
   id         String   @id @default(cuid())
   practiceId String

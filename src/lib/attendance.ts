@@ -51,12 +51,94 @@ export function computeMinutesLate(
 }
 
 /** PRESENT under the threshold, LATE at or over it. Under 5 minutes doesn't
- * count against anyone. */
+ * count against anyone.
+ *
+ * **This is the only thing allowed to decide between PRESENT and LATE.**
+ * Nobody picks between them from a dropdown any more, and that is deliberate:
+ * when they were two independent stored values, marking somebody "here" wrote
+ * `minutesLate = 0` and deleted the fourteen minutes they had been late by,
+ * along with the charge. The reverse was as bad — marking somebody "late" left
+ * the minutes at zero, so nothing was ever charged. Derive it from the one
+ * number that means something and the two can't contradict each other. */
 export function statusFromCheckIn(
   minutesLate: number,
   lateThresholdMinutes: number,
 ): AttendanceStatus {
   return minutesLate >= lateThresholdMinutes ? "LATE" : "PRESENT";
+}
+
+/** What somebody chooses on an attendance sheet.
+ *
+ * Three outcomes, not four. "Late" is missing on purpose — it isn't a decision
+ * anybody makes, it is what the minutes say. */
+export type AttendanceOutcome = "CAME" | "EXCUSED" | "UNEXCUSED";
+
+export const OUTCOME_LABELS: Record<AttendanceOutcome, string> = {
+  CAME: "Came",
+  EXCUSED: "Excused",
+  UNEXCUSED: "Didn't come",
+};
+
+/** The status to store for a chosen outcome.
+ *
+ * `CAME` still has to ask the minutes, which is the whole point: somebody
+ * marked as having come, who the record says walked in twenty minutes in, is
+ * late — and stays late however they were marked. */
+export function statusForOutcome(
+  outcome: AttendanceOutcome,
+  minutesLate: number | null,
+  lateThresholdMinutes: number,
+): AttendanceStatus {
+  if (outcome === "EXCUSED") return "EXCUSED_ABSENT";
+  if (outcome === "UNEXCUSED") return "UNEXCUSED_ABSENT";
+  return statusFromCheckIn(minutesLate ?? 0, lateThresholdMinutes);
+}
+
+/** The outcome a stored status corresponds to, for showing the current choice
+ * on screen. PRESENT and LATE are both simply "came". */
+export function outcomeForStatus(
+  status: AttendanceStatus | null,
+): AttendanceOutcome | null {
+  if (status === null) return null;
+  if (status === "EXCUSED_ABSENT") return "EXCUSED";
+  if (status === "UNEXCUSED_ABSENT") return "UNEXCUSED";
+  return "CAME";
+}
+
+/** Does this record look like the old bug ate somebody's lateness?
+ *
+ * A record carries two numbers now: what the check-in measured, and what is
+ * actually charged. They disagreeing is not by itself a problem — most
+ * disagreements are either rounding at the edge of a minute or the AD
+ * deliberately correcting a figure, and burying them in those would guarantee
+ * the real ones go unread.
+ *
+ * The fingerprint of the bug is narrower than "they differ":
+ *
+ * - the person demonstrably turned up, so there is a measurement at all;
+ * - the measurement is at or over the threshold where money starts;
+ * - what is charged is nothing;
+ * - and nobody is on record as having decided that.
+ *
+ * That last condition is what keeps a deliberate write-off from reappearing in
+ * the AD's queue every week asking to be decided again. */
+export function needsLatenessRecheck(
+  record: {
+    checkedInAt: Date | null;
+    minutesLate: number | null;
+    measuredMinutesLate: number | null;
+    lateMinutesSetById: string | null;
+    cameDespiteExcusal?: boolean;
+  },
+  graceMinutes: number,
+): boolean {
+  if (record.checkedInAt === null) return false;
+  if (record.lateMinutesSetById !== null) return false;
+  // Somebody excused who turned up anyway is charged nothing on purpose.
+  if (record.cameDespiteExcusal) return false;
+  if (record.measuredMinutesLate === null) return false;
+  if (record.measuredMinutesLate < graceMinutes) return false;
+  return (record.minutesLate ?? 0) < graceMinutes;
 }
 
 /** Does this person have to check in at all?

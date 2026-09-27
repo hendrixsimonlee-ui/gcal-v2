@@ -856,21 +856,79 @@ export async function setMinutesLate(
 
   const record = await prisma.attendance.findUniqueOrThrow({
     where: { id: attendanceId },
-    select: { practiceId: true },
+    select: { practiceId: true, status: true },
   });
+
+  const settings = await prisma.appSettings.findUnique({
+    where: { id: "singleton" },
+    select: { lateThresholdMinutes: true },
+  });
+  const minutes = Math.round(minutesLate);
 
   await prisma.attendance.update({
     where: { id: attendanceId },
     data: {
-      minutesLate: Math.round(minutesLate),
+      minutesLate: minutes,
+      // Stamped as hand-set, which is what stops the recompute behind a
+      // changed start time from overwriting it and what keeps it out of the
+      // AD's re-check queue: somebody already decided this one.
+      lateMinutesSetById: actor.id,
+      lateMinutesSetAt: new Date(),
       isOverride: true,
       markedById: actor.id,
       markedAt: new Date(),
+      // Present and late are the same fact at different numbers, so the status
+      // follows the minutes rather than being left to contradict them.
+      ...(record.status === "PRESENT" || record.status === "LATE"
+        ? {
+            status:
+              minutes >= (settings?.lateThresholdMinutes ?? 5)
+                ? "LATE"
+                : "PRESENT",
+          }
+        : {}),
     },
   });
 
   revalidateDues();
   revalidatePath(`/attendance/${record.practiceId}`);
+  revalidatePath("/admin/attendance");
+}
+
+/** Accepts what the check-in actually measured, for a record the old bug
+ * zeroed.
+ *
+ * The same write as `setMinutesLate`, with the figure taken from the row
+ * rather than typed — which matters, because it means accepting a hundred of
+ * these is a hundred taps rather than a hundred transcriptions, and nobody
+ * mistypes a fee. */
+export async function applyMeasuredMinutes(attendanceId: string): Promise<void> {
+  await requireAdmin();
+  const record = await prisma.attendance.findUniqueOrThrow({
+    where: { id: attendanceId },
+    select: { measuredMinutesLate: true },
+  });
+  if (record.measuredMinutesLate === null) {
+    throw new Error("There is no measurement on that record to accept.");
+  }
+  await setMinutesLate(attendanceId, record.measuredMinutesLate);
+}
+
+/** Leaves a record charging what it charges, and stops asking.
+ *
+ * Stamping it as hand-set is the whole point: without that it fails the same
+ * test next week and comes back, and a queue that reappears after you have
+ * been through it is a queue nobody goes through twice. */
+export async function keepChargedMinutes(attendanceId: string): Promise<void> {
+  const actor = await requireAdmin();
+  await prisma.attendance.update({
+    where: { id: attendanceId },
+    data: {
+      lateMinutesSetById: actor.id,
+      lateMinutesSetAt: new Date(),
+    },
+  });
+  revalidateDues();
   revalidatePath("/admin/attendance");
 }
 
@@ -1076,6 +1134,35 @@ export async function removeCreditCategory(id: string): Promise<void> {
   revalidatePath("/admin/attendance-charges");
 }
 
+export type LedgerAccessRow = {
+  userId: string;
+  name: string;
+  /** Admins have it inherently and can't be toggled, so the list says so
+   * rather than offering a switch that would do nothing. */
+  isAdmin: boolean;
+  isFinanceAdmin: boolean;
+};
+
+/** Who can open the late charges screen.
+ *
+ * Lives here rather than on Roster because it is a fact about this screen,
+ * not about a dancer: somebody reading the Roster has no reason to care, and
+ * the button sitting between "Make admin" and "Remove" invited exactly the
+ * wrong comparison. */
+export async function getLedgerAccess(): Promise<LedgerAccessRow[]> {
+  await requireAdmin();
+  const rows = await prisma.user.findMany({
+    orderBy: { name: "asc" },
+    select: { id: true, name: true, email: true, isAdmin: true, isFinanceAdmin: true },
+  });
+  return rows.map((r) => ({
+    userId: r.id,
+    name: r.name ?? r.email,
+    isAdmin: r.isAdmin,
+    isFinanceAdmin: r.isFinanceAdmin,
+  }));
+}
+
 /** Hands one dancer the dues ledger, and nothing else.
  *
  * Admin-only, deliberately: the finance flag must not be able to grant
@@ -1090,4 +1177,5 @@ export async function setFinanceAdmin(
     data: { isFinanceAdmin: value },
   });
   revalidatePath("/admin/roster");
+  revalidatePath("/admin/attendance-charges");
 }
