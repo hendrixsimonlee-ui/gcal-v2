@@ -244,6 +244,14 @@ export default async function HelpPage() {
             their screen.
           </li>
           <li>
+            <B>The clock counts whole minutes.</B>{" "}For a 6pm rehearsal,
+            6:04 and fifty-nine seconds is four minutes late and free. The
+            first second that costs anything is 6:05:00. The app used to round
+            to the nearest minute, so walking in at 6:04:30 was written down as
+            five minutes and charged a dollar — that was wrong and the old
+            charges have been put right.
+          </li>
+          <li>
             <B>Not turning up at all costs nothing here.</B>{" "}This is about
             lateness, not absence.
           </li>
@@ -313,8 +321,10 @@ export default async function HelpPage() {
           <Nav href="/my-attendance">My Attendance</Nav> and press{" "}
           <B>Flag</B>{" "}next to your name — &ldquo;I was here on time, my
           phone wouldn&rsquo;t load&rdquo;. It goes to the AD with your words
-          on it. Your choreographer can&rsquo;t change attendance themselves
-          any more, so this is the way it gets fixed.
+          on it. Your choreographer can fix whether you came or not themselves,
+          but <B>how late</B>{" "}you were is only the AD&rsquo;s to change,
+          because that is the part that costs money. So a wrong time is always
+          worth flagging.
         </p>
       </Section>
 
@@ -336,13 +346,38 @@ export default async function HelpPage() {
             </li>
           </ul>
           <p>
-            <B>You can submit, but you can&rsquo;t change attendance.</B>{" "}
-            Before you submit you can mark somebody present who never checked
-            in — the phone that died. Anything else, press <B>Flag</B>{" "}next
-            to their name and say what happened; it goes to the AD and they
-            sort it. This changed because changing somebody to &ldquo;here&rdquo;
-            used to wipe how late they were, and the charge with it, without
-            anybody noticing.
+            <B>You say who was in the room.</B>{" "}Next to each name there is
+            a dropdown with three choices — <B>Came</B>, <B>Excused</B>,{" "}
+            <B>Didn&rsquo;t come</B>{" "}— and you can change any of them,
+            before you submit and after. Nothing is locked until the AD marks
+            the week reviewed, and if that has happened the app tells you and
+            they can reopen it.
+          </p>
+          <p>
+            <B>How late somebody was is not yours to change.</B>{" "}That is the
+            one number that costs money, so only the AD can touch it. Picking{" "}
+            <B>Came</B>{" "}for someone the check-in says walked in fourteen
+            minutes in records that they came — and leaves them fourteen
+            minutes late, because they were. If the time itself is wrong —
+            the rehearsal started late, her phone was dead and she was here
+            from the start — press <B>Flag</B>{" "}next to their name and say
+            so. It goes to the AD with your words on it.
+          </p>
+          <p>
+            <B>If the rehearsal itself started late, say so instead.</B>{" "}
+            There is a <B>Did it start late?</B>{" "}box at the top of the
+            sheet. Set the time you actually began and everybody&rsquo;s
+            lateness is measured from there, which is the right fix when the
+            room was locked or you were waiting on a speaker — far quicker than
+            flagging six people. Press <B>Started on time after all</B>{" "}to
+            undo it. Your name goes next to it and the AD is told if it changes
+            what anybody owes, so use it for what really happened.
+          </p>
+          <p>
+            This split exists because the old dropdown wrote both at once:
+            marking somebody &ldquo;here&rdquo; wiped how late they were and
+            the charge with it, and nobody found out until the month&rsquo;s
+            total was wrong. The sheet is yours again; the money never was.
           </p>
           <p>
             You count more than a dancer when the app is choosing a time. If

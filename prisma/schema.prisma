@@ -293,6 +293,7 @@ model User {
   attendanceFlagsAbout             AttendanceFlag[]         @relation("FlagSubject")
   attendanceFlagsResolved          AttendanceFlag[]         @relation("FlagResolver")
   attendanceSubmitted              Practice[]               @relation("AttendanceSubmitter")
+  practiceStartsRecorded           Practice[]               @relation("ActualStartSetter")
   conflictsReviewed                Conflict[]               @relation("ConflictReviewer")
   plannedArrivals                  PlannedArrival[]
   notesWritten                     PracticeNote[]           @relation("NoteAuthor")
@@ -480,6 +481,19 @@ model Practice {
   /// time. Lateness is measured from here when it's set — nobody should be
   /// marked late for a practice that hadn't started.
   actualStartTime DateTime?
+
+  /// Who recorded that late start, and when.
+  ///
+  /// This is the one control on the attendance sheet a choreographer can use
+  /// to move money: pushing the start to 6:10 re-prices everybody who checked
+  /// in. That is exactly the right fix for a rehearsal which began late, and
+  /// exactly the wrong thing to be able to do unnoticed. It stays immediate —
+  /// making somebody ask permission to write down when their own rehearsal
+  /// started is the paperwork we just took back out — so instead it leaves a
+  /// name on the record, and tells the AD when money moved.
+  actualStartSetById String?
+  actualStartSetBy   User?     @relation("ActualStartSetter", fields: [actualStartSetById], references: [id])
+  actualStartSetAt   DateTime?
 
   /// Set when the choreographer (or an admin on their behalf) signs off on
   /// the attendance record. Until then it's provisional. There's deliberately

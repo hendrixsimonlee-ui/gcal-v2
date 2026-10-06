@@ -39,7 +39,15 @@ export function effectivePracticeStart(
  *
  * Someone with an agreed late arrival is measured against *that* time, not
  * the start — turning up when you said you would is on time, which is the
- * whole point of agreeing it in advance. */
+ * whole point of agreeing it in advance.
+ *
+ * **Minutes elapsed, not minutes rounded.** This used to round, so somebody
+ * walking into a six o'clock rehearsal at 6:04:30 was recorded as five
+ * minutes late and charged a dollar, while every clock in the building and
+ * every screen in the app said 6:04. Four and a half minutes is four minutes
+ * late. You are five minutes late at 6:05:00 and not a second before, which
+ * is what everybody already assumed and what the fee ladder was written
+ * against. */
 export function computeMinutesLate(
   checkedInAt: Date,
   practiceStart: Date,
@@ -47,7 +55,7 @@ export function computeMinutesLate(
 ): number {
   const baseline = plannedArriveAt ?? practiceStart;
   const diffMs = checkedInAt.getTime() - baseline.getTime();
-  return Math.max(0, Math.round(diffMs / 60000));
+  return Math.max(0, Math.floor(diffMs / 60000));
 }
 
 /** PRESENT under the threshold, LATE at or over it. Under 5 minutes doesn't

@@ -70,6 +70,7 @@ export function PracticeAttendancePanel({
   notes,
   startDateTime,
   actualStartTime,
+  actualStartSetBy,
   submittedAt,
   canManage,
   isAdmin,
@@ -81,6 +82,9 @@ export function PracticeAttendancePanel({
   notes: PanelNote[];
   startDateTime: string;
   actualStartTime: string | null;
+  /** Who recorded the late start, for the line under the box. Null when
+   * nobody has, or when the record predates the app keeping track. */
+  actualStartSetBy: string | null;
   submittedAt: string | null;
   canManage: boolean;
   /** The AD. They can change anything; a choreographer can only say that
@@ -227,6 +231,13 @@ export function PracticeAttendancePanel({
             >
               Started on time after all
             </button>
+          )}
+          {/* This box re-prices everybody who checked in, so it does not get
+              to be the one anonymous control on the sheet. */}
+          {actualStartTime && actualStartSetBy && (
+            <span className="basis-full text-xs text-ink-faint">
+              Recorded by {actualStartSetBy}.
+            </span>
           )}
         </div>
       )}
@@ -477,13 +488,15 @@ function Group({
  * What's here instead:
  *
  * - **Late is never a choice.** It follows the minutes, and the minutes are
- *   what the check-in measured. There is nothing to pick that can contradict
- *   anything.
- * - **Choreographers get one button**, before they submit, for the one case
- *   they genuinely need: somebody whose phone died and who never checked in.
- *   It cannot touch a recorded lateness because it only appears where there
- *   is no check-in at all.
- * - **Everything else is a flag.** It reaches the AD with a name on it.
+ *   what the check-in measured. Whoever is running the dance still says who
+ *   was in the room — Came, Excused, Didn't come — and none of those three
+ *   can contradict a recorded lateness, because none of them writes one.
+ * - **Minutes are the AD's alone.** That field is the one that costs money,
+ *   and it is the only thing on this row a choreographer can't reach. The
+ *   dropdown was never the bug; the dropdown writing minutes was.
+ * - **Flagging stays, and stays optional.** It's for the cases a dropdown
+ *   can't express — "her phone died, she was here from the start" — and for
+ *   dancers, who can only flag their own row.
  */
 function Row({
   row,
@@ -510,9 +523,6 @@ function Row({
   const [flagText, setFlagText] = useState("");
   const [minutes, setMinutes] = useState(String(row.minutesLate ?? 0));
 
-  // A choreographer may say "they were here" only where the app has no
-  // check-in of its own. With one, the person has already said it better.
-  const canMarkPresent = canManage && !submitted && !row.checkedInAt;
   // Anybody may flag their own row; choreographers and the AD may flag any.
   const canFlag = canManage || row.userId === viewerId;
   const corrected =
@@ -572,20 +582,14 @@ function Row({
             </button>
           )}
 
-          {canMarkPresent && !isAdmin && (
-            <button
-              onClick={() =>
-                onRun(() => markAttendance(practiceId, row.userId, "CAME"))
-              }
-              className="rounded border border-line-strong px-2 py-0.5 text-xs font-medium text-ink-soft transition-colors hover:border-accent hover:text-accent-ink"
-            >
-              They were here
-            </button>
-          )}
-
-          {isAdmin && showStatus && (
+          {canManage && showStatus && (
             <select
               value={outcomeForStatus(row.status) ?? ""}
+              title={
+                submitted
+                  ? "You've already submitted this. Changing it now is fine — it shows up as an edit in the AD's review."
+                  : undefined
+              }
               onChange={(e) =>
                 onRun(() =>
                   markAttendance(
@@ -618,6 +622,17 @@ function Row({
           )}
         </span>
       </div>
+
+      {/* The minutes are not yours to change, and picking "Came" on somebody
+          the clock says walked in late will leave them late — which is the
+          point, and worth saying once rather than letting them wonder why
+          nothing happened. */}
+      {canManage && !isAdmin && showStatus && row.status === "LATE" && (
+        <p className="text-xs text-ink-faint">
+          Late by the check-in time, so it stays late whatever you pick here.
+          If that&rsquo;s wrong, flag it — only the AD can change the minutes.
+        </p>
+      )}
 
       {/* Minutes, the AD's alone. This is the number that costs money, so it
           is the one thing a choreographer can never reach. */}

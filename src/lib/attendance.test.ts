@@ -54,6 +54,51 @@ const LATE_THRESHOLD = 5;
   );
 }
 
+// --- the minute boundary, where the money starts ---
+//
+// A six o'clock practice. Somebody walking in at 6:04:30 used to be recorded
+// as five minutes late and charged a dollar, because the maths rounded while
+// every clock in the room said 6:04. Minutes elapsed, not minutes rounded:
+// the whole of 6:04 is four minutes late, and 6:05:00 is the first chargeable
+// second.
+{
+  const atSec = (h: number, m: number, sec: number) =>
+    new Date(
+      `2026-09-10T${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`,
+    );
+  const minutes = (h: number, m: number, sec: number) =>
+    computeMinutesLate(atSec(h, m, sec), start, null);
+
+  assert(minutes(18, 4, 0) === 4, "6:04:00 is four minutes late");
+  assert(
+    minutes(18, 4, 30) === 4,
+    "6:04:30 is four minutes late, not five — half a minute is not a minute",
+  );
+  assert(minutes(18, 4, 59) === 4, "6:04:59 is still four minutes late");
+  assert(minutes(18, 5, 0) === 5, "6:05:00 is five minutes late exactly");
+
+  assert(
+    statusFromCheckIn(minutes(18, 4, 59), LATE_THRESHOLD) === "PRESENT",
+    "arriving at 6:04:59 is on time and costs nothing",
+  );
+  assert(
+    statusFromCheckIn(minutes(18, 5, 0), LATE_THRESHOLD) === "LATE",
+    "arriving at 6:05:00 is the first second that is late",
+  );
+
+  // The same boundary against an agreed arrival, since that is the baseline
+  // for anyone the AD has told to come at half past.
+  const agreedAt = new Date("2026-09-10T18:30:00");
+  assert(
+    computeMinutesLate(atSec(18, 34, 45), start, agreedAt) === 4,
+    "4:45 past an agreed arrival is four minutes late",
+  );
+  assert(
+    computeMinutesLate(atSec(18, 35, 0), start, agreedAt) === 5,
+    "five minutes past an agreed arrival is five minutes late",
+  );
+}
+
 // --- the choreographer records a late start ---
 {
   const realStart = effectivePracticeStart(start, at(18, 20));

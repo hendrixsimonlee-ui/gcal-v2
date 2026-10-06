@@ -40,6 +40,7 @@ export default async function PracticePage({
     include: {
       plannedArrivals: true,
       dance: { include: { memberships: { select: { userId: true } } } },
+      actualStartSetBy: { select: { name: true, email: true } },
     },
   });
 
@@ -123,6 +124,12 @@ export default async function PracticePage({
         notes={notes.map((n) => ({ ...n, createdAt: n.createdAt.toISOString() }))}
         startDateTime={practice.startDateTime.toISOString()}
         actualStartTime={practice.actualStartTime?.toISOString() ?? null}
+        actualStartSetBy={
+          practice.actualStartSetBy
+            ? (practice.actualStartSetBy.name ??
+              practice.actualStartSetBy.email.split("@")[0])
+            : null
+        }
         submittedAt={practice.attendanceSubmittedAt?.toISOString() ?? null}
         canManage={canManage}
         isAdmin={user.isAdmin === true}

@@ -17,8 +17,28 @@ import {
   type AttendanceStatus,
 } from "@/lib/attendance";
 import { formatWeekLabel, startOfWeek } from "@/lib/dates";
+import {
+  DEFAULT_FEE_TIERS,
+  calculateLateFee,
+  formatMoney,
+  type FeeTier,
+} from "@/lib/attendance-fees";
+import { APP_TIME_ZONE } from "@/lib/timezone";
 
 const SETTINGS_ID = "singleton";
+
+/** Prefix on the automatic flag raised when somebody other than the AD moves
+ * a practice's start time. It is what lets the next change replace the last
+ * one instead of stacking another entry on the queue, so keep it stable. */
+const START_TIME_FLAG = "Start time changed: ";
+
+/** Eastern, and the way a person writes a time — the flag is read by the AD,
+ * not typed into a form, so "3:10 PM" rather than "15:10". */
+const flagClock = new Intl.DateTimeFormat("en-US", {
+  timeZone: APP_TIME_ZONE,
+  hour: "numeric",
+  minute: "2-digit",
+});
 
 export async function getAttendanceSettings() {
   const existing = await prisma.appSettings.findUnique({
@@ -373,13 +393,20 @@ async function assertWeekOpen(startDateTime: Date) {
  * writes `minutesLate`.** Changing how late somebody was is `setMinutesLate`
  * in the dues actions, which is the AD's alone and re-prices the charge.
  *
- * Who may call it:
+ * That split is the whole fix, and it is why choreographers keep the dropdown.
+ * Taking it away as well — flag it, wait for the AD, have them approve it —
+ * made a person running a rehearsal file a request to write down who was in
+ * the room, which is the one thing they are actually there to know. The money
+ * was never theirs to move and now it isn't reachable from here by anybody;
+ * the sheet is theirs and goes back to being theirs.
  *
- * - **Admins**, for anything.
- * - **Choreographers**, only before they submit, and only to say that somebody
- *   who never checked in was in fact there. That covers the phone that died,
- *   which is the case this has to keep handling, without handing back the
- *   control that lost the money. Anything else they raise as a flag.
+ * Who may call it: anyone who runs the dance, and the AD. Before submitting
+ * and after — a name remembered on the walk home is still worth correcting,
+ * and the alternative is a sheet everybody knows is wrong. Changes after
+ * submission are marked as overrides and carry who made them, so the AD's
+ * review shows the correction rather than hiding it. The only door this
+ * closes is a reviewed week, which `assertWeekOpen` holds shut for everyone
+ * until the AD reopens it.
  */
 export async function markAttendance(
   practiceId: string,
@@ -388,11 +415,7 @@ export async function markAttendance(
 ) {
   const practice = await prisma.practice.findUniqueOrThrow({
     where: { id: practiceId },
-    select: {
-      danceId: true,
-      startDateTime: true,
-      attendanceSubmittedAt: true,
-    },
+    select: { danceId: true, startDateTime: true },
   });
   const marker = await requireChoreographerOrAdmin(practice.danceId);
   await assertWeekOpen(practice.startDateTime);
@@ -401,24 +424,6 @@ export async function markAttendance(
     where: { practiceId_userId: { practiceId, userId } },
     select: { checkedInAt: true, minutesLate: true },
   });
-
-  if (!marker.isAdmin) {
-    if (practice.attendanceSubmittedAt) {
-      throw new Error(
-        "This has been submitted. Flag the problem and the AD can change it.",
-      );
-    }
-    if (outcome !== "CAME") {
-      throw new Error(
-        "Only the AD can mark somebody absent. Flag it and they'll sort it out.",
-      );
-    }
-    if (existing?.checkedInAt) {
-      throw new Error(
-        "They checked in themselves, so this is already right. If the time is wrong, flag it for the AD.",
-      );
-    }
-  }
 
   const settings = await getAttendanceSettings();
   const status = statusForOutcome(
@@ -451,9 +456,59 @@ export async function markAttendance(
   revalidatePath("/admin/attendance");
 }
 
+/** The fee ladder that was in force on a given day.
+ *
+ * The ledger does this too, for the ledger's own reasons. It is three lines
+ * and reading the schedules here keeps this file from importing a server
+ * action, which is the trade: a practice older than every schedule keeps the
+ * oldest one rather than becoming free, and a database with no schedules at
+ * all falls back to the ladder shipped in the code. "Everything is suddenly
+ * free" is a much worse failure than "the rates are the ones we started
+ * with". */
+async function ladderOn(when: Date): Promise<readonly FeeTier[]> {
+  const schedules = await prisma.feeSchedule.findMany({
+    orderBy: { effectiveFrom: "desc" },
+    select: {
+      effectiveFrom: true,
+      tiers: { select: { fromMinutes: true, cents: true } },
+    },
+  });
+  if (schedules.length === 0) return DEFAULT_FEE_TIERS;
+  const inForce =
+    schedules.find((s) => s.effectiveFrom <= when) ??
+    schedules[schedules.length - 1];
+  return inForce.tiers;
+}
+
+/** What this practice's check-ins add up to in charges, right now. */
+async function chargesFor(
+  practiceId: string,
+  tiers: readonly FeeTier[],
+): Promise<number> {
+  const rows = await prisma.attendance.findMany({
+    where: { practiceId, checkedInAt: { not: null } },
+    select: { minutesLate: true },
+  });
+  return rows.reduce((sum, r) => sum + calculateLateFee(r.minutesLate, tiers), 0);
+}
+
 /** The practice didn't actually start on time. Everyone's lateness is
  * recalculated from the real start, so nobody carries a penalty for a
- * practice that hadn't begun. */
+ * practice that hadn't begun.
+ *
+ * **This is the only thing on the attendance sheet that moves money and isn't
+ * the AD's.** A choreographer cannot change how late one person was, but
+ * pushing the start from 6:00 to 6:10 takes ten minutes off everybody who
+ * checked in, charges included. That stays deliberately immediate: it is the
+ * honest fix for a rehearsal that began late, it re-derives from check-in
+ * times rather than overwriting them — so "Started on time after all" puts
+ * every charge straight back — and requiring permission to write down when
+ * your own rehearsal started is the paperwork this app just stopped asking
+ * for.
+ *
+ * What it does instead is leave a trace. The practice records who set it and
+ * when, and if somebody other than the AD moves money by it, that lands in
+ * the AD's queue saying how much. Visible beats forbidden. */
 export async function setActualStartTime(
   practiceId: string,
   actualStartIso: string | null,
@@ -462,16 +517,29 @@ export async function setActualStartTime(
     where: { id: practiceId },
     include: { plannedArrivals: true },
   });
-  await requireChoreographerOrAdmin(practice.danceId);
+  const setter = await requireChoreographerOrAdmin(practice.danceId);
+  // A week the AD has signed off must not move under them from here either.
+  // `markAttendance` has always checked this; this didn't, which left the one
+  // control that re-prices a whole room as the way around the lock.
+  await assertWeekOpen(practice.startDateTime);
 
   const actualStartTime = actualStartIso ? new Date(actualStartIso) : null;
   if (actualStartTime && Number.isNaN(actualStartTime.getTime())) {
     throw new Error("Invalid start time");
   }
 
+  const tiers = await ladderOn(practice.startDateTime);
+  const chargesBefore = await chargesFor(practiceId, tiers);
+
   await prisma.practice.update({
     where: { id: practiceId },
-    data: { actualStartTime },
+    data: {
+      actualStartTime,
+      // Clearing the time clears the name with it: there is nothing left to
+      // have recorded.
+      actualStartSetById: actualStartTime ? setter.id : null,
+      actualStartSetAt: actualStartTime ? new Date() : null,
+    },
   });
 
   const settings = await getAttendanceSettings();
@@ -518,6 +586,57 @@ export async function setActualStartTime(
           : {}),
       },
     });
+  }
+
+  // Tell the AD, but only when there is something to tell them: somebody
+  // other than them moved the start, and the room's charges actually changed
+  // because of it. A choreographer correcting a start time that costs nobody
+  // anything needs no queue item — the name on the practice is enough — and a
+  // queue that fills with those is a queue that stops being read.
+  if (!setter.isAdmin) {
+    // One statement per practice, not a trail. If they set 6:10, then 6:05,
+    // then put it back, the AD should see where it landed rather than three
+    // entries to reconcile; the name and time on the practice are the durable
+    // record. Matching on the marker keeps this from touching the other
+    // automatic flags, which are about a dancer rather than a start time.
+    await prisma.attendanceFlag.deleteMany({
+      where: {
+        practiceId,
+        isAutomatic: true,
+        resolvedAt: null,
+        body: { startsWith: START_TIME_FLAG },
+      },
+    });
+
+    const chargesAfter = await chargesFor(practiceId, tiers);
+    if (chargesAfter !== chargesBefore) {
+      const minutes = actualStartTime
+        ? Math.round(
+            (actualStartTime.getTime() - practice.startDateTime.getTime()) /
+              60000,
+          )
+        : 0;
+      const moved = chargesBefore - chargesAfter;
+      await prisma.attendanceFlag.create({
+        data: {
+          practiceId,
+          // The flag is about what they did, so it is filed against them.
+          subjectUserId: setter.id,
+          raisedById: setter.id,
+          isAutomatic: true,
+          body:
+            START_TIME_FLAG +
+            (actualStartTime
+              ? `recorded this as starting at ${flagClock.format(actualStartTime)}` +
+                (minutes > 0 ? `, ${minutes} minutes late` : "") +
+                ". "
+              : "put the start back to the scheduled time. ") +
+            (moved > 0
+              ? `${formatMoney(moved)} of late charges cleared.`
+              : `${formatMoney(-moved)} of late charges reinstated.`),
+        },
+      });
+    }
   }
 
   revalidatePath(`/attendance/${practiceId}`);

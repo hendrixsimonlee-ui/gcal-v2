@@ -643,7 +643,7 @@ export default function AdminHelpPage() {
           happily use that time if it&rsquo;s the best one going.
         </p>
         <p>
-          <B>Check the Minutes box too.</B> The suggestion list uses whatever
+          <B>Check the Minutes box too.</B>{" "}The suggestion list uses whatever
           length is in that box; Build the week always uses the dance&rsquo;s
           saved length. Type 60 into it for a 90-minute dance and you&rsquo;ll
           see times that don&rsquo;t exist at 90, which looks like the builder
@@ -698,7 +698,7 @@ export default function AdminHelpPage() {
           with a single awkward neighbour. Now they don&rsquo;t.
         </p>
         <p>
-          <B>This is asked only after attendance.</B> Two weeks have to put
+          <B>This is asked only after attendance.</B>{" "}Two weeks have to put
           exactly the same people in the room before room time is consulted at
           all, so a tidier set of bookings can never cost anybody their
           rehearsal — not for five wasted minutes and not for five hundred.
@@ -1042,6 +1042,17 @@ export default function AdminHelpPage() {
           change all of these — see <B>Rates &amp; credits</B> below.
         </p>
         <p>
+          <B>Minutes are counted whole, not rounded.</B>{" "}For a 6pm
+          rehearsal, anyone walking in during 6:04 is four minutes late and
+          free; 6:05:00 is the first second that costs a dollar. The app used
+          to round to the nearest minute, so 6:04:30 was recorded as five and
+          charged. That is fixed, and the charges it had already got wrong were
+          recalculated — each one that changed is sitting in your flags on{" "}
+          <Nav href="/admin/attendance">Attendance Review</Nav> saying what it
+          was and what it is now. Nothing went up; a recount can only take
+          minutes off.
+        </p>
+        <p>
           <B>Credits:</B>{" "}the app ships with leading Pan-Asian time or a
           workshop at $1 off and attending one at 50c, and you can add your own.
           They come off the oldest charges first and roll forward within a
@@ -1160,27 +1171,24 @@ export default function AdminHelpPage() {
           no deadline.
         </p>
         <p>
-          <B>Choreographers submit, they don&rsquo;t edit.</B>{" "}
-          Before they submit they can do exactly one thing: mark somebody
-          present who never checked in, for the phone that died. After they
-          submit the sheet is read-only to them. Everything else they raise as
-          a flag, which lands on{" "}
-          <Nav href="/admin/attendance">Attendance Review</Nav> with their name
-          and their words on it, and you decide.
+          <B>Choreographers say who was in the room, and they can change it.</B>{" "}
+          Each name has a dropdown — <B>Came</B>, <B>Excused</B>,{" "}
+          <B>Didn&rsquo;t come</B>{" "}— and they can use it before they submit
+          and after. Expect to be asked about this: the sheet briefly worked
+          the other way, flag-only, and it made running a rehearsal into
+          paperwork. A change after submitting is stamped as an edit with their
+          name on it, so you see the correction rather than it hiding.
         </p>
         <p>
-          <B>Why it changed.</B>{" "}The old sheet let them pick between Here,
-          Late, Excused and Unexcused. Picking Here also wiped the minutes, so
-          somebody fourteen minutes late became on time and their charge
-          vanished — silently, with nothing on screen to show it had happened.
-          Picking Late did the reverse and produced no charge at all.
-        </p>
-        <p>
-          <B>Late isn&rsquo;t a choice any more.</B>{" "}Nobody picks between
-          present and late, including you. It follows the minutes, and the
-          minutes come from the check-in. What anyone picks is{" "}
-          <B>Came</B>, <B>Excused</B>{" "}or <B>Didn&rsquo;t come</B>, and none
-          of those touches the number that costs money.
+          <B>Late isn&rsquo;t a choice, for them or for you.</B>{" "}Nobody picks
+          between present and late. It follows the minutes, and the minutes
+          come from the check-in. That is what was actually broken before: the
+          old sheet let them pick Here, Late, Excused or Unexcused, and picking
+          Here also wiped the minutes, so somebody fourteen minutes late became
+          on time and their charge vanished with nothing on screen to show it.
+          Picking Late did the reverse and produced no charge at all. Three
+          choices, none of which writes a number, and the two can no longer
+          contradict each other.
         </p>
         <p>
           <B>Changing how late somebody was is yours alone.</B>{" "}The minutes
@@ -1197,6 +1205,20 @@ export default function AdminHelpPage() {
           expected list, so choreographers chased dancers you already knew
           weren&rsquo;t turning up. The count line at the top is who should
           actually walk through the door.
+        </p>
+        <p>
+          <B>&ldquo;Did it start late?&rdquo; is the one thing they can do that
+          moves money.</B>{" "}Pushing the start to 6:10 takes ten minutes off
+          everybody who checked in, charges included. It stays theirs to use —
+          a rehearsal that genuinely began late is what it is for, and the
+          alternative is you editing eleven people&rsquo;s minutes by hand. It
+          is safe because it is reversible and visible: it re-measures from the
+          check-in times rather than overwriting them, so{" "}
+          <B>Started on time after all</B>{" "}puts every charge straight back,
+          the practice now shows <B>Recorded by</B>{" "}whoever set it, and if
+          anybody but you moves money that way it lands in your queue saying
+          how much. A week you&rsquo;ve marked reviewed is shut to it, same as
+          everything else.
         </p>
         <p>
           <B>Somebody excused who turns up anyway</B>{" "}is recorded present

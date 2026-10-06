@@ -172,6 +172,39 @@ Turning up late is a different problem from not turning up. Minutes are
 recorded exactly so charge rules can be layered on later without
 re-collecting anything.
 
+**Lateness counts whole elapsed minutes.** `computeMinutesLate` floors; it
+used to round, which made 6:04:30 "five minutes" at a 6pm rehearsal and
+charged a dollar for it while every clock in the room said 6:04. You are five
+minutes late at 6:05:00 and not a second before. The migration
+`20261005120000_lateness_counts_whole_minutes` re-derived the stored rows
+from `checkedInAt`, downward only, skipping anything the AD had set by hand,
+and raised an automatic flag for each row whose *charge* actually moved — a
+minute that doesn't cross a rung of the ladder is not worth anybody's
+attention.
+
+**"Did it start late?" leaves a name.** Moving a practice's start re-prices
+everybody who checked in, which makes it the one control on the attendance
+sheet that isn't the AD's and still moves money. It stays immediate and stays
+the choreographer's — a rehearsal that began late is what it is for, and the
+alternative is the AD editing eleven people's minutes by hand. What it gained
+is a trace: `Practice.actualStartSetById`/`actualStartSetAt`, a "Recorded by"
+line on the sheet, an `assertWeekOpen` check it was missing entirely, and one
+automatic flag to the AD when a non-admin's change actually alters what the
+room owes. The flag replaces its predecessor rather than stacking, so fiddling
+with the time leaves the AD with where it landed instead of a reconciliation
+exercise; the stamp on the practice is the durable record.
+
+**The sheet is the choreographer's; the minutes are the AD's.** Whoever runs
+a dance picks Came / Excused / Didn't come for anyone on it, before submitting
+and after, and only a week the AD has marked reviewed locks it. What they
+cannot reach is `minutesLate`, which is the only field that costs money.
+There was a release in between where choreographers could only raise a flag
+for the AD to approve; it was withdrawn because it turned writing down who was
+in the room into paperwork. The bug was never the dropdown — it was the
+dropdown writing a status *and* a minutes figure that could disagree, with
+whichever was written last winning. `markAttendance` writes no minutes at all,
+so restoring the control restored nothing of the bug.
+
 **A note is scoped by who it's about.** A note on the practice is for the
 whole cast; a note about a person is for them, their choreographers, and
 admins. That's what lets "I'll be late, class runs over" be written by the
